@@ -15,10 +15,10 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 header
                 hline
-                VStack(spacing: 0) {
-                    if showingCapture { captureBar; hline }
-                }
-                .clipped()   // 滑動時被上緣那條線裁住,看起來就是從線底下滑出
+                // 常駐於樹中,用高度 0↔自然高做滑動 — 底色跟內容一起動,不會先展開
+                VStack(spacing: 0) { captureBar; hline }
+                    .frame(height: showingCapture ? nil : 0, alignment: .bottom)
+                    .clipped()
                 ScrollView { body(for: store.view).frame(maxWidth: .infinity, alignment: .leading) }
                     .frame(maxHeight: .infinity)
                 hline
@@ -193,16 +193,17 @@ struct ContentView: View {
                 .keyboardShortcut(.return, modifiers: .command)
                 .buttonStyle(.plain).frame(width: 0, height: 0).opacity(0)
         }
-        .padding(.horizontal, 16).padding(.vertical, 10)
-        .background(Theme.panel)
-        .transition(.move(edge: .top))
-        .onAppear { captureFocused = true }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .background(ZStack { Theme.bg; Theme.green.opacity(0.09) })   // 新增=綠,和 panel 灰區隔
+        .overlay(Rectangle().fill(Theme.green).frame(width: 3), alignment: .leading)
     }
     private func openCapture() {
-        withAnimation(.easeOut(duration: 0.18)) { showingCapture = true }
+        withAnimation(.easeOut(duration: 0.2)) { showingCapture = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { captureFocused = true }
     }
     private func closeCapture() {
         captureText = ""
+        captureFocused = false
         withAnimation(.easeOut(duration: 0.15)) { showingCapture = false }
     }
     @ViewBuilder private var capturePreview: some View {
