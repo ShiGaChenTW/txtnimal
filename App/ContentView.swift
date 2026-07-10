@@ -27,6 +27,7 @@ struct ContentView: View {
                 statusBar
             }
             if store.focusMode { focusOverlay }   // 技法 B：純變暗
+            if showingPalette { paletteOverlay }  // ⌘K:條件掛載,不常駐樹中(焦點教訓)
         }
         .frame(minWidth: 660, minHeight: 580)
         .font(Theme.mono).foregroundColor(Theme.fg)
@@ -134,8 +135,8 @@ struct ContentView: View {
     }
     private var statusText: String {
         switch store.view {
-        case .list: return "↑↓ 移動   ⏎ 編輯   x 完成   f Focus   p +專案   n 新增   / 搜尋   ⌘4 象限"
-        case .grid: return "1–4 指派   0 回池   f Focus   z 專注   ⌘1 清單"
+        case .list: return "↑↓ 移動   ⏎ 編輯   x 完成   f Focus   p +專案   n 新增   / 搜尋   ⌘K 指令   ⌘4 象限"
+        case .grid: return "1–4 指派   0 回池   f Focus   z 專注   ⌘K 指令   ⌘1 清單"
         case .pad:  return "純文字便箋 · scratch.txt   ⌘1 回清單"
         }
     }
@@ -245,6 +246,105 @@ struct ContentView: View {
         store.addProjectToCursor(projectText); projectText = ""; showingAddProject = false
     }
 
+    // MARK: ⌘K 指令面板(SPEC 7.5:模糊搜尋 + 快捷鍵教學)
+
+    @State private var showingPalette = false
+    @State private var paletteQuery = ""
+    @State private var paletteSel = 0
+    @FocusState private var paletteFocused: Bool
+
+    private struct PaletteCmd {
+        let name: String, alias: String, keys: String
+        let run: () -> Void
+    }
+    private var paletteCommands: [PaletteCmd] {
+        [
+            .init(name: "完成 / 取消完成", alias: "done toggle", keys: "x", run: { animatedDone() }),
+            .init(name: "行內編輯", alias: "edit", keys: "e", run: { store.startEditing() }),
+            .init(name: "Focus 這一件", alias: "focus", keys: "f", run: { store.toggleFocus() }),
+            .init(name: "專注模式", alias: "zen focus mode", keys: "z", run: { store.toggleFocusMode() }),
+            .init(name: "新增捕捉", alias: "new capture add", keys: "n", run: { openCapture() }),
+            .init(name: "加 +專案", alias: "project tag", keys: "p", run: { if store.cursor != nil { showingAddProject = true } }),
+            .init(name: "搜尋", alias: "search find filter", keys: "/", run: { store.searchActive = true }),
+            .init(name: "逾期全改今天", alias: "reschedule overdue today", keys: "R", run: { store.rescheduleOverdue() }),
+            .init(name: "行距更緊", alias: "density compact tighter", keys: "[", run: { store.cycleDensity(-1) }),
+            .init(name: "行距更鬆", alias: "density relaxed looser", keys: "]", run: { store.cycleDensity(1) }),
+            .init(name: "清單視圖", alias: "list view", keys: "⌘1", run: { store.view = .list; store.ensureCursor() }),
+            .init(name: "便箋", alias: "scratch pad notes", keys: "⌘3", run: { store.view = .pad }),
+            .init(name: "象限視圖", alias: "quadrant grid matrix", keys: "⌘4", run: { store.view = .grid; store.ensureCursor() }),
+            .init(name: "深 / 淺主題", alias: "theme dark light appearance", keys: "⌘⇧T", run: { store.cycleAppearance() }),
+        ]
+    }
+    /// 子序列模糊比對:query 每字元依序出現於 target 即中
+    private func fuzzy(_ query: String, _ target: String) -> Bool {
+        var rest = Substring(query.lowercased())
+        for ch in target.lowercased() where ch == rest.first { rest = rest.dropFirst() }
+        return rest.isEmpty
+    }
+    private var filteredPalette: [PaletteCmd] {
+        paletteCommands.filter { fuzzy(paletteQuery, $0.name + " " + $0.alias) }
+    }
+    private var paletteOverlay: some View {
+        ZStack(alignment: .top) {
+            Theme.bg.opacity(0.55).ignoresSafeArea().onTapGesture { closePalette() }
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Text("⌘K").font(Theme.monoSmall).foregroundColor(Theme.blue)
+                    TextField("", text: $paletteQuery,
+                              prompt: Text("輸入指令…").foregroundColor(Theme.dim.opacity(0.45)))
+                        .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
+                        .focused($paletteFocused)
+                    Text("⏎ 執行 · esc 關閉").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                hline
+                let cmds = filteredPalette
+                if cmds.isEmpty {
+                    Text("沒有符合的指令").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                        .padding(.vertical, 14)
+                } else {
+                    ForEach(Array(cmds.enumerated()), id: \.element.name) { i, cmd in
+                        HStack {
+                            Text(cmd.name)
+                            Spacer()
+                            Text(cmd.keys).foregroundColor(Theme.dim)
+                        }
+                        .font(Theme.mono)
+                        .padding(.horizontal, 14).padding(.vertical, 6)
+                        .background(i == paletteSel ? Theme.selBg : .clear)
+                        .overlay(alignment: .leading) {
+                            if i == paletteSel { Rectangle().fill(Theme.blue).frame(width: 3) }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { paletteSel = i; runPalette() }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .frame(width: 440)
+            .background(Theme.bg)
+            .overlay(Rectangle().stroke(Theme.border))
+            .shadow(color: .black.opacity(0.35), radius: 12)
+            .padding(.top, 90)
+            .onChange(of: paletteQuery) { _ in paletteSel = 0 }
+        }
+    }
+    private func openPalette() {
+        paletteQuery = ""; paletteSel = 0; showingPalette = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { paletteFocused = true }
+    }
+    private func closePalette() {
+        showingPalette = false; paletteQuery = ""
+        DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }   // 鍵盤還給 handle()
+    }
+    private func runPalette() {
+        let cmds = filteredPalette
+        guard cmds.indices.contains(paletteSel) else { closePalette(); return }
+        let cmd = cmds[paletteSel]
+        closePalette()
+        DispatchQueue.main.async { cmd.run() }   // 面板收掉、焦點歸還後再執行
+    }
+
     // MARK: keyboard (macOS 13 無 onKeyPress，用 NSEvent local monitor)
 
     private func animatedDone() {
@@ -255,6 +355,15 @@ struct ContentView: View {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in handle(e) }
     }
     private func handle(_ e: NSEvent) -> NSEvent? {
+        if showingPalette {
+            switch e.keyCode {
+            case 125: paletteSel = min(paletteSel + 1, max(0, filteredPalette.count - 1)); return nil  // ↓
+            case 126: paletteSel = max(paletteSel - 1, 0); return nil                                  // ↑
+            case 36:  runPalette(); return nil                                                          // ⏎
+            case 53:  closePalette(); return nil                                                        // esc
+            default:  return e   // 其餘給輸入框
+            }
+        }
         if showingCapture || showingAddProject { return e }
         if NSApp.keyWindow?.firstResponder is NSTextView { return e }   // 便箋/捕捉輸入時放行
         let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)
@@ -265,6 +374,7 @@ struct ContentView: View {
             case "4": store.view = .grid; store.ensureCursor(); return nil
             case "3": store.view = .pad; return nil
             case "b": openCapture(); return nil
+            case "k": openPalette(); return nil
             case "f" where shift: store.toggleFocus(); return nil
             case "f": store.searchActive = true; return nil
             case "t" where shift: store.cycleAppearance(); return nil
