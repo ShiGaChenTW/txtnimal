@@ -15,6 +15,7 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 header
                 hline
+                if showingCapture { captureBar; hline }
                 ScrollView { body(for: store.view).frame(maxWidth: .infinity, alignment: .leading) }
                     .frame(maxHeight: .infinity)
                 hline
@@ -34,7 +35,6 @@ struct ContentView: View {
         .onChange(of: store.focusIndex) { _ in FocusHUD.shared.update(store: store) }
         .onChange(of: store.focusMode) { _ in FocusHUD.shared.update(store: store) }
         .onDisappear { if let m = monitor { NSEvent.removeMonitor(m) } }
-        .sheet(isPresented: $showingCapture, onDismiss: { captureText = "" }) { captureSheet }
         .sheet(isPresented: $showingAddProject, onDismiss: { projectText = "" }) { addProjectSheet }
     }
 
@@ -169,22 +169,36 @@ struct ContentView: View {
 
     // MARK: capture
 
-    private var captureSheet: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("CAPTURE — 快速捕捉").font(Theme.monoSmall).foregroundColor(Theme.dim).tracking(1.2)
-            TextField("Call bank due:fri +personal", text: $captureText)
-                .textFieldStyle(.plain).font(.system(size: 15, design: .monospaced))
-                .foregroundColor(Theme.fg)
-                .onSubmit { commitCapture() }
+    @FocusState private var captureFocused: Bool
+    private var captureBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(">").foregroundColor(Theme.green)
+                TextField("寄出報價單 due:fri +business @mac", text: $captureText)
+                    .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
+                    .focused($captureFocused)
+                    .onSubmit { commitCapture() }
+                    .onExitCommand { closeCapture() }
+                Text("⌘⏎ 新增 · esc 取消").font(Theme.monoSmall).foregroundColor(Theme.dim)
+            }
             capturePreview
             CaptureHelp()
-            HStack {
-                Spacer()
-                Button("取消") { showingCapture = false }
-                Button("加入") { commitCapture() }.keyboardShortcut(.defaultAction)
-            }
+            // 無按鈕:⌘⏎ 由隱形按鈕承接
+            Button("") { commitCapture() }
+                .keyboardShortcut(.return, modifiers: .command)
+                .buttonStyle(.plain).frame(width: 0, height: 0).opacity(0)
         }
-        .padding(18).frame(width: 460).background(Theme.bg)
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(Theme.panel)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .onAppear { captureFocused = true }
+    }
+    private func openCapture() {
+        withAnimation(.easeOut(duration: 0.18)) { showingCapture = true }
+    }
+    private func closeCapture() {
+        captureText = ""
+        withAnimation(.easeOut(duration: 0.15)) { showingCapture = false }
     }
     @ViewBuilder private var capturePreview: some View {
         let parts = captureText.split(separator: " ").map(String.init)
@@ -198,7 +212,9 @@ struct ContentView: View {
         }.font(Theme.monoSmall).frame(height: 16)
     }
     private func commitCapture() {
-        store.addFromCapture(captureText); captureText = ""; showingCapture = false
+        let t = captureText.trimmingCharacters(in: .whitespaces)
+        if !t.isEmpty { store.addFromCapture(t) }
+        closeCapture()
     }
 
     private var addProjectSheet: some View {
@@ -240,7 +256,7 @@ struct ContentView: View {
             case "1": store.view = .list; store.ensureCursor(); return nil
             case "4": store.view = .grid; store.ensureCursor(); return nil
             case "3": store.view = .pad; return nil
-            case "b": showingCapture = true; return nil
+            case "b": openCapture(); return nil
             case "f" where shift: store.toggleFocus(); return nil
             case "f": store.searchActive = true; return nil
             case "t" where shift: store.cycleAppearance(); return nil
@@ -270,7 +286,7 @@ struct ContentView: View {
         case "x", " ": animatedDone(); return nil
         case "f": store.toggleFocus(); return nil
         case "z": store.toggleFocusMode(); return nil
-        case "n": showingCapture = true; return nil
+        case "n": openCapture(); return nil
         case "p": if store.cursor != nil { showingAddProject = true }; return nil
         case "/": store.searchActive = true; return nil
         case "R": store.rescheduleOverdue(); return nil
