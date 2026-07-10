@@ -88,6 +88,7 @@ struct RowView: View {
     @EnvironmentObject var store: TaskStore
     let index: Int
     let group: String
+    @State private var flash = false   // 完成瞬間綠光一閃(SPEC 7.5 招牌時刻)
 
     var body: some View {
         let t = store.lines[index]
@@ -114,6 +115,12 @@ struct RowView: View {
         .font(Theme.mono)
         .padding(.horizontal, 16).padding(.vertical, store.density.rowPad)
         .background(isCursor ? Theme.selBg : (t.isFocused ? Theme.focusBg : .clear))
+        .background(Theme.green.opacity(flash ? 0.22 : 0))
+        .onChange(of: store.lines[index].isDone) { done in
+            guard done else { return }
+            flash = true
+            withAnimation(.easeOut(duration: 0.45)) { flash = false }
+        }
         .overlay(alignment: .leading) {
             if isCursor { Rectangle().fill(t.isFocused ? Theme.focus : Theme.blue).frame(width: 3) }
             else if t.isFocused { Rectangle().fill(Theme.focus).frame(width: 3) }
