@@ -79,7 +79,7 @@ struct ContentView: View {
         return Text(tag).font(Theme.monoSmall)
             .foregroundColor(active ? Theme.bg : color)
             .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(RoundedRectangle(cornerRadius: 4).fill(active ? color : color.opacity(0.13)))
+            .background(Rectangle().fill(active ? color : color.opacity(0.13)))
             .contentShape(Rectangle())
             .onTapGesture { store.toggleTagFilter(tag) }
     }
@@ -109,7 +109,7 @@ struct ContentView: View {
             .foregroundColor(on ? Theme.fg : Theme.dim)
             .padding(.horizontal, 9).padding(.vertical, 3)
             .background(on ? Theme.bg : .clear)
-            .overlay(RoundedRectangle(cornerRadius: 5).stroke(on ? Theme.border : .clear))
+            .overlay(Rectangle().stroke(on ? Theme.border : .clear))
             .onTapGesture { store.view = v; store.ensureCursor() }
     }
 
@@ -161,7 +161,7 @@ struct ContentView: View {
                 }
                 .padding(22).frame(maxWidth: 440, alignment: .leading)
                 .background(Theme.bg)
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.focus))
+                .overlay(Rectangle().stroke(Theme.focus))
                 .shadow(color: Theme.focusBg, radius: 8)
             }
         }

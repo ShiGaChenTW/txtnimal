@@ -27,7 +27,7 @@ struct ListView: View {
         HStack(spacing: 10) {
             Text("▶ FOCUS").font(Theme.monoSmall)
                 .padding(.horizontal, 6).padding(.vertical, 1)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.focus))
+                .overlay(Rectangle().stroke(Theme.focus))
             Text(t.title).fontWeight(.semibold).lineLimit(1)
             Spacer()
             Text("z 進入專注 →").font(Theme.monoSmall).opacity(0.8)
@@ -244,7 +244,7 @@ struct QuadrantView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10).padding(.horizontal, 4)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.border, style: StrokeStyle(dash: [4])))
+        .overlay(Rectangle().stroke(Theme.border, style: StrokeStyle(dash: [4])))
         .contentShape(Rectangle())
         .onDrop(of: [.text], isTargeted: nil) { handleDrop($0, q: nil) }
         .padding(14)

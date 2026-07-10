@@ -50,7 +50,7 @@ struct FocusHUDView: View {
                     HStack(spacing: 8) {
                         Text("▶").font(Theme.monoSmall)
                             .padding(.horizontal, 5).padding(.vertical, 1)
-                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.focus))
+                            .overlay(Rectangle().stroke(Theme.focus))
                         Text(t.title).font(Theme.mono).fontWeight(.semibold).lineLimit(1)
                         Spacer(minLength: 4)
                         Text("✕").font(Theme.monoSmall).foregroundColor(Theme.dim)
@@ -65,8 +65,8 @@ struct FocusHUDView: View {
                 .padding(12)
                 .frame(width: 262, alignment: .leading)
                 .background(Theme.bg)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.focus))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(Rectangle().stroke(Theme.focus))
+                .clipShape(Rectangle())
             } else {
                 Color.clear
             }

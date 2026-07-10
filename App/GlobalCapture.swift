@@ -85,8 +85,8 @@ private struct GlobalCaptureView: View {
         }
         .padding(16)
         .background(Theme.bg)
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(Rectangle().stroke(Theme.border))
+        .clipShape(Rectangle())
         .onAppear { text = ""; focused = true }
     }
 
