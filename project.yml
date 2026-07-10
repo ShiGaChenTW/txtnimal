@@ -1,0 +1,42 @@
+name: TasksTxt
+options:
+  bundleIdPrefix: app.taskstxt
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+
+packages:
+  TasksTxtCore:
+    path: .
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    from: 2.0.0
+
+targets:
+  TasksTxt:
+    type: application
+    platform: macOS
+    sources:
+      - App
+    dependencies:
+      - package: TasksTxtCore
+        product: TasksTxtCore
+      - package: KeyboardShortcuts
+        product: KeyboardShortcuts
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.taskstxt.TasksTxt
+        PRODUCT_NAME: TasksTxt
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        # 自用 + 作品集：不進 sandbox，才能讀 ~/Documents/tasks-txt；本機 ad-hoc 簽章即可跑
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: NO
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: YES
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""

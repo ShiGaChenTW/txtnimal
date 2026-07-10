@@ -1,0 +1,390 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		022E57B66A158A489F93153E /* FocusHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2F8BE298DBA9DB51041E91F /* FocusHUD.swift */; };
+		0B1EBE1CDC673287809DC734 /* TasksTxtApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2C0E754FB9052ABE4FB1CC /* TasksTxtApp.swift */; };
+		15BC98BD2ADCEE9CD8406864 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 12E08F2462D08FB91C54D441 /* KeyboardShortcuts */; };
+		190B9A30226CC451E1AE9022 /* TasksTxtCore in Frameworks */ = {isa = PBXBuildFile; productRef = D411136A0660DC97A6F35AC4 /* TasksTxtCore */; };
+		2508B8139B23886CCE7ADA9A /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7DEA97BAE60C0DF04858BCC /* Theme.swift */; };
+		5F3C3DA4493C87566FCBC117 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B86CAF85692F3714DF6DFD5 /* ContentView.swift */; };
+		6C0AFC52ACFBF1FAC22FBEA1 /* GlobalCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EC1A512925FA0657DCEC472 /* GlobalCapture.swift */; };
+		6F8756ABF81E99225C098A70 /* TaskStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C78F8FB4A692184458082E79 /* TaskStore.swift */; };
+		F44140C6C90DCC69DDFA120D /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86397E6127F43A004403705D /* Views.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		3B86CAF85692F3714DF6DFD5 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		6EC1A512925FA0657DCEC472 /* GlobalCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalCapture.swift; sourceTree = "<group>"; };
+		86397E6127F43A004403705D /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
+		A7ACED3599351D6F201066E5 /* TasksTxt.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TasksTxt.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A7DEA97BAE60C0DF04858BCC /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		B2F8BE298DBA9DB51041E91F /* FocusHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusHUD.swift; sourceTree = "<group>"; };
+		BB2C0E754FB9052ABE4FB1CC /* TasksTxtApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TasksTxtApp.swift; sourceTree = "<group>"; };
+		C78F8FB4A692184458082E79 /* TaskStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskStore.swift; sourceTree = "<group>"; };
+		EC3DA959D01623C72E110FC7 /* tasks.txt_GUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = tasks.txt_GUI; path = .; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7B7A2D4B212A80D65E4A8B98 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				190B9A30226CC451E1AE9022 /* TasksTxtCore in Frameworks */,
+				15BC98BD2ADCEE9CD8406864 /* KeyboardShortcuts in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		045E6669F808B8A29D618424 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				3B86CAF85692F3714DF6DFD5 /* ContentView.swift */,
+				B2F8BE298DBA9DB51041E91F /* FocusHUD.swift */,
+				6EC1A512925FA0657DCEC472 /* GlobalCapture.swift */,
+				C78F8FB4A692184458082E79 /* TaskStore.swift */,
+				BB2C0E754FB9052ABE4FB1CC /* TasksTxtApp.swift */,
+				A7DEA97BAE60C0DF04858BCC /* Theme.swift */,
+				86397E6127F43A004403705D /* Views.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		40879F13E6B6DFA5D7F218D1 = {
+			isa = PBXGroup;
+			children = (
+				045E6669F808B8A29D618424 /* App */,
+				8DFE482178BE2320AFF63F03 /* Packages */,
+				837FC6EB07D75A6A77AAFDA6 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		837FC6EB07D75A6A77AAFDA6 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A7ACED3599351D6F201066E5 /* TasksTxt.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8DFE482178BE2320AFF63F03 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				EC3DA959D01623C72E110FC7 /* tasks.txt_GUI */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		62AD5DE4D39A91215132EB58 /* TasksTxt */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3FDCECAC47A676D0EA4C672D /* Build configuration list for PBXNativeTarget "TasksTxt" */;
+			buildPhases = (
+				4CD6E38247EFF5E19313E4E6 /* Sources */,
+				7B7A2D4B212A80D65E4A8B98 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TasksTxt;
+			packageProductDependencies = (
+				D411136A0660DC97A6F35AC4 /* TasksTxtCore */,
+				12E08F2462D08FB91C54D441 /* KeyboardShortcuts */,
+			);
+			productName = TasksTxt;
+			productReference = A7ACED3599351D6F201066E5 /* TasksTxt.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D4E4E1013048CD1ED1DBB3D5 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					62AD5DE4D39A91215132EB58 = {
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = 7038587853857599F136CD65 /* Build configuration list for PBXProject "TasksTxt" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 40879F13E6B6DFA5D7F218D1;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A81888C6F68061E016B57530 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
+				DFE996ACB3BBEB1CBBFA6E46 /* XCLocalSwiftPackageReference "." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 837FC6EB07D75A6A77AAFDA6 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				62AD5DE4D39A91215132EB58 /* TasksTxt */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4CD6E38247EFF5E19313E4E6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5F3C3DA4493C87566FCBC117 /* ContentView.swift in Sources */,
+				022E57B66A158A489F93153E /* FocusHUD.swift in Sources */,
+				6C0AFC52ACFBF1FAC22FBEA1 /* GlobalCapture.swift in Sources */,
+				6F8756ABF81E99225C098A70 /* TaskStore.swift in Sources */,
+				0B1EBE1CDC673287809DC734 /* TasksTxtApp.swift in Sources */,
+				2508B8139B23886CCE7ADA9A /* Theme.swift in Sources */,
+				F44140C6C90DCC69DDFA120D /* Views.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		00428D606F1E9BA7BFE4C754 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = app.taskstxt.TasksTxt;
+				PRODUCT_NAME = TasksTxt;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		153873A8D21F9F6DA5E51342 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		41AC8FC237AEE205D47E0B14 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = app.taskstxt.TasksTxt;
+				PRODUCT_NAME = TasksTxt;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		91E271A81AD483625FDBF31F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3FDCECAC47A676D0EA4C672D /* Build configuration list for PBXNativeTarget "TasksTxt" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				00428D606F1E9BA7BFE4C754 /* Debug */,
+				41AC8FC237AEE205D47E0B14 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7038587853857599F136CD65 /* Build configuration list for PBXProject "TasksTxt" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				91E271A81AD483625FDBF31F /* Debug */,
+				153873A8D21F9F6DA5E51342 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		DFE996ACB3BBEB1CBBFA6E46 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A81888C6F68061E016B57530 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		12E08F2462D08FB91C54D441 /* KeyboardShortcuts */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A81888C6F68061E016B57530 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
+			productName = KeyboardShortcuts;
+		};
+		D411136A0660DC97A6F35AC4 /* TasksTxtCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TasksTxtCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = D4E4E1013048CD1ED1DBB3D5 /* Project object */;
+}
