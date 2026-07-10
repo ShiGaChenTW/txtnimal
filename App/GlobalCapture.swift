@@ -82,6 +82,7 @@ private struct GlobalCaptureView: View {
                     .onExitCommand { text = ""; onCancel() }
             }
             preview
+            CaptureHelp()
         }
         .padding(16)
         .background(Theme.bg)
@@ -109,6 +110,53 @@ private struct GlobalCaptureView: View {
         let t = text.trimmingCharacters(in: .whitespaces)
         text = ""
         if t.isEmpty { onCancel() } else { onCommit(t) }
+    }
+}
+
+/// 新增視窗共用的「語法說明」摺疊區：預設縮起,點擊或 ⌘/ 展開。
+struct CaptureHelp: View {
+    @State private var open = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(open ? "▾" : "▸").foregroundColor(Theme.dim)
+                Text("? 語法說明").foregroundColor(Theme.dim)
+                Spacer()
+                Text("⌘/").foregroundColor(Theme.dim).opacity(0.7)
+            }
+            .font(Theme.monoSmall)
+            .contentShape(Rectangle())
+            .onTapGesture { open.toggle() }
+            if open {
+                VStack(alignment: .leading, spacing: 3) {
+                    row("due:", "due:fri · due:tomorrow · due:3d · due:2026-07-25", Theme.blue)
+                    row("+專案", "+business +side（可多個）", Theme.mag)
+                    row("@情境", "@mac @calls @home（可多個）", Theme.cyan)
+                    row("note:", "note:\"含空格要加引號\"", Theme.dim)
+                    Text("例：寄出報價單給王經理 due:fri +business @mac note:\"附上7月折扣方案\"")
+                        .foregroundColor(Theme.fg).padding(.top, 3)
+                    Text("例：繳房租 due:tomorrow +personal ／ 只打一句話也行 → 落「無期限」")
+                        .foregroundColor(Theme.dim)
+                }
+                .font(Theme.monoSmall)
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.panel)
+                .overlay(Rectangle().stroke(Theme.border))
+            }
+            // 隱形按鈕承接 ⌘/ 快捷鍵
+            Button("") { open.toggle() }
+                .keyboardShortcut("/", modifiers: .command)
+                .buttonStyle(.plain).frame(width: 0, height: 0).opacity(0)
+        }
+    }
+
+    private func row(_ k: String, _ v: String, _ c: Color) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(k).foregroundColor(c).frame(width: 52, alignment: .leading)
+            Text(v).foregroundColor(Theme.dim)
+        }
     }
 }
 

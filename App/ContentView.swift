@@ -177,6 +177,7 @@ struct ContentView: View {
                 .foregroundColor(Theme.fg)
                 .onSubmit { commitCapture() }
             capturePreview
+            CaptureHelp()
             HStack {
                 Spacer()
                 Button("取消") { showingCapture = false }
