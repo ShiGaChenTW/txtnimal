@@ -160,14 +160,33 @@ struct CaptureHelp: View {
     }
 }
 
-/// 設定視窗：重綁全域熱鍵。
+/// 設定視窗：重綁全域熱鍵 + 檔案位置(SPEC 9:真正的設定只有這兩個)。
 struct SettingsView: View {
+    @EnvironmentObject var store: TaskStore
     var body: some View {
         Form {
             KeyboardShortcuts.Recorder("全域捕捉熱鍵：", name: .capture)
             Text("在任何 app 按此熱鍵即可快速記一筆").font(Theme.monoSmall).foregroundColor(Theme.dim)
+            Divider().padding(.vertical, 6)
+            HStack(spacing: 8) {
+                Text("檔案位置：")
+                Text((store.dataDirPath as NSString).abbreviatingWithTildeInPath)
+                    .font(Theme.monoSmall).foregroundColor(Theme.dim)
+                    .lineLimit(1).truncationMode(.middle)
+                Button("更改…") { pickFolder() }
+            }
+            Text("tasks.txt / scratch.txt / archive.txt 所在資料夾;搬到空資料夾會自動帶檔(複製,原檔保留)")
+                .font(Theme.monoSmall).foregroundColor(Theme.dim)
         }
         .padding(20)
-        .frame(width: 360)
+        .frame(width: 420)
+    }
+    private func pickFolder() {
+        let p = NSOpenPanel()
+        p.canChooseFiles = false
+        p.canChooseDirectories = true
+        p.canCreateDirectories = true
+        p.prompt = "選這個資料夾"
+        if p.runModal() == .OK, let url = p.url { store.setDataDir(url) }
     }
 }

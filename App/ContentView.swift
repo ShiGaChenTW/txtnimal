@@ -101,7 +101,9 @@ struct ContentView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text("~/Documents/tasks-txt/tasks.txt").font(Theme.monoSmall).foregroundColor(Theme.dim)
+            Text((store.fileURL.path as NSString).abbreviatingWithTildeInPath)
+                .font(Theme.monoSmall).foregroundColor(Theme.dim)
+                .lineLimit(1).truncationMode(.middle)
             Spacer()
             tab("⌘1 清單", .list); tab("⌘4 象限", .grid); tab("⌘3 便箋", .pad)
         }

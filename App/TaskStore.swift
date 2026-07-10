@@ -51,13 +51,46 @@ final class TaskStore: ObservableObject {
 
     func clearSearch() { searchQuery = ""; searchActive = false; ensureCursor() }
 
-    let fileURL: URL
-    let scratchURL: URL
-    let archiveURL: URL
+    private(set) var fileURL: URL
+    private(set) var scratchURL: URL
+    private(set) var archiveURL: URL
+
+    static let defaultDataDir = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Documents/tasks-txt", isDirectory: true)
+    private static func storedDataDir() -> URL {
+        guard let p = UserDefaults.standard.string(forKey: "dataDir") else { return defaultDataDir }
+        return URL(fileURLWithPath: p, isDirectory: true)
+    }
+    var dataDirPath: String { fileURL.deletingLastPathComponent().path }
+
+    /// 換資料夾:存檔 → 空目標帶檔(複製,原檔保留)→ 持久化 → 重指三檔 → 重載 → 重掛監看。
+    func setDataDir(_ dir: URL) {
+        let current = fileURL.deletingLastPathComponent()
+        guard dir.standardizedFileURL != current.standardizedFileURL else { return }
+        save(); saveScratch()
+        let fm = FileManager.default
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        if !fm.fileExists(atPath: dir.appendingPathComponent("tasks.txt").path) {
+            for name in ["tasks.txt", "scratch.txt", "archive.txt"] {   // copy 非 move:零資料遺失
+                let src = current.appendingPathComponent(name)
+                if fm.fileExists(atPath: src.path) {
+                    try? fm.copyItem(at: src, to: dir.appendingPathComponent(name))
+                }
+            }
+        }
+        UserDefaults.standard.set(dir.path, forKey: "dataDir")
+        fileURL = dir.appendingPathComponent("tasks.txt")
+        scratchURL = dir.appendingPathComponent("scratch.txt")
+        archiveURL = dir.appendingPathComponent("archive.txt")
+        bootstrapIfMissing()
+        load()
+        cursor = listOrder().first
+        ensureCursor()
+        startWatching()
+    }
 
     init() {
-        let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Documents/tasks-txt", isDirectory: true)
+        let dir = Self.storedDataDir()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         fileURL = dir.appendingPathComponent("tasks.txt")
         scratchURL = dir.appendingPathComponent("scratch.txt")

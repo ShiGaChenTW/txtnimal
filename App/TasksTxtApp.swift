@@ -44,6 +44,6 @@ struct TasksTxtApp: App {
             Text(store.focusIndex.map { "▶ \(store.lines[$0].title)" } ?? "◉ tasks.txt")
         }
 
-        Settings { SettingsView() }
+        Settings { SettingsView().environmentObject(store) }
     }
 }
