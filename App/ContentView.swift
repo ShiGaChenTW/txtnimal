@@ -131,7 +131,7 @@ struct ContentView: View {
     }
     private var statusText: String {
         switch store.view {
-        case .list: return "↑↓ 移動   ⏎ 編輯   x 完成   f Focus   p +專案   a 捕捉   / 搜尋   ⌘4 象限"
+        case .list: return "↑↓ 移動   ⏎ 編輯   x 完成   f Focus   p +專案   n 新增   / 搜尋   ⌘4 象限"
         case .grid: return "1–4 指派   0 回池   f Focus   z 專注   ⌘1 清單"
         case .pad:  return "純文字便箋 · scratch.txt   ⌘1 回清單"
         }
@@ -269,7 +269,7 @@ struct ContentView: View {
         case "x", " ": animatedDone(); return nil
         case "f": store.toggleFocus(); return nil
         case "z": store.toggleFocusMode(); return nil
-        case "a", "n": showingCapture = true; return nil
+        case "n": showingCapture = true; return nil
         case "p": if store.cursor != nil { showingAddProject = true }; return nil
         case "/": store.searchActive = true; return nil
         case "R": store.rescheduleOverdue(); return nil
