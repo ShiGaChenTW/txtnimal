@@ -15,7 +15,10 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 header
                 hline
-                if showingCapture { captureBar; hline }
+                VStack(spacing: 0) {
+                    if showingCapture { captureBar; hline }
+                }
+                .clipped()   // 滑動時被上緣那條線裁住,看起來就是從線底下滑出
                 ScrollView { body(for: store.view).frame(maxWidth: .infinity, alignment: .leading) }
                     .frame(maxHeight: .infinity)
                 hline
@@ -174,7 +177,9 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text(">").foregroundColor(Theme.green)
-                TextField("寄出報價單 due:fri +business @mac", text: $captureText)
+                TextField("", text: $captureText,
+                          prompt: Text("寄出報價單 due:fri +business @mac")
+                            .foregroundColor(Theme.dim.opacity(0.45)))
                     .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
                     .focused($captureFocused)
                     .onSubmit { commitCapture() }
@@ -190,7 +195,7 @@ struct ContentView: View {
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(Theme.panel)
-        .transition(.move(edge: .top).combined(with: .opacity))
+        .transition(.move(edge: .top))
         .onAppear { captureFocused = true }
     }
     private func openCapture() {
