@@ -1,7 +1,7 @@
 # tasks.txt GUI 重新開發 — Spec 與建置追蹤
 
 **建立時間：** 2026-07-09 16:16
-**最後更新：** 2026-07-10 09:40
+**最後更新：** 2026-07-10（capture bar 三輪迭代後盤點）
 **狀態：** 進行中
 
 ## 目標
@@ -18,7 +18,7 @@
 - [ ] Step 3 — 等 Scott 的自訂日曆設計（due 日期挑選 UI，留白）
 - [x] Step 4 — Swift Package `TasksTxtCore` 骨架建立（Package.swift + swift test 可跑）
 - [x] Step 5 — 核心：todo.txt 無損 parser（round-trip，保留未知 token）— 12 測試全綠
-- [ ] Step 6 — 檔案層：原子寫入 + FSEvents 外部編輯監看
+- [x] Step 6 — 檔案層：原子寫入（write atomically:true）+ 外部編輯監看（DispatchSource，00:50 完成）
 - [x] Step 6.5 — 純邏輯全數完成並測試：NL 日期解析 / 清單分組 / 象限分桶 / 捕捉解析（共 20 測試綠）
 - [x] Step 6.7 — 外殼改用 XcodeGen(避開本地 package GUI bug):project.yml → TasksTxt.xcodeproj,非 sandbox、ad-hoc 簽章
 - [x] Step 6.8 — **xcodebuild 一次過 BUILD SUCCEEDED,app 啟動、建立並解析真實 tasks.txt**(v1 跑通)
@@ -52,6 +52,7 @@
 - 01:10 — Pass 2:象限拖拉、Focus 置頂浮窗(NSPanel)、深/淺雙主題(動態色 + ⌘⇧T/選單切換)
 - 01:40 — 全域熱鍵捕捉:KeyboardShortcuts 套件(唯一外部依賴,照原決策)、⌥Space 預設、Settings 視窗可重綁、KeyablePanel 非搶焦點浮窗
 - 09:40 — 收尾:每日歸檔(啟動+換日通知,實測通過)、/ 搜尋(即打即濾,esc 分層清除)、開機自啟(SMAppService 選單開關)。**功能面只剩 due 日曆(等 Scott 設計稿)**
+- 之後 — 捕捉改版三輪:popup 改為頂部 inline capture bar(n 滑下、⌘Enter 送出、無按鈕),placeholder 半透明、綠底色塊+accent 邊。build 綠
 
 ## 阻塞 / 待決議
 

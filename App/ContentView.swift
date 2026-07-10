@@ -182,6 +182,7 @@ struct ContentView: View {
                             .foregroundColor(Theme.dim.opacity(0.45)))
                     .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
                     .focused($captureFocused)
+                    .disabled(!showingCapture)   // 常駐樹中:隱藏時不得成為 first responder,否則吞掉全部按鍵
                     .onSubmit { commitCapture() }
                     .onExitCommand { closeCapture() }
                 Text("⌘⏎ 新增 · esc 取消").font(Theme.monoSmall).foregroundColor(Theme.dim)
@@ -205,6 +206,7 @@ struct ContentView: View {
         captureText = ""
         captureFocused = false
         withAnimation(.easeOut(duration: 0.15)) { showingCapture = false }
+        DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }   // 把鍵盤還給 handle()
     }
     @ViewBuilder private var capturePreview: some View {
         let parts = captureText.split(separator: " ").map(String.init)
