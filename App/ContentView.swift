@@ -266,7 +266,7 @@ struct ContentView: View {
         case "k": store.move(-1); return nil
         case "j": store.move(1); return nil
         case "e": store.startEditing(); return nil
-        case "x": animatedDone(); return nil
+        case "x", " ": animatedDone(); return nil
         case "f": store.toggleFocus(); return nil
         case "z": store.toggleFocusMode(); return nil
         case "a", "n": showingCapture = true; return nil

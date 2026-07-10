@@ -119,6 +119,10 @@ struct RowView: View {
             else if t.isFocused { Rectangle().fill(Theme.focus).frame(width: 3) }
         }
         .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            store.cursor = index
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { store.toggleDone() }
+        }
         .onTapGesture { store.cursor = index }
     }
 
@@ -223,7 +227,12 @@ struct QuadrantView: View {
         }
         .font(Theme.mono).padding(.horizontal, 4).padding(.vertical, 2)
         .background(store.cursor == i ? Theme.selBg : .clear)
-        .contentShape(Rectangle()).onTapGesture { store.cursor = i }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            store.cursor = i
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { store.toggleDone() }
+        }
+        .onTapGesture { store.cursor = i }
         .onDrag { NSItemProvider(object: String(i) as NSString) }
     }
 
