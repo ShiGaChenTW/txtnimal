@@ -2,5 +2,3 @@
 .build/
 DerivedData/
 xcuserdata/
-# 手動 Xcode 嘗試的殘留範本（未被 build 使用;確認後可刪）
-TasksTxt/
