@@ -6,21 +6,51 @@ import UniformTypeIdentifiers
 
 struct ListView: View {
     @EnvironmentObject var store: TaskStore
+    @State private var addText = ""
+    @State private var addVisible = false
+    @FocusState private var addFocused: Bool
 
     var body: some View {
         let g = store.groups()
         VStack(alignment: .leading, spacing: 0) {
             if let i = store.focusIndex { focusBar(store.lines[i]) }
-            section("Today", g.today, group: "today")
-            overdueSection(g.overdue)
-            section("Upcoming", g.upcoming, group: "up")
-            section("No date", g.noDate, group: "nd")
-            section("Done", g.done, group: "done")
-            if store.listOrder().isEmpty {
-                Text("沒有任務").font(Theme.monoSmall).foregroundColor(Theme.dim).padding(20)
-            }
+            section("Today", g.today, group: "today", color: store.accent)    // 當下=強調色(設定頁可換)
+            overdueSection(g.overdue)                                          // 逾期=紅(獨佔)
+            section("Upcoming", g.upcoming, group: "up", color: Theme.yellow) // 未來=黃(呼應 q2 Schedule)
+            // No date 區塊 + 尾端新增列;帶 due: 的新任務由重新分組自動跳到對應區塊
+            if !g.noDate.isEmpty { sectionHeader("No date", g.noDate.count, color: Theme.dim) }
+            else { sectionHeader("No date", 0, color: Theme.dim) }
+            ForEach(g.noDate, id: \.self) { rowOrEdit($0, "nd") }
+            if addVisible { addRow }   // 預設隱藏,按 n 才出現
+            section("Done", g.done, group: "done", color: Theme.green)        // 完成=綠(色彩契約)
         }
         .padding(.top, 4).padding(.bottom, 14)
+        .onChange(of: store.requestInlineAdd) { req in   // n 鍵:顯示並聚焦輸入列,游標移到此
+            if req { addVisible = true; addFocused = true; store.cursor = nil; store.requestInlineAdd = false }
+        }
+    }
+
+    private var addRow: some View {
+        HStack(spacing: 10) {
+            Text("+").foregroundColor(Theme.green)
+            TextField("", text: $addText,
+                      prompt: Text("新增任務…  due:fri  +專案  @情境").foregroundColor(Theme.dim.opacity(0.35)))
+                .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
+                .focused($addFocused)
+                .onSubmit {
+                    let t = addText.trimmingCharacters(in: .whitespaces)
+                    if !t.isEmpty { store.addFromCapture(t) }
+                    addText = ""; addFocused = true   // 連續新增:留在輸入列
+                }
+                .onExitCommand { addText = ""; addVisible = false; store.ensureCursor() }   // esc 收起輸入列
+        }
+        .font(Theme.mono)
+        .padding(.leading, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16).padding(.vertical, store.density.rowPad)
+        .background(Theme.cursorBg)                                      // 游標移到新增列:同選取樣式
+        .overlay(alignment: .leading) { Rectangle().fill(Theme.dim).frame(width: 3) }
+        .onAppear { addFocused = true }
     }
 
     private func focusBar(_ t: TaskLine) -> some View {
@@ -41,9 +71,9 @@ struct ListView: View {
         .padding(.bottom, 12)
     }
 
-    @ViewBuilder private func section(_ title: String, _ idx: [Int], group: String) -> some View {
+    @ViewBuilder private func section(_ title: String, _ idx: [Int], group: String, color: Color) -> some View {
         if !idx.isEmpty {
-            sectionHeader(title, idx.count, red: false)
+            sectionHeader(title, idx.count, color: color)
             ForEach(idx, id: \.self) { rowOrEdit($0, group) }
         }
     }
@@ -57,25 +87,21 @@ struct ListView: View {
         if !idx.isEmpty {
             HStack(spacing: 8) {
                 Text("Overdue").foregroundColor(Theme.red)
-                Text("\(idx.count)").foregroundColor(Theme.dim)
-                Text(store.overdueOpen ? "▾" : "▸ 收合中").foregroundColor(Theme.dim)
-                Rectangle().fill(Theme.border).frame(height: 1)
+                Text("\(idx.count)").foregroundColor(Theme.red)   // 計數與標題同色
+                Rectangle().fill(Theme.red.opacity(0.35)).frame(height: 1)   // 線條同色分類
             }
             .font(Theme.monoSmall).tracking(1)
             .padding(.horizontal, 16).padding(.top, store.density.sectionTop).padding(.bottom, 6)
-            .contentShape(Rectangle())
-            .onTapGesture { store.overdueOpen.toggle(); store.ensureCursor() }
-            if store.overdueOpen {
-                ForEach(idx, id: \.self) { rowOrEdit($0, "overdue") }
-            }
+            ForEach(idx, id: \.self) { rowOrEdit($0, "overdue") }
         }
     }
 
-    private func sectionHeader(_ title: String, _ count: Int, red: Bool) -> some View {
+    private func sectionHeader(_ title: String, _ count: Int, color: Color) -> some View {
         HStack(spacing: 8) {
-            Text(title).foregroundColor(red ? Theme.red : Theme.dim)
-            Text("\(count)").foregroundColor(Theme.dim)
-            Rectangle().fill(Theme.border).frame(height: 1)
+            Text(title).foregroundColor(color)
+            Text("\(count)").foregroundColor(color)   // 計數與標題同色
+            // 灰組維持既有邊框線,彩色組用同色低透明度 — 標題與線條成一組分類訊號
+            Rectangle().fill(color == Theme.dim ? Theme.border : color.opacity(0.35)).frame(height: 1)
         }
         .font(Theme.monoSmall).tracking(1)
         .padding(.horizontal, 16).padding(.top, store.density.sectionTop).padding(.bottom, 6)
@@ -93,8 +119,9 @@ struct RowView: View {
     var body: some View {
         let t = store.lines[index]
         let isCursor = store.cursor == index
+        VStack(alignment: .leading, spacing: 2) {
         HStack(spacing: 10) {
-            Text(t.isDone ? "[✓]" : "[ ]").foregroundColor(t.isDone ? Theme.green : Theme.dim)
+            Text(t.isDone ? "[✓]" : "[ ]").foregroundColor(t.isDone ? Theme.green : groupColor)
             Text(t.title)
                 .foregroundColor(t.isFocused ? Theme.focus : (t.isDone ? Theme.dim : Theme.fg))
                 .fontWeight(t.isFocused ? .semibold : .regular)
@@ -109,12 +136,20 @@ struct RowView: View {
                 Text("@\(c)").foregroundColor(Theme.cyan)
                     .onTapGesture { store.toggleTagFilter("@" + c) }
             }
-            if let note = t.note { Text("note:\"\(note)\"").foregroundColor(Theme.dim).lineLimit(1) }
             dueBadge(t)
         }
         .font(Theme.mono)
+        // 便箋另起第二行,對齊標題起點,透明灰 — 次要資訊不與標題爭寬度
+        if let note = t.note, !note.isEmpty {
+            Text(note)
+                .font(Theme.monoSmall).foregroundColor(Theme.dim.opacity(0.65))
+                .lineLimit(2).padding(.leading, 34)
+        }
+        }
+        .padding(.leading, 16)   // 每列內容內縮兩個等寬字元(背景/游標條仍貼邊)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16).padding(.vertical, store.density.rowPad)
-        .background(isCursor ? Theme.selBg : (t.isFocused ? Theme.focusBg : .clear))
+        .background(isCursor ? Theme.cursorBg : (t.isFocused ? Theme.focusBg : .clear))
         .background(Theme.green.opacity(flash ? 0.22 : 0))
         .onChange(of: store.lines[index].isDone) { done in
             guard done else { return }
@@ -122,7 +157,7 @@ struct RowView: View {
             withAnimation(.easeOut(duration: 0.45)) { flash = false }
         }
         .overlay(alignment: .leading) {
-            if isCursor { Rectangle().fill(t.isFocused ? Theme.focus : Theme.blue).frame(width: 3) }
+            if isCursor { Rectangle().fill(t.isFocused ? Theme.focus : Theme.dim).frame(width: 3) }
             else if t.isFocused { Rectangle().fill(Theme.focus).frame(width: 3) }
         }
         .contentShape(Rectangle())
@@ -131,6 +166,17 @@ struct RowView: View {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { store.toggleDone() }
         }
         .onTapGesture { store.cursor = index }
+    }
+
+    /// checkbox 顏色跟隨分組(與分組標題同色系)
+    private var groupColor: Color {
+        switch group {
+        case "today": return store.accent
+        case "overdue": return Theme.red
+        case "up": return Theme.yellow
+        case "done": return Theme.green
+        default: return Theme.dim   // 無期限維持中性灰
+        }
     }
 
     @ViewBuilder private func dueBadge(_ t: TaskLine) -> some View {
@@ -185,12 +231,16 @@ struct QuadrantView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack { Text("↑ 重要"); Spacer(); Text("緊急 →") }
                 .font(Theme.monoSmall).foregroundColor(Theme.dim).padding(.horizontal, 14).padding(.vertical, 4)
+            // 上半 1/2:四象限
             Grid(horizontalSpacing: 1, verticalSpacing: 1) {
                 GridRow { cell(meta[0], indices(b, 1)); cell(meta[1], indices(b, 2)) }
                 GridRow { cell(meta[2], indices(b, 3)); cell(meta[3], indices(b, 4)) }
             }
             .background(Theme.border).padding(.horizontal, 14)
+            .frame(maxHeight: .infinity)
+            // 下半 1/2:歸位池
             poolView(b.unplaced)
+                .frame(maxHeight: .infinity)
         }
         .padding(.vertical, 6)
     }
@@ -206,10 +256,13 @@ struct QuadrantView: View {
                 Text(m.1).fontWeight(.bold).foregroundColor(m.3)
                 Text("· \(m.2)").foregroundColor(Theme.dim)
             }.font(Theme.monoSmall)
-            ForEach(idx, id: \.self) { qRow($0) }
-            Spacer(minLength: 0)
+            ScrollView {   // 半屏固定高,格內溢出改捲動
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(idx, id: \.self) { qRow($0) }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(11)
         .background(ZStack { Theme.bg; m.3.opacity(0.13) })   // 各象限不同底色，低透明度保持 TUI
         .contentShape(Rectangle())
@@ -246,10 +299,14 @@ struct QuadrantView: View {
     private func poolView(_ idx: [Int]) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text("未歸位池 — 選取後按 1–4 指派").font(Theme.monoSmall).foregroundColor(Theme.dim).tracking(1)
-            if idx.isEmpty { Text("（空）").font(Theme.monoSmall).foregroundColor(Theme.dim) }
-            ForEach(idx, id: \.self) { qRow($0) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 5) {
+                    if idx.isEmpty { Text("（空）").font(Theme.monoSmall).foregroundColor(Theme.dim) }
+                    ForEach(idx, id: \.self) { qRow($0) }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(10).padding(.horizontal, 4)
         .overlay(Rectangle().stroke(Theme.border, style: StrokeStyle(dash: [4])))
         .contentShape(Rectangle())

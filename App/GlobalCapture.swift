@@ -160,27 +160,88 @@ struct CaptureHelp: View {
     }
 }
 
-/// 設定視窗：重綁全域熱鍵 + 檔案位置(SPEC 9:真正的設定只有這兩個)。
+/// 設定視窗(⌘,)：個人 / 快速鍵 / 外觀 / 檔案。
 struct SettingsView: View {
     @EnvironmentObject var store: TaskStore
+
     var body: some View {
-        Form {
-            KeyboardShortcuts.Recorder("全域捕捉熱鍵：", name: .capture)
-            Text("在任何 app 按此熱鍵即可快速記一筆").font(Theme.monoSmall).foregroundColor(Theme.dim)
-            Divider().padding(.vertical, 6)
+        VStack(alignment: .leading, spacing: 14) {
+            section("個人")
             HStack(spacing: 8) {
-                Text("檔案位置：")
+                Text("使用者名稱").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                TextField("", text: $store.userName,
+                          prompt: Text("留空則用通用問候").foregroundColor(Theme.dim.opacity(0.4)))
+                    .textFieldStyle(.plain).foregroundColor(Theme.fg)
+                    .padding(8).background(Theme.panel).overlay(Rectangle().stroke(Theme.border))
+            }
+            hint("統計頁問候語會用這個名字")
+
+            section("快速鍵")
+            HStack(spacing: 8) {
+                Text("全域捕捉").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                KeyboardShortcuts.Recorder("", name: .capture)
+            }
+            hint("在任何 app 按此熱鍵即可快速記一筆")
+            hint("app 內快速鍵固定：⌘1 清單 · ⌘2 象限 · ⌘3 便箋 · ⌘4 統計 · ⌘E 編輯 · ⌘K 指令")
+
+            section("外觀")
+            HStack(spacing: 8) {
+                Text("主題").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Picker("", selection: $store.appearanceMode) {
+                    Text("跟隨系統").tag(0); Text("深色").tag(1); Text("淺色").tag(2)
+                }.labelsHidden().frame(width: 150)
+            }
+            HStack(spacing: 8) {
+                Text("強調色").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                ForEach(Array(Theme.accentPalette.enumerated()), id: \.offset) { i, item in
+                    Rectangle().fill(item.color).frame(width: 22, height: 22)
+                        .overlay(Rectangle().stroke(store.accentIndex == i ? Theme.fg : Theme.border,
+                                                    lineWidth: store.accentIndex == i ? 2 : 1))
+                        .contentShape(Rectangle())
+                        .onTapGesture { store.accentIndex = i }
+                        .help(item.name)
+                }
+            }
+            hint("逾期紅 · Focus teal · 完成綠 為語意固定色，不受此設定影響")
+            HStack(spacing: 8) {
+                Text("行距").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Picker("", selection: $store.density) {
+                    ForEach(Density.allCases, id: \.self) { Text($0.label).tag($0) }
+                }.labelsHidden().frame(width: 150)
+            }
+            HStack(spacing: 8) {
+                Text("開機自啟").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Toggle("", isOn: Binding(get: { store.launchAtLogin },
+                                         set: { store.setLaunchAtLogin($0) })).labelsHidden()
+            }
+
+            section("檔案")
+            HStack(spacing: 8) {
+                Text("位置").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
                 Text((store.dataDirPath as NSString).abbreviatingWithTildeInPath)
                     .font(Theme.monoSmall).foregroundColor(Theme.dim)
                     .lineLimit(1).truncationMode(.middle)
                 Button("更改…") { pickFolder() }
             }
-            Text("tasks.txt / scratch.txt / archive.txt 所在資料夾;搬到空資料夾會自動帶檔(複製,原檔保留)")
-                .font(Theme.monoSmall).foregroundColor(Theme.dim)
+            hint("tasks.txt / scratch.txt / archive.txt 所在資料夾；搬到空資料夾會自動帶檔（複製，原檔保留）")
         }
-        .padding(20)
-        .frame(width: 420)
+        .font(Theme.mono)
+        .padding(.horizontal, 28).padding(.vertical, 24).frame(maxWidth: 600, alignment: .leading)
     }
+
+    private func section(_ title: String) -> some View {
+        HStack(spacing: 8) {
+            Text(title).font(Theme.monoSmall).foregroundColor(Theme.dim).tracking(1.5)
+            Rectangle().fill(Theme.border).frame(height: 1)
+        }
+        .padding(.top, 14).padding(.bottom, 4)
+    }
+    private func hint(_ s: String) -> some View {
+        Text(s).font(Theme.monoSmall).foregroundColor(Theme.dim.opacity(0.75))
+            .padding(.leading, 104).padding(.top, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func pickFolder() {
         let p = NSOpenPanel()
         p.canChooseFiles = false

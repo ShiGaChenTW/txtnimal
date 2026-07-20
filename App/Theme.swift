@@ -17,8 +17,15 @@ enum Theme {
     static let mag     = dyn(0xbb9af7, 0x8250df)   // +project
     static let focus   = dyn(0x4fd6c4, 0x0d9488)   // Focus（teal，非紅）
 
+    /// 可選強調色(設定頁):語意色(紅=逾期/teal=Focus/綠=完成)不列入,避免撞語意
+    static let accentPalette: [(name: String, color: Color)] = [
+        ("藍", blue), ("青", cyan), ("洋紅", mag), ("黃", yellow),
+    ]
+
     static var focusBg: Color { focus.opacity(0.15) }
     static var selBg: Color { blue.opacity(0.13) }
+    /// 清單游標:中性灰 — 游標是位置指示,不承載語意色
+    static var cursorBg: Color { dim.opacity(0.18) }
 
     static let mono = Font.system(size: 13.5, design: .monospaced)
     static let monoSmall = Font.system(size: 11.5, design: .monospaced)

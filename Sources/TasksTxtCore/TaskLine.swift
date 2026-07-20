@@ -122,6 +122,24 @@ public struct TaskLine: Equatable {
         if let date { setValue(date, forKey: "due") } else { removeKey("due") }
     }
 
+    /// Set (or clear, when nil/empty) the `note:"…"` token. Quotes are always emitted
+    /// so notes containing spaces survive a round-trip.
+    public mutating func setNote(_ text: String?) {
+        var (segs, trailing) = tokenize()
+        let clean = (text ?? "").trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "\"", with: "'")
+        let idx = segs.firstIndex { $0.word.hasPrefix("note:\"") }
+        if clean.isEmpty {
+            guard let i = idx else { return }
+            segs.remove(at: i)
+            if i == 0, !segs.isEmpty { segs[0].ws = "" }
+        } else if let i = idx {
+            segs[i].word = "note:\"\(clean)\""
+        } else {
+            segs.append(Segment(ws: segs.isEmpty ? "" : " ", word: "note:\"\(clean)\""))
+        }
+        raw = Self.render(segs, trailing)
+    }
+
     public mutating func setQuadrant(_ q: Int?) {
         if let q, (1...4).contains(q) { setValue(String(q), forKey: "q") } else { removeKey("q") }
     }
@@ -155,6 +173,15 @@ public struct TaskLine: Equatable {
         guard tok.count > 1, !words.contains(tok) else { return }
         var (segs, trailing) = tokenize()
         segs.append(Segment(ws: segs.isEmpty ? "" : " ", word: tok))
+        raw = Self.render(segs, trailing)
+    }
+
+    /// Remove a bare tag token — `+project` or `@context` — if present.
+    public mutating func removeTag(_ token: String) {
+        var (segs, trailing) = tokenize()
+        guard let i = segs.firstIndex(where: { $0.word == token }) else { return }
+        segs.remove(at: i)
+        if i == 0, !segs.isEmpty { segs[0].ws = "" }
         raw = Self.render(segs, trailing)
     }
 

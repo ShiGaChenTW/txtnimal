@@ -2,7 +2,7 @@ import SwiftUI
 import ServiceManagement
 import TasksTxtCore
 
-enum AppView { case list, grid, pad }
+enum AppView { case list, grid, pad, dash, settings }
 
 enum Density: Int, CaseIterable, Hashable {
     case compact = 0, normal = 1, spacious = 2
@@ -18,12 +18,12 @@ final class TaskStore: ObservableObject {
     @Published var view: AppView = .list
     @Published var cursor: Int? = nil          // index into `lines`
     @Published var focusMode = false
-    @Published var overdueOpen = true
     @Published var scratch = ""
     @Published var tagFilter: String? = nil   // "+project" 或 "@context";nil = 不篩選
     @Published var editingIndex: Int? = nil   // 正在行內編輯的列
     @Published var searchQuery = ""           // `/` 即打即濾
     @Published var searchActive = false
+    @Published var requestInlineAdd = false   // `n` 鍵 → 聚焦清單尾端新增列
     @Published var density: Density = {
         Density(rawValue: (UserDefaults.standard.object(forKey: "density") as? Int) ?? 1) ?? .normal
     }() {
@@ -41,6 +41,16 @@ final class TaskStore: ObservableObject {
         }
     }
     func cycleAppearance() { appearanceMode = (appearanceMode + 1) % 3 }
+
+    /// 使用者名稱:統計頁問候語用。空白則回退成通用問候。
+    @Published var userName: String = UserDefaults.standard.string(forKey: "userName") ?? "" {
+        didSet { UserDefaults.standard.set(userName, forKey: "userName") }
+    }
+    /// 強調色索引(見 Theme.accentPalette):游標/當日/選取等中性強調用色
+    @Published var accentIndex: Int = UserDefaults.standard.integer(forKey: "accent") {
+        didSet { UserDefaults.standard.set(accentIndex, forKey: "accent") }
+    }
+    var accent: Color { Theme.accentPalette[min(accentIndex, Theme.accentPalette.count - 1)].color }
 
     // 開機自啟（SMAppService, macOS 13+）
     var launchAtLogin: Bool { SMAppService.mainApp.status == .enabled }
@@ -239,8 +249,7 @@ final class TaskStore: ObservableObject {
     /// 目前視圖的可見順序（游標依此移動）。
     func listOrder() -> [Int] {
         let g = groups()
-        let od = overdueOpen ? g.overdue : []
-        return g.today + od + g.upcoming + g.noDate + g.done
+        return g.today + g.overdue + g.upcoming + g.noDate + g.done
     }
     func gridOrder() -> [Int] {
         let b = board()
@@ -304,6 +313,33 @@ final class TaskStore: ObservableObject {
     func startEditing() {
         guard view == .list, let i = cursor, lines.indices.contains(i), !lines[i].isDone else { return }
         editingIndex = i
+    }
+
+    /// ⌘E 編輯彈窗:一次寫回標題 / 到期 / 專案 / 便箋(逐欄最小變更,未動的 token 原樣保留)。
+    func applyEdit(_ index: Int, title: String, due: String, projects: String, contexts: String, note: String) {
+        guard lines.indices.contains(index) else { return }
+        let t = title.trimmingCharacters(in: .whitespaces)
+        if !t.isEmpty, t != lines[index].title { lines[index].setTitle(t) }
+
+        let dueInput = due.trimmingCharacters(in: .whitespaces)
+        if dueInput.isEmpty {
+            lines[index].setDue(nil)
+        } else if let norm = DueDateParser.parse(dueInput, today: Date()), norm != lines[index].due {
+            lines[index].setDue(norm)
+        }
+
+        // 專案:以輸入為準做增刪(輸入格式 "+a +b" 或 "a b")
+        let wanted = Set(projects.split(whereSeparator: { $0 == " " || $0 == "+" }).map(String.init))
+        for p in Set(lines[index].projects).subtracting(wanted) { lines[index].removeTag("+" + p) }
+        for p in wanted.subtracting(Set(lines[index].projects)) { lines[index].addTag("+" + p) }
+
+        // 情境:同樣以輸入為準做增刪
+        let wantedCtx = Set(contexts.split(whereSeparator: { $0 == " " || $0 == "@" }).map(String.init))
+        for c in Set(lines[index].contexts).subtracting(wantedCtx) { lines[index].removeTag("@" + c) }
+        for c in wantedCtx.subtracting(Set(lines[index].contexts)) { lines[index].addTag("@" + c) }
+
+        lines[index].setNote(note)
+        save(); ensureCursor()
     }
     func updateTitle(_ index: Int, _ text: String) {
         if lines.indices.contains(index), !text.trimmingCharacters(in: .whitespaces).isEmpty {

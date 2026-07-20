@@ -15,16 +15,20 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 header
                 hline
-                // 常駐於樹中,用高度 0↔自然高做滑動 — 底色跟內容一起動,不會先展開
-                VStack(spacing: 0) { captureBar; hline }
-                    .frame(height: showingCapture ? nil : 0, alignment: .bottom)
-                    .clipped()
-                ScrollView { body(for: store.view).frame(maxWidth: .infinity, alignment: .leading) }
-                    .frame(maxHeight: .infinity)
+                // 象限頁滿版(上下 50/50)、統計頁滿版垂直置中,其餘視圖走捲動
+                if store.view == .grid {
+                    QuadrantView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if store.view == .dash {
+                    DashboardView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView { body(for: store.view).frame(maxWidth: .infinity, alignment: .leading) }
+                        .frame(maxHeight: .infinity)
+                }
                 hline
                 if store.searchActive { searchBar; hline }
                 if store.hasTags { tagBar; hline }
-                statusBar
+                // vim 式：捕捉命令列與狀態列同槽互換 — 開啟時零高度變化、輸入永遠在底部
+                if showingCapture { captureBar } else { statusBar }
             }
             if store.focusMode { focusOverlay }   // 技法 B：純變暗
             if showingPalette { paletteOverlay }  // ⌘K:條件掛載,不常駐樹中(焦點教訓)
@@ -40,6 +44,7 @@ struct ContentView: View {
         .onChange(of: store.focusMode) { _ in FocusHUD.shared.update(store: store) }
         .onDisappear { if let m = monitor { NSEvent.removeMonitor(m) } }
         .sheet(isPresented: $showingAddProject, onDismiss: { projectText = "" }) { addProjectSheet }
+        .sheet(isPresented: $showingEdit) { editSheet }
     }
 
     private var hline: some View { Rectangle().fill(Theme.border).frame(height: 1) }
@@ -49,7 +54,7 @@ struct ContentView: View {
     @FocusState private var searchFocused: Bool
     private var searchBar: some View {
         HStack(spacing: 8) {
-            Text("/").foregroundColor(Theme.blue)
+            Text("/").foregroundColor(store.accent)
             TextField("搜尋標題 / +project / @context…", text: $store.searchQuery)
                 .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
                 .focused($searchFocused)
@@ -94,6 +99,8 @@ struct ContentView: View {
         case .list: ListView()
         case .grid: QuadrantView()
         case .pad:  ScratchView()
+        case .dash: DashboardView()
+        case .settings: SettingsView()
         }
     }
 
@@ -105,7 +112,8 @@ struct ContentView: View {
                 .font(Theme.monoSmall).foregroundColor(Theme.dim)
                 .lineLimit(1).truncationMode(.middle)
             Spacer()
-            tab("⌘1 清單", .list); tab("⌘4 象限", .grid); tab("⌘3 便箋", .pad)
+            tab("⌘1 清單", .list); tab("⌘2 象限", .grid); tab("⌘3 便箋", .pad); tab("⌘4 統計", .dash)
+            tab("⌘5 設定", .settings)
         }
         .padding(.horizontal, 14).padding(.vertical, 11).background(Theme.panel)
     }
@@ -132,14 +140,16 @@ struct ContentView: View {
             }
         }
         .font(Theme.monoSmall)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16).padding(.vertical, 10).background(Theme.panel)
+        .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)   // 高度加倍,文字垂直置中
+        .padding(.horizontal, 16).background(Theme.panel)
     }
     private var statusText: String {
         switch store.view {
-        case .list: return "↑↓ 移動   ⏎ 編輯   x 完成   f Focus   p +專案   n 新增   / 搜尋   ⌘K 指令   ⌘4 象限"
+        case .list: return "↑↓ 移動   ⌘E 編輯   x 完成   f Focus   n 新增   / 搜尋   ⌘K 指令   ⌘2 象限"
         case .grid: return "1–4 指派   0 回池   f Focus   z 專注   ⌘K 指令   ⌘1 清單"
         case .pad:  return "純文字便箋 · scratch.txt   ⌘1 回清單"
+        case .dash: return "唯讀統計 · 依 done: 日期計算   esc / ⌘1 回清單"
+        case .settings: return "設定 · 即時生效   esc / ⌘1 回清單"
         }
     }
 
@@ -177,55 +187,346 @@ struct ContentView: View {
 
     @FocusState private var captureFocused: Bool
     private var captureBar: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text(">").foregroundColor(Theme.green)
-                TextField("", text: $captureText,
-                          prompt: Text("寄出報價單 due:fri +business @mac")
-                            .foregroundColor(Theme.dim.opacity(0.45)))
-                    .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
+        HStack(spacing: 8) {
+            Text(">").foregroundColor(Theme.green)
+            // 行內上色：彩色 Text 墊底、透明字 TextField 疊上 — 等寬字體讓兩層逐字對齊
+            ZStack(alignment: .leading) {
+                if captureText.isEmpty {
+                    Text("新任務…  due:fri  +專案  @情境")
+                        .foregroundColor(Theme.dim.opacity(0.3))
+                }
+                colorized(captureText)
+                TextField("", text: $captureText)
+                    .textFieldStyle(.plain).foregroundColor(.clear).tint(Theme.green)
                     .focused($captureFocused)
-                    .disabled(!showingCapture)   // 常駐樹中:隱藏時不得成為 first responder,否則吞掉全部按鍵
                     .onSubmit { commitCapture() }
                     .onExitCommand { closeCapture() }
-                Text("⌘⏎ 新增 · esc 取消").font(Theme.monoSmall).foregroundColor(Theme.dim)
             }
-            capturePreview
-            CaptureHelp()
-            // 無按鈕:⌘⏎ 由隱形按鈕承接
-            Button("") { commitCapture() }
-                .keyboardShortcut(.return, modifiers: .command)
-                .buttonStyle(.plain).frame(width: 0, height: 0).opacity(0)
+            Text("⏎ 新增 · esc 取消").font(Theme.monoSmall).foregroundColor(Theme.dim)
         }
-        .padding(.horizontal, 16).padding(.vertical, 12)
-        .background(ZStack { Theme.bg; Theme.green.opacity(0.09) })   // 新增=綠,和 panel 灰區隔
+        .font(Theme.mono)
+        .frame(minHeight: 40)                              // 與 statusBar 同高,互換零跳動
+        .padding(.horizontal, 16)
+        .background(Theme.panel)
         .overlay(Rectangle().fill(Theme.green).frame(width: 3), alignment: .leading)
     }
+    /// 逐 token 上色,以空格切分後原樣重組 — 與 TextField 內容位元組級一致才能對齊
+    private func colorized(_ s: String) -> Text {
+        let parts = s.components(separatedBy: " ")
+        var out = Text("")
+        for (i, p) in parts.enumerated() {
+            let piece = Text(p).foregroundColor(tokenColor(p))
+            out = i == 0 ? piece : out + Text(" ") + piece
+        }
+        return out
+    }
+    private func tokenColor(_ p: String) -> Color {
+        // due: 只在可解析時變藍 — 上色本身就是即時驗證回饋
+        if p.hasPrefix("due:") { return DueDateParser.parse(String(p.dropFirst(4)), today: Date()) != nil ? Theme.blue : Theme.fg }
+        if p.hasPrefix("+"), p.count > 1 { return Theme.mag }
+        if p.hasPrefix("@"), p.count > 1 { return Theme.cyan }
+        if p.hasPrefix("note:") { return Theme.dim }
+        return Theme.fg
+    }
     private func openCapture() {
-        withAnimation(.easeOut(duration: 0.2)) { showingCapture = true }
+        showingCapture = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { captureFocused = true }
     }
     private func closeCapture() {
         captureText = ""
         captureFocused = false
-        withAnimation(.easeOut(duration: 0.15)) { showingCapture = false }
+        showingCapture = false
         DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }   // 把鍵盤還給 handle()
-    }
-    @ViewBuilder private var capturePreview: some View {
-        let parts = captureText.split(separator: " ").map(String.init)
-        let dueTok = parts.first { $0.hasPrefix("due:") }?.dropFirst(4)
-        HStack(spacing: 12) {
-            if let d = dueTok, let norm = DueDateParser.parse(String(d), today: Date()) {
-                Text("due:\(norm)").foregroundColor(Theme.blue)
-            }
-            ForEach(parts.filter { $0.hasPrefix("+") && $0.count > 1 }, id: \.self) { Text($0).foregroundColor(Theme.mag) }
-            ForEach(parts.filter { $0.hasPrefix("@") && $0.count > 1 }, id: \.self) { Text($0).foregroundColor(Theme.cyan) }
-        }.font(Theme.monoSmall).frame(height: 16)
     }
     private func commitCapture() {
         let t = captureText.trimmingCharacters(in: .whitespaces)
         if !t.isEmpty { store.addFromCapture(t) }
         closeCapture()
+    }
+
+    // MARK: ⌘E 編輯彈窗（標題 / 到期+專案 / 便箋）
+
+    @State private var showingEdit = false
+    @State private var editIndex: Int? = nil
+    @State private var editTitle = ""
+    @State private var editDue = ""
+    @State private var editProjects = ""
+    @State private var editContexts = ""
+    @State private var editNote = ""
+    @FocusState private var editTitleFocused: Bool
+    // 下拉層:游標在欄位時按 ↓ 展開。
+    // @FocusState 在 sheet 內的 .plain TextField 上不可靠(前兩次失敗主因),
+    // 改用點擊記錄「目前欄位」— simultaneousGesture 連點在文字區也收得到。
+    @State private var editField = 0        // 0 無 / 1 到期 / 2 專案 / 3 情境
+    @State private var showDatePicker = false
+    @State private var showProjectMenu = false
+    @State private var showContextMenu = false
+    @State private var calMonth = Date()
+    @FocusState private var editDueFocused: Bool
+    @FocusState private var editProjectsFocused: Bool
+    @FocusState private var editContextsFocused: Bool
+
+    /// 下拉層外框:方角 + 邊線 + 陰影,浮在欄位下方
+    private func dropdownPanel<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        content()
+            .background(Theme.bg)
+            .overlay(Rectangle().stroke(Theme.border))
+            .shadow(color: .black.opacity(0.3), radius: 8, y: 3)
+    }
+
+    /// TUI 風日曆:等寬數字格、方角、終端色票 — 取代系統 DatePicker 的圓角膠囊感
+    private var datePickerPopover: some View {
+        let cal = Calendar(identifier: .gregorian)
+        let comps = cal.dateComponents([.year, .month], from: calMonth)
+        let first = cal.date(from: comps)!
+        let lead = (cal.component(.weekday, from: first) + 5) % 7          // 週一=0
+        let days = cal.range(of: .day, in: .month, for: first)!.count
+        let selected = RelativeDate.parse(editDue).map { RelativeDate.todayYMD($0) }
+        return VStack(spacing: 6) {
+            // 不用 Spacer():會把面板撐到父容器滿寬(先前破圖主因),改固定間距
+            HStack(spacing: 10) {
+                Button { calMonth = cal.date(byAdding: .month, value: -1, to: calMonth)! } label: {
+                    Text("◀").foregroundColor(Theme.dim)
+                }.buttonStyle(.plain)
+                Text(String(format: "%04d / %02d", comps.year!, comps.month!))
+                    .foregroundColor(Theme.fg).frame(width: 90)
+                Button { calMonth = cal.date(byAdding: .month, value: 1, to: calMonth)! } label: {
+                    Text("▶").foregroundColor(Theme.dim)
+                }.buttonStyle(.plain)
+            }.font(Theme.monoSmall)
+
+            HStack(spacing: 2) {
+                ForEach(["一", "二", "三", "四", "五", "六", "日"], id: \.self) { w in
+                    Text(w).font(Theme.monoSmall).foregroundColor(Theme.dim).frame(width: 26)
+                }
+            }
+            ForEach(0..<((lead + days + 6) / 7), id: \.self) { row in
+                HStack(spacing: 2) {
+                    ForEach(0..<7, id: \.self) { col in
+                        let dayNum = row * 7 + col - lead + 1
+                        if dayNum >= 1 && dayNum <= days {
+                            let d = cal.date(byAdding: .day, value: dayNum - 1, to: first)!
+                            let ymd = RelativeDate.todayYMD(d)
+                            dayCell(dayNum, ymd: ymd, isSelected: ymd == selected, isToday: ymd == store.todayYMD)
+                        } else {
+                            Text("").frame(width: 26, height: 21)
+                        }
+                    }
+                }
+            }
+
+            HStack(spacing: 6) {
+                calAction("今天") { editDue = store.todayYMD; showDatePicker = false }
+                calAction("明天") {
+                    editDue = RelativeDate.todayYMD(cal.date(byAdding: .day, value: 1, to: Date())!)
+                    showDatePicker = false
+                }
+                calAction("清除") { editDue = ""; showDatePicker = false }
+            }.padding(.top, 2)
+        }
+        .padding(10).frame(width: 218).background(Theme.bg)   // 固定寬:不隨父容器撐開
+        .onAppear { calMonth = RelativeDate.parse(editDue) ?? Date() }
+    }
+    private func dayCell(_ n: Int, ymd: String, isSelected: Bool, isToday: Bool) -> some View {
+        Text("\(n)").font(Theme.mono)
+            .foregroundColor(isSelected ? Theme.bg : (isToday ? store.accent : Theme.fg))
+            .frame(width: 26, height: 21)
+            .background(isSelected ? store.accent : .clear)
+            .overlay(Rectangle().stroke(isToday && !isSelected ? store.accent : .clear))
+            .contentShape(Rectangle())
+            .onTapGesture { editDue = ymd; showDatePicker = false }
+    }
+    private func calAction(_ label: String, _ run: @escaping () -> Void) -> some View {
+        Text(label).font(Theme.monoSmall).foregroundColor(Theme.dim)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .overlay(Rectangle().stroke(Theme.border))
+            .contentShape(Rectangle())
+            .onTapGesture(perform: run)
+    }
+
+    /// TUI 風專案選單:點欄位即展開,✓ 標示已套用
+    private var projectMenuPopover: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if store.allProjects().isEmpty {
+                Text("尚無專案 — 直接輸入 +名稱").font(Theme.monoSmall).foregroundColor(Theme.dim).padding(10)
+            }
+            ForEach(store.allProjects(), id: \.self) { p in
+                HStack(spacing: 8) {
+                    Text(hasProject(p) ? "✓" : " ").foregroundColor(Theme.mag)
+                    Text("+" + p).foregroundColor(Theme.mag)
+                    Spacer()
+                }
+                .font(Theme.mono)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .contentShape(Rectangle())
+                .onTapGesture { toggleEditProject(p) }
+            }
+        }
+        .frame(width: 200).padding(.vertical, 4).background(Theme.bg)
+    }
+
+    /// TUI 風情境選單
+    private var contextMenuPopover: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if store.allContexts().isEmpty {
+                Text("尚無情境 — 直接輸入 @名稱").font(Theme.monoSmall).foregroundColor(Theme.dim).padding(10)
+            }
+            ForEach(store.allContexts(), id: \.self) { c in
+                HStack(spacing: 8) {
+                    Text(hasContext(c) ? "✓" : " ").foregroundColor(Theme.cyan)
+                    Text("@" + c).foregroundColor(Theme.cyan)
+                    Spacer()
+                }
+                .font(Theme.mono)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .contentShape(Rectangle())
+                .onTapGesture { toggleEditContext(c) }
+            }
+        }
+        .frame(width: 200).padding(.vertical, 4).background(Theme.bg)
+    }
+    private func hasProject(_ p: String) -> Bool { tagList(editProjects, "+").contains(p) }
+    private func hasContext(_ c: String) -> Bool { tagList(editContexts, "@").contains(c) }
+    private func tagList(_ s: String, _ sigil: Character) -> [String] {
+        s.split(whereSeparator: { $0 == " " || $0 == sigil }).map(String.init)
+    }
+    private func toggleEditProject(_ p: String) {
+        var list = tagList(editProjects, "+")
+        if let i = list.firstIndex(of: p) { list.remove(at: i) } else { list.append(p) }
+        editProjects = list.map { "+" + $0 }.joined(separator: " ")
+    }
+    private func toggleEditContext(_ c: String) {
+        var list = tagList(editContexts, "@")
+        if let i = list.firstIndex(of: c) { list.remove(at: i) } else { list.append(c) }
+        editContexts = list.map { "@" + $0 }.joined(separator: " ")
+    }
+
+    private func openEdit() {
+        guard let i = store.cursor, store.lines.indices.contains(i) else { return }
+        let t = store.lines[i]
+        editIndex = i
+        editTitle = t.title
+        editDue = t.due ?? ""
+        editProjects = t.projects.map { "+" + $0 }.joined(separator: " ")
+        editContexts = t.contexts.map { "@" + $0 }.joined(separator: " ")
+        editNote = t.note ?? ""
+        editField = 0
+        showingEdit = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { editTitleFocused = true }
+    }
+    private func commitEdit() {
+        if let i = editIndex {
+            store.applyEdit(i, title: editTitle, due: editDue, projects: editProjects,
+                            contexts: editContexts, note: editNote)
+        }
+        closeEdit()
+    }
+    private func closeEdit() {
+        showingEdit = false; editIndex = nil
+        DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }   // 鍵盤還給 handle()
+    }
+
+    private var editSheet: some View {
+        // 下拉層掛在彈窗最上層(ZStack 末位):zIndex 只在同層有效,掛欄位上會被便箋欄蓋住
+        ZStack(alignment: .topLeading) {
+            editSheetBody
+            if showDatePicker {
+                dropdownPanel { datePickerPopover }.offset(x: 20, y: 162)
+            }
+            if showProjectMenu {
+                dropdownPanel { projectMenuPopover }.offset(x: 203, y: 162)
+            }
+            if showContextMenu {
+                dropdownPanel { contextMenuPopover }.offset(x: 360, y: 162)   // 靠右緣內縮,不溢出
+            }
+        }
+        // 固定尺寸:下拉層是浮層,彈窗大小不隨它開合變動
+        .frame(width: 580, height: 400, alignment: .topLeading).background(Theme.bg)
+    }
+
+    private var editSheetBody: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("編輯任務").font(Theme.monoSmall).foregroundColor(Theme.dim).tracking(1.2)
+
+            // 第一行:項目內容
+            VStack(alignment: .leading, spacing: 4) {
+                Text("內容").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                TextField("", text: $editTitle)
+                    .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
+                    .focused($editTitleFocused)
+                    .padding(7).background(Theme.panel).overlay(Rectangle().stroke(Theme.border))
+            }
+
+            // 第二行:到期時間(可打字 + 日曆選擇) + 專案(可打字 + 下拉選單)
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("到期").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                    HStack(spacing: 0) {
+                        TextField("", text: $editDue,
+                                  prompt: Text("fri · tomorrow · 3d").foregroundColor(Theme.dim.opacity(0.4)))
+                            .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.blue)
+                            .focused($editDueFocused)
+                        Text("↓").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                    }
+                    .padding(7).background(Theme.panel).overlay(Rectangle().stroke(Theme.border))
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(TapGesture().onEnded {
+                        editField = 1; showProjectMenu = false; showContextMenu = false
+                        showDatePicker = true; editDueFocused = true
+                    })
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("專案").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                    HStack(spacing: 0) {
+                        TextField("", text: $editProjects,
+                                  prompt: Text("+work +side").foregroundColor(Theme.dim.opacity(0.4)))
+                            .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.mag)
+                            .focused($editProjectsFocused)
+                        Text("↓").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                    }
+                    .padding(7).background(Theme.panel).overlay(Rectangle().stroke(Theme.border))
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(TapGesture().onEnded {
+                        editField = 2; showDatePicker = false; showContextMenu = false
+                        showProjectMenu = true; editProjectsFocused = true
+                    })
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("情境").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                    HStack(spacing: 0) {
+                        TextField("", text: $editContexts,
+                                  prompt: Text("@mac @home").foregroundColor(Theme.dim.opacity(0.4)))
+                            .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.cyan)
+                            .focused($editContextsFocused)
+                        Text("↓").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                    }
+                    .padding(7).background(Theme.panel).overlay(Rectangle().stroke(Theme.border))
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(TapGesture().onEnded {
+                        editField = 3; showDatePicker = false; showProjectMenu = false
+                        showContextMenu = true; editContextsFocused = true
+                    })
+                }
+            }
+
+            // 第三行:便箋
+            VStack(alignment: .leading, spacing: 4) {
+                Text("便箋").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                TextEditor(text: $editNote)
+                    .font(Theme.mono).foregroundColor(Theme.fg)
+                    .scrollContentBackground(.hidden)
+                    .frame(height: 72)
+                    .padding(4).background(Theme.panel).overlay(Rectangle().stroke(Theme.border))
+            }
+
+            HStack {
+                Text("↓ 開選單 · ⌘⏎ 儲存 · esc 取消").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                Spacer()
+                Button("取消") { closeEdit() }.keyboardShortcut(.cancelAction)
+                Button("儲存") { commitEdit() }.keyboardShortcut(.return, modifiers: .command)
+            }
+        }
+        .padding(20).frame(width: 580, alignment: .topLeading)
     }
 
     private var addProjectSheet: some View {
@@ -262,7 +563,8 @@ struct ContentView: View {
     private var paletteCommands: [PaletteCmd] {
         [
             .init(name: "完成 / 取消完成", alias: "done toggle", keys: "x", run: { animatedDone() }),
-            .init(name: "行內編輯", alias: "edit", keys: "e", run: { store.startEditing() }),
+            .init(name: "編輯任務", alias: "edit popup", keys: "⌘E", run: { openEdit() }),
+            .init(name: "行內編輯", alias: "inline edit rename", keys: "e", run: { store.startEditing() }),
             .init(name: "Focus 這一件", alias: "focus", keys: "f", run: { store.toggleFocus() }),
             .init(name: "專注模式", alias: "zen focus mode", keys: "z", run: { store.toggleFocusMode() }),
             .init(name: "新增捕捉", alias: "new capture add", keys: "n", run: { openCapture() }),
@@ -273,7 +575,8 @@ struct ContentView: View {
             .init(name: "行距更鬆", alias: "density relaxed looser", keys: "]", run: { store.cycleDensity(1) }),
             .init(name: "清單視圖", alias: "list view", keys: "⌘1", run: { store.view = .list; store.ensureCursor() }),
             .init(name: "便箋", alias: "scratch pad notes", keys: "⌘3", run: { store.view = .pad }),
-            .init(name: "象限視圖", alias: "quadrant grid matrix", keys: "⌘4", run: { store.view = .grid; store.ensureCursor() }),
+            .init(name: "象限視圖", alias: "quadrant grid matrix", keys: "⌘2", run: { store.view = .grid; store.ensureCursor() }),
+            .init(name: "統計", alias: "stats dashboard charts", keys: "⌘4", run: { store.view = .dash }),
             .init(name: "深 / 淺主題", alias: "theme dark light appearance", keys: "⌘⇧T", run: { store.cycleAppearance() }),
         ]
     }
@@ -291,7 +594,7 @@ struct ContentView: View {
             Theme.bg.opacity(0.55).ignoresSafeArea().onTapGesture { closePalette() }
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    Text("⌘K").font(Theme.monoSmall).foregroundColor(Theme.blue)
+                    Text("⌘K").font(Theme.monoSmall).foregroundColor(store.accent)
                     TextField("", text: $paletteQuery,
                               prompt: Text("輸入指令…").foregroundColor(Theme.dim.opacity(0.45)))
                         .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
@@ -315,7 +618,7 @@ struct ContentView: View {
                         .padding(.horizontal, 14).padding(.vertical, 6)
                         .background(i == paletteSel ? Theme.selBg : .clear)
                         .overlay(alignment: .leading) {
-                            if i == paletteSel { Rectangle().fill(Theme.blue).frame(width: 3) }
+                            if i == paletteSel { Rectangle().fill(store.accent).frame(width: 3) }
                         }
                         .contentShape(Rectangle())
                         .onTapGesture { paletteSel = i; runPalette() }
@@ -366,6 +669,27 @@ struct ContentView: View {
             default:  return e   // 其餘給輸入框
             }
         }
+        if showingEdit {
+            // ↓ 在欄位內展開該欄位的選單;esc 先收選單再談關閉彈窗
+            if e.keyCode == 125 {
+                switch editField {
+                case 1: showDatePicker = true; return nil
+                case 2: showProjectMenu = true; return nil
+                case 3: showContextMenu = true; return nil
+                default: break
+                }
+            }
+            if e.keyCode == 53, showDatePicker || showProjectMenu || showContextMenu {
+                showDatePicker = false; showProjectMenu = false; showContextMenu = false
+                return nil
+            }
+            if e.keyCode == 48 {   // Tab:收選單並跟著彈窗順序推進(標題→到期→專案→情境→便箋)
+                showDatePicker = false; showProjectMenu = false; showContextMenu = false
+                editField = e.modifierFlags.contains(.shift)
+                    ? max(0, editField - 1) : (editField >= 3 ? 0 : editField + 1)
+            }
+            return e
+        }
         if showingCapture || showingAddProject { return e }
         if NSApp.keyWindow?.firstResponder is NSTextView { return e }   // 便箋/捕捉輸入時放行
         let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)
@@ -373,10 +697,13 @@ struct ContentView: View {
         if cmd {
             switch chars.lowercased() {
             case "1": store.view = .list; store.ensureCursor(); return nil
-            case "4": store.view = .grid; store.ensureCursor(); return nil
+            case "2": store.view = .grid; store.ensureCursor(); return nil
             case "3": store.view = .pad; return nil
-            case "b": openCapture(); return nil
+            case "4": store.view = .dash; return nil
+            case ",", "5": store.view = .settings; return nil
+            case "b": store.view = .list; store.requestInlineAdd = true; return nil
             case "k": openPalette(); return nil
+            case "e": openEdit(); return nil
             case "f" where shift: store.toggleFocus(); return nil
             case "f": store.searchActive = true; return nil
             case "t" where shift: store.cycleAppearance(); return nil
@@ -386,6 +713,11 @@ struct ContentView: View {
         }
         if store.focusMode {
             if chars == "z" || e.keyCode == 53 { store.focusMode = false }
+            return nil
+        }
+        // 統計視圖唯讀:單鍵動詞不得作用在看不見的游標上;esc 回清單
+        if store.view == .dash || store.view == .settings {
+            if e.keyCode == 53 { store.view = .list; store.ensureCursor() }
             return nil
         }
         switch e.keyCode {
@@ -406,7 +738,7 @@ struct ContentView: View {
         case "x", " ": animatedDone(); return nil
         case "f": store.toggleFocus(); return nil
         case "z": store.toggleFocusMode(); return nil
-        case "n": openCapture(); return nil
+        case "n": store.view = .list; store.requestInlineAdd = true; return nil
         case "p": if store.cursor != nil { showingAddProject = true }; return nil
         case "/": store.searchActive = true; return nil
         case "R": store.rescheduleOverdue(); return nil
