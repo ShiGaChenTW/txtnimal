@@ -272,8 +272,11 @@ struct QuadrantView: View {
     private func handleDrop(_ providers: [NSItemProvider], q: Int?) -> Bool {
         guard let p = providers.first else { return false }
         _ = p.loadObject(ofClass: NSString.self) { obj, _ in
-            if let s = obj as? String, let idx = Int(s) {
-                DispatchQueue.main.async { store.setQuadrantAt(idx, q); store.cursor = idx }
+            if let s = obj as? String, let handle = store.handle(from: s) {
+                DispatchQueue.main.async {
+                    store.setQuadrant(q, using: handle)
+                    if store.lines.indices.contains(handle.index) { store.cursor = handle.index }
+                }
             }
         }
         return true
@@ -293,7 +296,7 @@ struct QuadrantView: View {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { store.toggleDone() }
         }
         .onTapGesture { store.cursor = i }
-        .onDrag { NSItemProvider(object: String(i) as NSString) }
+        .onDrag { NSItemProvider(object: store.dragPayload(for: i) as NSString) }
     }
 
     private func poolView(_ idx: [Int]) -> some View {

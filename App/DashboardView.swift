@@ -102,22 +102,14 @@ struct DashboardView: View {
         }
     }
 
-    /// 歷史 = archive.txt + 當前檔的已完成行;每次進視圖重讀(檔案小,即時性優先)。
+    /// 統計查詢由 Core module 建立；View 只負責呈現。
     private func reload() {
-        let archiveText = (try? String(contentsOf: store.archiveURL, encoding: .utf8)) ?? ""
-        let all = TasksDocument.parse(archiveText) + store.lines
-        var byDay: [String: Int] = [:]
-        var byProject: [String: Int] = [:]
         let cutoff = ymd(day(-29))
-        for t in all where t.isDone {
-            guard let d = t.completedDate else { continue }
-            byDay[d, default: 0] += 1
-            if d >= cutoff { for p in t.projects { byProject[p, default: 0] += 1 } }
-        }
-        doneByDay = byDay
-        doneProjects = byProject.sorted { $0.value > $1.value }.prefix(6).map { ($0.key, $0.value) }
-        let sow = ymd(startOfWeek)
-        createdThisWeek = all.filter { ($0.created ?? "") >= sow }.count
+        let report = ActivityReporting.build(lines: store.lines, archiveLines: store.archiveLines, sinceYMD: cutoff)
+        doneByDay = report.doneByDay
+        doneProjects = report.doneProjects.prefix(6).map { ($0.name, $0.count) }
+        createdThisWeek = ActivityReporting.build(lines: store.lines, archiveLines: store.archiveLines,
+                                                  sinceYMD: ymd(startOfWeek)).createdSince
     }
 
     // MARK: 摘要(事實陳述,不打分;僅「本週」帶語意綠)

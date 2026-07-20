@@ -15,6 +15,8 @@ enum Density: Int, CaseIterable, Hashable {
 /// v1 每次變更即存檔;FSEvents 外部監看為 v2。
 final class TaskStore: ObservableObject {
     @Published private(set) var lines: [TaskLine] = []
+    @Published private(set) var archiveLines: [TaskLine] = []
+    @Published var lastError: String?
     @Published var view: AppView = .list
     @Published var cursor: Int? = nil          // index into `lines`
     @Published var focusMode = false
@@ -50,12 +52,13 @@ final class TaskStore: ObservableObject {
     @Published var accentIndex: Int = UserDefaults.standard.integer(forKey: "accent") {
         didSet { UserDefaults.standard.set(accentIndex, forKey: "accent") }
     }
-    var accent: Color { Theme.accentPalette[min(accentIndex, Theme.accentPalette.count - 1)].color }
+    var accent: Color { Theme.accentPalette[max(0, min(accentIndex, Theme.accentPalette.count - 1))].color }
 
     // 開機自啟（SMAppService, macOS 13+）
     var launchAtLogin: Bool { SMAppService.mainApp.status == .enabled }
     func setLaunchAtLogin(_ on: Bool) {
-        if on { try? SMAppService.mainApp.register() } else { try? SMAppService.mainApp.unregister() }
+        do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
+        catch { report(error) }
         objectWillChange.send()
     }
 
@@ -64,6 +67,8 @@ final class TaskStore: ObservableObject {
     private(set) var fileURL: URL
     private(set) var scratchURL: URL
     private(set) var archiveURL: URL
+    private var documentStore: FileSystemTaskDocumentStore
+    private var generation: UInt64 = 0
 
     static let defaultDataDir = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Documents/tasks-txt", isDirectory: true)
@@ -78,20 +83,21 @@ final class TaskStore: ObservableObject {
         let current = fileURL.deletingLastPathComponent()
         guard dir.standardizedFileURL != current.standardizedFileURL else { return }
         save(); saveScratch()
-        let fm = FileManager.default
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        if !fm.fileExists(atPath: dir.appendingPathComponent("tasks.txt").path) {
-            for name in ["tasks.txt", "scratch.txt", "archive.txt"] {   // copy 非 move:零資料遺失
-                let src = current.appendingPathComponent(name)
-                if fm.fileExists(atPath: src.path) {
-                    try? fm.copyItem(at: src, to: dir.appendingPathComponent(name))
+        do {
+            let fm = FileManager.default
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            if !fm.fileExists(atPath: dir.appendingPathComponent("tasks.txt").path) {
+                for name in ["tasks.txt", "scratch.txt", "archive.txt"] {
+                    let src = current.appendingPathComponent(name)
+                    if fm.fileExists(atPath: src.path) {
+                        try fm.copyItem(at: src, to: dir.appendingPathComponent(name))
+                    }
                 }
             }
-        }
-        UserDefaults.standard.set(dir.path, forKey: "dataDir")
-        fileURL = dir.appendingPathComponent("tasks.txt")
-        scratchURL = dir.appendingPathComponent("scratch.txt")
-        archiveURL = dir.appendingPathComponent("archive.txt")
+            documentStore = try FileSystemTaskDocumentStore(directory: dir)
+            UserDefaults.standard.set(dir.path, forKey: "dataDir")
+            fileURL = documentStore.tasksURL; scratchURL = documentStore.scratchURL; archiveURL = documentStore.archiveURL
+        } catch { report(error); return }
         bootstrapIfMissing()
         load()
         cursor = listOrder().first
@@ -101,10 +107,11 @@ final class TaskStore: ObservableObject {
 
     init() {
         let dir = Self.storedDataDir()
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         fileURL = dir.appendingPathComponent("tasks.txt")
         scratchURL = dir.appendingPathComponent("scratch.txt")
         archiveURL = dir.appendingPathComponent("archive.txt")
+        do { documentStore = try FileSystemTaskDocumentStore(directory: dir) }
+        catch { fatalError("Cannot initialize task document store: \(error)") }
         bootstrapIfMissing()
         load()
         archiveOldDone()
@@ -118,24 +125,15 @@ final class TaskStore: ObservableObject {
 
     /// 每日歸檔：把「非今天完成」的已完成任務搬到 archive.txt（保留歷史、不擋今天）。
     private func archiveOldDone() {
-        let today = todayYMD
-        let oldIdx = lines.indices.filter {
-            lines[$0].isDone && (lines[$0].completedDate ?? today) < today
-        }
-        guard !oldIdx.isEmpty else { return }
-        let moved = oldIdx.map { lines[$0].raw }.joined(separator: "\n")
-        let existing = (try? String(contentsOf: archiveURL, encoding: .utf8)) ?? ""
-        let archive = existing.isEmpty ? moved + "\n" : existing + (existing.hasSuffix("\n") ? "" : "\n") + moved + "\n"
-        try? archive.write(to: archiveURL, atomically: true, encoding: .utf8)
-        for i in oldIdx.reversed() { lines.remove(at: i) }
-        editingIndex = nil
-        save(); ensureCursor()
+        do {
+            apply(try documentStore.archiveCompleted(before: todayYMD, expectedGeneration: generation))
+            editingIndex = nil; ensureCursor()
+        } catch { report(error) }
     }
 
     // MARK: file IO
 
     private func bootstrapIfMissing() {
-        guard !FileManager.default.fileExists(atPath: fileURL.path) else { return }
         let sample = """
         Finish landing page due:\(RelativeDate.todayYMD()) note:"update colors" focus:true q:1
         Review Q3 numbers due:\(RelativeDate.todayYMD())
@@ -143,23 +141,32 @@ final class TaskStore: ObservableObject {
         Daily marketing distribution +marketing
         Set up portfolio limits
         """
-        try? sample.write(to: fileURL, atomically: true, encoding: .utf8)
+        do { try documentStore.bootstrap(sample: sample) } catch { report(error) }
     }
 
     func load() {
-        let text = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-        lines = TasksDocument.parse(text)
-        scratch = (try? String(contentsOf: scratchURL, encoding: .utf8)) ?? ""
+        do { apply(try documentStore.load()) } catch { report(error) }
     }
 
     private func save() {
-        let text = TasksDocument.serialize(lines)
-        try? text.write(to: fileURL, atomically: true, encoding: .utf8)
+        do { apply(try documentStore.save(lines: lines, expectedGeneration: generation)) }
+        catch {
+            let message = error.localizedDescription
+            load()
+            lastError = message
+        }
     }
 
     func saveScratch() {
-        try? scratch.write(to: scratchURL, atomically: true, encoding: .utf8)
+        do { try documentStore.saveScratch(scratch) } catch { report(error) }
     }
+
+    private func apply(_ snapshot: TaskDocumentSnapshot) {
+        lines = snapshot.lines; scratch = snapshot.scratch; archiveLines = snapshot.archiveLines
+        generation = snapshot.generation; lastError = nil
+    }
+
+    private func report(_ error: Error) { lastError = error.localizedDescription }
 
     // MARK: 外部編輯即時重載（FSEvents/DispatchSource）
 
@@ -192,11 +199,11 @@ final class TaskStore: ObservableObject {
 
     /// 外部檔案內容若和目前記憶體不同就重載（自己 save 造成的變動會被 no-op 掉）。
     private func reloadIfChanged() {
-        let text = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-        guard text != TasksDocument.serialize(lines) else { return }
-        lines = TasksDocument.parse(text)
-        editingIndex = nil
-        ensureCursor()
+        do {
+            let snapshot = try documentStore.load()
+            guard snapshot.lines != lines else { generation = snapshot.generation; return }
+            apply(snapshot); editingIndex = nil; ensureCursor()
+        } catch { report(error) }
     }
 
     // MARK: derived
@@ -271,13 +278,14 @@ final class TaskStore: ObservableObject {
 
     func toggleDone() {
         guard let i = cursor, lines.indices.contains(i) else { return }
-        lines[i].setDone(!lines[i].isDone, date: todayYMD)
-        save(); ensureCursor()
+        do { lines = try TaskWorkspace.apply(.toggleDone(handle(for: i)), to: currentSnapshot, todayYMD: todayYMD); save(); ensureCursor() }
+        catch { report(error) }
     }
     func toggleFocus() {
         guard let i = cursor, lines.indices.contains(i) else { return }
         let already = lines[i].isFocused
-        lines = TasksDocument.setFocus(lines, onIndex: already ? nil : i)
+        do { lines = try TaskWorkspace.apply(.toggleFocus(handle(for: i)), to: currentSnapshot, todayYMD: todayYMD) }
+        catch { report(error); return }
         if already { focusMode = false }
         save()
     }
@@ -286,17 +294,30 @@ final class TaskStore: ObservableObject {
     }
     func setQuadrant(_ q: Int?) {
         guard let i = cursor, lines.indices.contains(i) else { return }
-        lines[i].setQuadrant(q); save(); ensureCursor()
+        do { lines = try TaskWorkspace.apply(.setQuadrant(handle(for: i), q), to: currentSnapshot, todayYMD: todayYMD); save(); ensureCursor() }
+        catch { report(error) }
     }
     func setQuadrantAt(_ index: Int, _ q: Int?) {   // 拖拉放置用
         guard lines.indices.contains(index), !lines[index].isDone else { return }
         lines[index].setQuadrant(q); save()
     }
+    func handle(for index: Int) -> TaskHandle { TaskHandle(generation: generation, index: index) }
+    func dragPayload(for index: Int) -> String { "\(generation):\(index)" }
+    func handle(from payload: String) -> TaskHandle? {
+        let parts = payload.split(separator: ":"); guard parts.count == 2,
+              let generation = UInt64(parts[0]), let index = Int(parts[1]) else { return nil }
+        return TaskHandle(generation: generation, index: index)
+    }
+    func setQuadrant(_ q: Int?, using handle: TaskHandle) {
+        do { lines = try TaskWorkspace.apply(.setQuadrant(handle, q), to: currentSnapshot, todayYMD: todayYMD); save(); ensureCursor() }
+        catch { report(error) }
+    }
+    private var currentSnapshot: TaskDocumentSnapshot {
+        TaskDocumentSnapshot(lines: lines, scratch: scratch, archiveLines: archiveLines, generation: generation)
+    }
     func rescheduleOverdue() {
-        for i in lines.indices where !lines[i].isDone {
-            if let due = lines[i].due, due < todayYMD { lines[i].setDue(todayYMD) }
-        }
-        save(); ensureCursor()
+        do { lines = try TaskWorkspace.apply(.rescheduleOverdue, to: currentSnapshot, todayYMD: todayYMD); save(); ensureCursor() }
+        catch { report(error) }
     }
     func addFromCapture(_ input: String) {
         guard let raw = Capture.makeTaskLine(from: input, today: Date(), createdYMD: todayYMD) else { return }

@@ -3,7 +3,7 @@ import Foundation
 /// ⌘1 main list, grouped by `due` relative to today. Values are indices into the
 /// source array so the UI can edit/reorder the underlying line by position.
 ///
-/// Display order (Scott's call): Today → Upcoming → Overdue → No-date → Done.
+/// Display buckets; the app presents them as Today → Overdue → Upcoming → No-date → Done.
 public struct TaskGroups: Equatable {
     public var today: [Int] = []
     public var upcoming: [Int] = []

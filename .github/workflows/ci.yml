@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Core tests
+        run: swift test
+      - name: App build
+        run: xcodebuild -project TasksTxt.xcodeproj -scheme TasksTxt -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
+      - name: Verify generated project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          git diff --exit-code -- TasksTxt.xcodeproj/project.pbxproj

@@ -119,4 +119,17 @@ final class TaskLineTests: XCTestCase {
         t.setFocus(true)
         XCTAssertEqual(t.raw, "Task @context pri:high weird:stuff q:4 focus:true")
     }
+
+    func testRoundTripPreservesCRLFAndMalformedNote() {
+        let text = "one  odd:value\r\ntwo note:\"never closed\r\n"
+        XCTAssertEqual(TasksDocument.serialize(TasksDocument.parse(text)), text)
+    }
+
+    func testDuplicateKnownKeysRemainLosslessWhenUntouched() {
+        let text = "task due:2026-01-01 due:2026-02-02 q:1 q:4"
+        let task = TaskLine(text)
+        XCTAssertEqual(task.due, "2026-01-01")
+        XCTAssertEqual(task.quadrant, 1)
+        XCTAssertEqual(task.raw, text)
+    }
 }

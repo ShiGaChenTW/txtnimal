@@ -45,6 +45,12 @@ struct ContentView: View {
         .onDisappear { if let m = monitor { NSEvent.removeMonitor(m) } }
         .sheet(isPresented: $showingAddProject, onDismiss: { projectText = "" }) { addProjectSheet }
         .sheet(isPresented: $showingEdit) { editSheet }
+        .alert("檔案操作失敗", isPresented: Binding(
+            get: { store.lastError != nil },
+            set: { if !$0 { store.lastError = nil } }
+        )) { Button("好") { store.lastError = nil } } message: {
+            Text(store.lastError ?? "未知錯誤")
+        }
     }
 
     private var hline: some View { Rectangle().fill(Theme.border).frame(height: 1) }
