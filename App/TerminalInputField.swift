@@ -83,7 +83,13 @@ private final class BlockCursorTextView: NSTextView {
     }
 
     override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
-        let block = NSRect(x: rect.minX, y: rect.minY, width: 8, height: rect.height)
-        super.drawInsertionPoint(in: block, color: blockColor.withAlphaComponent(0.82), turnedOn: flag)
+        let block = NSRect(x: rect.minX, y: rect.minY, width: 8, height: rect.height).integral
+        guard flag else {
+            setNeedsDisplay(block)
+            return
+        }
+
+        blockColor.setFill()
+        NSBezierPath(rect: block).fill()
     }
 }
