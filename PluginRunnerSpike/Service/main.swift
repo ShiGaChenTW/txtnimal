@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Security
 
 private let maximumRequestBytes = 64 * 1024
 private let maximumResponseBytes = 256 * 1024
@@ -127,11 +128,30 @@ private extension NSLock {
 final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
     private let service = PluginRunnerService()
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
-        // Phase 0 uses ad-hoc signing. Production must verify the caller audit token/signing requirement.
+        guard BrokerCallerIdentity.isAllowed(connection) else { return false }
         connection.exportedInterface = NSXPCInterface(with: PluginRunnerXPCProtocol.self)
         connection.exportedObject = service
         connection.resume()
         return true
+    }
+}
+
+private enum BrokerCallerIdentity {
+    private static let allowedIdentifiers = Set(["app.txtnimal.txtnimal", "app.taskstxt.PluginRunnerSpikeHost"])
+
+    static func isAllowed(_ connection: NSXPCConnection) -> Bool {
+        let attributes: [CFString: Any] = [kSecGuestAttributePid: NSNumber(value: connection.processIdentifier)]
+        var guest: SecCode?
+        guard SecCodeCopyGuestWithAttributes(nil, attributes as CFDictionary, SecCSFlags(), &guest) == errSecSuccess,
+              let guest else { return false }
+        var staticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(guest, SecCSFlags(), &staticCode) == errSecSuccess,
+              let staticCode else { return false }
+        var information: CFDictionary?
+        guard SecCodeCopySigningInformation(staticCode, SecCSFlags(), &information) == errSecSuccess,
+              let values = information as? [String: Any],
+              let identifier = values[kSecCodeInfoIdentifier as String] as? String else { return false }
+        return allowedIdentifiers.contains(identifier)
     }
 }
 
