@@ -49,6 +49,11 @@ final class PluginArchitectureSpikeTests: XCTestCase {
         }
     }
 
+    func testDuplicateJSONKeysFailClosed() {
+        let duplicate = Data(#"{"id":"app.txtnimal.test","id":"second","name":"Test","version":"1.0.0","apiVersion":1,"entry":"main.js","capabilities":[],"commands":[],"pages":[]}"#.utf8)
+        XCTAssertThrowsError(try PluginValidator.decodeManifest(duplicate))
+    }
+
     func testVersionPayloadDepthNodeAndQueryLimitsFailClosed() throws {
         let manifest = try PluginValidator.decodeManifest(manifestJSON(capabilities: ["tasks.update", "ui.page"], withPage: true))
         let root = PluginPageNode(type: .page, id: "root", pageID: "weekly-review")

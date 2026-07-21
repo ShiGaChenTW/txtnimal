@@ -38,6 +38,7 @@ public enum PluginValidator {
 
     public static func decodeManifest(_ data: Data, limits: PluginLimits = .init()) throws -> PluginManifest {
         guard data.count <= limits.maximumManifestBytes else { throw PluginValidationError.payloadTooLarge }
+        try PluginJSON.rejectDuplicateKeys(data)
         try validateManifestKeys(data)
         let manifest = try JSONDecoder().decode(PluginManifest.self, from: data)
         try validate(manifest)
@@ -78,6 +79,7 @@ public enum PluginValidator {
     public static func decodePage(_ data: Data, manifest: PluginManifest,
                                   limits: PluginLimits = .init()) throws -> PluginPageDocument {
         guard data.count <= limits.maximumPayloadBytes else { throw PluginValidationError.payloadTooLarge }
+        try PluginJSON.rejectDuplicateKeys(data)
         try validatePageKeys(data)
         let page = try JSONDecoder().decode(PluginPageDocument.self, from: data)
         try validate(page, manifest: manifest, limits: limits)
