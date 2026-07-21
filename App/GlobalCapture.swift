@@ -251,36 +251,86 @@ final class SidebarController {
         }
     }
 
-    // MARK: - 貼邊指示條(面板收起時顯示,點一下滑出)
+    // MARK: - 貼邊指示條(面板收起時顯示,7 種樣式可在設定切換)
 
-    /// 指示條幾何:貼在鎖定螢幕的目標邊,置中的一小段。
+    private var handleExpanded = false   // tab/synthesis hover 展開狀態
+
+    /// 從 store 取即時摘要(徽章數字、Focus 標題、逾期數)。
+    private func handleStats() -> HandleStats {
+        guard let s = store else { return HandleStats() }
+        let g = s.groups()
+        let focus = s.focusIndex.flatMap { s.lines.indices.contains($0) ? s.lines[$0].title : nil }
+        return HandleStats(focusTitle: focus, today: g.today.count, overdue: g.overdue.count)
+    }
+
+    /// 各樣式的(厚度, 長度);hotzone 為滿邊。以側邊方向表示。
+    private func handleMetrics() -> (thickness: CGFloat, length: CGFloat, full: Bool) {
+        switch store?.sidebarHandleStyle ?? .synthesis {
+        case .tab:       return (handleExpanded ? 138 : 40, 52, false)
+        case .synthesis: return (handleExpanded ? 150 : 50, 56, false)
+        case .sliver:    return (22, 232, false)
+        case .grabber:   return (12, 66, false)
+        case .badge:     return (34, 34, false)
+        case .dots:      return (18, 180, false)
+        case .hotzone:   return (6, 0, true)
+        }
+    }
+
+    /// 指示條幾何:貼在鎖定螢幕的目標邊。
     private func handleFrame() -> NSRect {
         let vf = (activeScreen ?? currentScreen()).visibleFrame
-        let t: CGFloat = 6, len: CGFloat = 132
+        let m = handleMetrics(), t = m.thickness
         switch store?.sidebarEdge ?? .right {
-        case .right: return NSRect(x: vf.maxX - t, y: vf.midY - len / 2, width: t, height: len)
-        case .left:  return NSRect(x: vf.minX,     y: vf.midY - len / 2, width: t, height: len)
-        case .top:   return NSRect(x: vf.midX - len / 2, y: vf.maxY - t, width: len, height: t)
+        case .right: let l = m.full ? vf.height : m.length; return NSRect(x: vf.maxX - t, y: m.full ? vf.minY : vf.midY - l/2, width: t, height: l)
+        case .left:  let l = m.full ? vf.height : m.length; return NSRect(x: vf.minX,     y: m.full ? vf.minY : vf.midY - l/2, width: t, height: l)
+        case .top:   let l = m.full ? vf.width  : m.length; return NSRect(x: m.full ? vf.minX : vf.midX - l/2, y: vf.maxY - t, width: l, height: t)
         }
+    }
+
+    private func rootHandleView() -> SidebarHandleView {
+        SidebarHandleView(
+            style: store?.sidebarHandleStyle ?? .synthesis,
+            edge: store?.sidebarEdge ?? .right,
+            accent: store?.accent ?? Theme.focus,
+            stats: handleStats(),
+            onActivate: { [weak self] in self?.reveal(animated: true) },
+            onHoverExpand: { [weak self] on in self?.setHandleExpanded(on) })
     }
 
     private func showHandle() {
         if activeScreen == nil { activeScreen = currentScreen() }
+        handleExpanded = false
         let h = ensureHandle()
         positionHandle()
         h.orderFrontRegardless()
     }
 
-    private func hideHandle() { handle?.orderOut(nil) }
+    private func hideHandle() { handle?.orderOut(nil); handleExpanded = false }
+
+    /// 設定改了樣式:重建指示條(尺寸/內容不同);若正處於收起狀態就重新顯示。
+    func handleStyleChanged() {
+        handle?.orderOut(nil)
+        handle?.contentView?.subviews.forEach { $0.removeFromSuperview() }
+        handle = nil; handleExpanded = false
+        if store?.windowMode == .sidebar, panel?.isVisible != true { showHandle() }
+    }
+
+    /// tab/synthesis 的 hover 展開/收合:動畫改變指示條寬度。
+    private func setHandleExpanded(_ on: Bool) {
+        let s = store?.sidebarHandleStyle
+        guard (s == .tab || s == .synthesis), handleExpanded != on else { return }
+        handleExpanded = on
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.20
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
+            handle?.animator().setFrame(handleFrame(), display: true)
+        }
+    }
 
     private func positionHandle() {
         guard let h = handle else { return }
         h.setFrame(handleFrame(), display: true)
-        (h.contentView?.subviews.first as? NSHostingView<SidebarHandleView>)?
-            .rootView = SidebarHandleView(edge: store?.sidebarEdge ?? .right,
-                                          color: store?.accent ?? Theme.focus) { [weak self] in
-                self?.reveal(animated: true)
-            }
+        (h.contentView?.subviews.first as? NSHostingView<SidebarHandleView>)?.rootView = rootHandleView()
     }
 
     private func ensureHandle() -> NSPanel {
@@ -296,10 +346,7 @@ final class SidebarController {
         p.animationBehavior = .none
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         p.isOpaque = false
-        let host = NSHostingView(rootView: SidebarHandleView(edge: store?.sidebarEdge ?? .right,
-                                                             color: store?.accent ?? Theme.focus) { [weak self] in
-            self?.reveal(animated: true)
-        })
+        let host = NSHostingView(rootView: rootHandleView())
         host.frame = p.contentView?.bounds ?? .zero
         host.autoresizingMask = [.width, .height]
         p.contentView?.addSubview(host)
@@ -317,24 +364,153 @@ private final class EdgeResizeHandle: NSView {
     override func mouseDragged(with event: NSEvent) { onDragTo?(NSEvent.mouseLocation) }
 }
 
-/// 貼邊的小指示條:平時半透明,滑鼠移上去變亮並加寬提示,點一下把面板滑出。
+/// 指示條需要的即時摘要。
+struct HandleStats { var focusTitle: String? = nil; var today: Int = 0; var overdue: Int = 0 }
+
+/// 貼邊指示條 — 7 種樣式的統一渲染。點一下滑出;hotzone 為懸停即滑出。
 private struct SidebarHandleView: View {
+    let style: SidebarHandleStyle
     let edge: SidebarEdge
-    var color: Color = Theme.focus
+    let accent: Color
+    let stats: HandleStats
     let onActivate: () -> Void
+    let onHoverExpand: (Bool) -> Void
     @State private var hovering = false
+    @State private var cursorFrac: CGFloat = -1
+
+    private var horizontal: Bool { edge == .top }              // 指示條長邊為水平
+    private var statusColor: Color { stats.overdue > 0 ? Theme.red : accent }
+    private var onBadge: Color { Theme.bg }                    // 填色上的對比字色
+
+    /// 只圓「內側」角(朝螢幕中央那側),外側齊平貼邊。
+    private func innerRounded(_ r: CGFloat) -> UnevenRoundedRectangle {
+        switch edge {
+        case .right: return UnevenRoundedRectangle(topLeadingRadius: r, bottomLeadingRadius: r)
+        case .left:  return UnevenRoundedRectangle(bottomTrailingRadius: r, topTrailingRadius: r)
+        case .top:   return UnevenRoundedRectangle(bottomLeadingRadius: r, bottomTrailingRadius: r)
+        }
+    }
+    private var outerAlign: Alignment { edge == .right ? .trailing : (edge == .left ? .leading : .top) }
+    private var innerAlign: Alignment { edge == .right ? .leading : (edge == .left ? .trailing : .bottom) }
 
     var body: some View {
-        let horizontal = edge == .top
-        Capsule()
-            .fill(color.opacity(hovering ? 0.95 : 0.5))
-            .frame(width: horizontal ? nil : (hovering ? 5 : 3),
-                   height: horizontal ? (hovering ? 5 : 3) : nil)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
+        Group {
+            switch style {
+            case .tab:       tab
+            case .synthesis: synthesis
+            case .sliver:    sliver
+            case .grabber:   grabber
+            case .badge:     badge
+            case .dots:      dots
+            case .hotzone:   hotzone
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // 1 標籤把手
+    private var tab: some View {
+        innerRounded(9).fill(accent)
+            .overlay(Text(hovering ? "tasks ⌥T" : "❯")
+                .font(.system(size: hovering ? 11 : 13, weight: .bold, design: .monospaced))
+                .foregroundColor(onBadge).lineLimit(1))
+            .onHover { hovering = $0; onHoverExpand($0) }
+            .onTapGesture { onActivate() }
+            .help("點一下滑出 tasks.txt")
+    }
+
+    // 7 推薦合成:狀態(Focus/待辦數,逾期轉紅)+ hover 展開標籤
+    private var synthesis: some View {
+        let rest = stats.focusTitle != nil
+            ? "▶\(stats.overdue > 0 ? "\(stats.overdue)!" : "\(stats.today)")"
+            : (stats.overdue > 0 ? "\(stats.overdue)!" : "\(stats.today)")
+        return innerRounded(9).fill(statusColor)
+            .overlay(Text(hovering ? "tasks ⌥T" : rest)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundColor(onBadge).lineLimit(1).padding(.horizontal, 6))
+            .onHover { hovering = $0; onHoverExpand($0) }
+            .onTapGesture { onActivate() }
+            .help("滑出 tasks.txt ⌥T")
+    }
+
+    // 2 內容預覽 sliver
+    private var sliver: some View {
+        let text = stats.focusTitle ?? "tasks.txt"
+        return ZStack(alignment: innerAlign) {
+            innerRounded(4).fill(Theme.bg.opacity(0.92))
+            Rectangle().fill(statusColor)
+                .frame(width: horizontal ? nil : 2, height: horizontal ? 2 : nil)
+            Text(text)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundColor(statusColor).lineLimit(1).fixedSize()
+                .rotationEffect(horizontal ? .zero : .degrees(edge == .right ? 90 : -90))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .onHover { hovering = $0 }
+        .onTapGesture { onActivate() }
+        .help(stats.focusTitle == nil ? "滑出 tasks.txt" : "▶ \(text)")
+    }
+
+    // 4 抓握把手
+    private var grabber: some View {
+        innerRounded(6).fill(Color(white: 0.11))
+            .overlay(innerRounded(6).stroke(accent.opacity(hovering ? 0.85 : 0.45), lineWidth: 1))
+            .overlay(Text(horizontal ? "⋯" : "⋮").font(.system(size: 13, weight: .bold)).foregroundColor(accent))
             .onHover { hovering = $0 }
             .onTapGesture { onActivate() }
             .help("點一下滑出 tasks.txt")
+    }
+
+    // 5 狀態徽章
+    private var badge: some View {
+        let label = stats.overdue > 0 ? "\(stats.overdue)!"
+            : (stats.focusTitle != nil ? "▶" : "\(stats.today)")
+        return innerRounded(15).fill(Theme.bg)
+            .overlay(innerRounded(15).stroke(statusColor, lineWidth: 1))
+            .overlay(Text(label).font(.system(size: 12, weight: .bold, design: .monospaced)).foregroundColor(statusColor))
+            .onHover { hovering = $0 }
+            .onTapGesture { onActivate() }
+            .help(stats.overdue > 0 ? "\(stats.overdue) 筆逾期 · 滑出" : "今日 \(stats.today) 筆 · 滑出")
+    }
+
+    // 6 磁吸放大點
+    private var dots: some View {
+        GeometryReader { geo in
+            let n = 5
+            let along = horizontal ? geo.size.width : geo.size.height
+            ZStack {
+                ForEach(0..<n, id: \.self) { i in
+                    let frac = (CGFloat(i) + 0.5) / CGFloat(n)
+                    let k = cursorFrac < 0 ? 0 : max(0, 1 - abs(frac - cursorFrac) / 0.3)
+                    Circle().fill(accent)
+                        .frame(width: 5 + k * 6, height: 5 + k * 6)
+                        .shadow(color: accent.opacity(k * 0.9), radius: k * 6)
+                        .position(x: horizontal ? along * frac : geo.size.width / 2,
+                                  y: horizontal ? geo.size.height / 2 : along * frac)
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                if case .active(let p) = phase {
+                    cursorFrac = horizontal ? p.x / max(1, geo.size.width) : p.y / max(1, geo.size.height)
+                } else { cursorFrac = -1 }
+            }
+            .onTapGesture { onActivate() }
+        }
+        .help("點一下滑出 tasks.txt")
+    }
+
+    // 3 邊緣感應:平時一道極淡的線,懸停即滑出
+    private var hotzone: some View {
+        ZStack(alignment: outerAlign) {
+            Color.clear
+            Rectangle().fill(accent.opacity(0.18))
+                .frame(width: horizontal ? nil : 2, height: horizontal ? 2 : nil)
+        }
+        .contentShape(Rectangle())
+        .onHover { h in hovering = h; if h { onActivate() } }
+        .help("滑鼠移到邊緣即滑出")
     }
 }
 
@@ -531,6 +707,13 @@ struct SettingsView: View {
                 Picker("", selection: $store.sidebarEdge) {
                     ForEach(SidebarEdge.allCases, id: \.self) { Text($0.label).tag($0) }
                 }.labelsHidden().frame(width: 150)
+                    .disabled(store.windowMode != .sidebar)
+            }
+            HStack(spacing: 8) {
+                Text("收起指示").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Picker("", selection: $store.sidebarHandleStyle) {
+                    ForEach(SidebarHandleStyle.allCases, id: \.self) { Text($0.label).tag($0) }
+                }.labelsHidden().frame(width: 200)
                     .disabled(store.windowMode != .sidebar)
             }
             HStack(spacing: 8) {
