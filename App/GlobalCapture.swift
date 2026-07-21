@@ -195,12 +195,24 @@ struct SettingsView: View {
             hint("app 內快速鍵固定：⌘1 清單 · ⌘2 象限 · ⌘3 便箋 · ⌘4 統計 · ⌘E 編輯 · ⌘K 指令")
 
             section("外觀")
+            HStack(alignment: .top, spacing: 8) {
+                Text("介面主題").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                VStack(alignment: .leading, spacing: 5) {
+                    Picker("", selection: $store.appTheme) {
+                        ForEach(AppTheme.allCases, id: \.self) { theme in
+                            Text(LocalizedStringKey(theme.label)).tag(theme)
+                        }
+                    }.labelsHidden().frame(width: 190)
+                    Text(LocalizedStringKey(store.appTheme.detail)).font(Theme.monoSmall).foregroundColor(Theme.dim)
+                }
+            }
             HStack(spacing: 8) {
                 Text("主題").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
                 Picker("", selection: $store.appearanceMode) {
                     Text("跟隨系統").tag(0); Text("深色").tag(1); Text("淺色").tag(2)
-                }.labelsHidden().frame(width: 150)
+                }.labelsHidden().frame(width: 150).disabled(store.appTheme == .phosphorTerminal)
             }
+            if store.appTheme == .phosphorTerminal { hint("Phosphor Terminal 固定使用深色，以維持終端介面的清楚層次") }
             HStack(spacing: 8) {
                 Text("強調色").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
                 ForEach(Array(Theme.accentPalette.enumerated()), id: \.offset) { i, item in

@@ -29,6 +29,12 @@
 "在任何 app 按此熱鍵即可快速記一筆" = "Use this shortcut in any app to capture a task";
 "外觀" = "Appearance";
 "主題" = "Theme";
+"介面主題" = "Interface theme";
+"經典 TUI" = "Classic TUI";
+"Phosphor Terminal" = "Phosphor Terminal";
+"跟隨深淺外觀的低彩度工作台" = "A muted workbench that follows light and dark appearance";
+"IDE 式深色工作區、shell prompt 與結構化狀態" = "An IDE-like dark workspace with a shell prompt and structured status";
+"Phosphor Terminal 固定使用深色，以維持終端介面的清楚層次" = "Phosphor Terminal stays dark to preserve clear terminal hierarchy";
 "跟隨系統" = "System";
 "深色" = "Dark";
 "淺色" = "Light";

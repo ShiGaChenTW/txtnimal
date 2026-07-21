@@ -175,6 +175,14 @@ final class TaskStore: ObservableObject {
     @Published var appearanceMode: Int = UserDefaults.standard.integer(forKey: "appearance") {
         didSet { UserDefaults.standard.set(appearanceMode, forKey: "appearance"); applyAppearance() }
     }
+    @Published var appTheme: AppTheme = {
+        AppTheme(rawValue: UserDefaults.standard.string(forKey: "appTheme") ?? "classic") ?? .classic
+    }() {
+        didSet {
+            UserDefaults.standard.set(appTheme.rawValue, forKey: "appTheme")
+            applyAppearance()
+        }
+    }
     @Published var appIconStyle: AppIconStyle = {
         let defaults = UserDefaults.standard
         guard let saved = defaults.string(forKey: "appIconStyle"),
@@ -218,6 +226,10 @@ final class TaskStore: ObservableObject {
         lastError = message
     }
     func applyAppearance() {
+        if appTheme == .phosphorTerminal {
+            NSApp.appearance = NSAppearance(named: .darkAqua)
+            return
+        }
         switch appearanceMode {
         case 1: NSApp.appearance = NSAppearance(named: .darkAqua)
         case 2: NSApp.appearance = NSAppearance(named: .aqua)

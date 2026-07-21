@@ -66,7 +66,7 @@ struct ContentView: View {
     @FocusState private var searchFocused: Bool
     private var searchBar: some View {
         HStack(spacing: 8) {
-            Text("/").foregroundColor(store.accent)
+            Text(Theme.isTerminal ? "find >" : "/").foregroundColor(Theme.isTerminal ? Theme.green : store.accent)
             TextField("搜尋標題 / +project / @context…", text: $store.searchQuery)
                 .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
                 .focused($searchFocused)
@@ -132,14 +132,29 @@ struct ContentView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image(nsImage: headerAppIcon)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 28, height: 28)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .accessibilityHidden(true)
-            Text((store.fileURL.path as NSString).abbreviatingWithTildeInPath)
-                .font(Theme.monoSmall).foregroundColor(Theme.dim)
+            if !Theme.isTerminal {
+                Image(nsImage: headerAppIcon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 28, height: 28)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .accessibilityHidden(true)
+            }
+            Group {
+                if Theme.isTerminal {
+                    Text("●").foregroundColor(Theme.green).accessibilityHidden(true)
+                    Text("txtnimal").foregroundColor(Theme.fg).fontWeight(.semibold)
+                    Text("//").foregroundColor(Theme.dim)
+                    Text(store.fileURL.lastPathComponent).foregroundColor(Theme.fg)
+                    if let filter = store.tagFilter {
+                        Text(filter).foregroundColor(tagColor(filter))
+                    }
+                } else {
+                    Text((store.fileURL.path as NSString).abbreviatingWithTildeInPath)
+                        .foregroundColor(Theme.dim)
+                }
+            }
+                .font(Theme.monoSmall)
                 .lineLimit(1).truncationMode(.middle)
             Spacer()
             tab("⌘1 清單", .list); tab("⌘2 象限", .grid); tab("⌘3 便箋", .pad); tab("⌘4 統計", .dash)
@@ -152,18 +167,30 @@ struct ContentView: View {
     }
     private func tab(_ label: String, _ v: AppView) -> some View {
         let on = store.view == v
-        return Text(LocalizedStringKey(label)).font(Theme.monoSmall)
-            .foregroundColor(on ? Theme.fg : Theme.dim)
+        let localized = Text(LocalizedStringKey(label))
+        let rendered = Theme.isTerminal ? Text("[") + localized + Text("]") : localized
+        return rendered.font(Theme.monoSmall)
+            .foregroundColor(on ? (Theme.isTerminal ? Theme.green : Theme.fg) : Theme.dim)
             .padding(.horizontal, 9).padding(.vertical, 3)
-            .background(on ? Theme.bg : .clear)
-            .overlay(Rectangle().stroke(on ? Theme.border : .clear))
+            .background(on ? (Theme.isTerminal ? Theme.green.opacity(0.08) : Theme.bg) : .clear)
+            .overlay(Rectangle().stroke(on ? (Theme.isTerminal ? Theme.green.opacity(0.45) : Theme.border) : .clear))
             .onTapGesture { store.view = v; store.ensureCursor() }
     }
 
     // MARK: status bar
 
     private var statusBar: some View {
-        Group {
+        HStack(spacing: 8) {
+            if Theme.isTerminal {
+                Text("NORMAL").foregroundColor(Theme.bg)
+                    .padding(.horizontal, 6).padding(.vertical, 2).background(Theme.green)
+                Text("file:").foregroundColor(Theme.dim)
+                Text(store.fileURL.lastPathComponent).foregroundColor(Theme.fg)
+                Text("open:").foregroundColor(Theme.dim)
+                Text("\(store.lines.filter { !$0.isDone }.count)").foregroundColor(Theme.cyan)
+                Text("|").foregroundColor(Theme.border)
+            }
+            Group {
             if store.focusMode {
                 Text("● Focus 模式 — 其他變暗；z / esc 離開").foregroundColor(Theme.focus)
             } else if let f = store.tagFilter {
@@ -171,6 +198,7 @@ struct ContentView: View {
                     .foregroundColor(tagColor(f))
             } else {
                 Text(statusText).foregroundColor(Theme.dim)
+            }
             }
         }
         .font(Theme.monoSmall)
@@ -231,19 +259,31 @@ struct ContentView: View {
     @FocusState private var captureFocused: Bool
     private var captureBar: some View {
         HStack(spacing: 8) {
-            Text(">").foregroundColor(Theme.green)
-            // 行內上色：彩色 Text 墊底、透明字 TextField 疊上 — 等寬字體讓兩層逐字對齊
-            ZStack(alignment: .leading) {
-                if captureText.isEmpty {
-                    Text("新任務…  due:fri  +List  @Tag")
-                        .foregroundColor(Theme.dim.opacity(0.3))
+            if Theme.isTerminal {
+                Text(store.fileURL.lastPathComponent).font(Theme.monoSmall).foregroundColor(Theme.dim)
+                Text("❯").foregroundColor(Theme.fg).fontWeight(.bold)
+                ZStack(alignment: .leading) {
+                    if captureText.isEmpty {
+                        Text("輸入任務…  due:fri  +List  @Tag").foregroundColor(Theme.dim.opacity(0.45))
+                    }
+                    TerminalInputField(text: $captureText, onSubmit: commitCapture, onCancel: closeCapture)
+                        .frame(height: 20)
                 }
-                colorized(captureText)
-                TextField("", text: $captureText)
-                    .textFieldStyle(.plain).foregroundColor(.clear).tint(Theme.green)
-                    .focused($captureFocused)
-                    .onSubmit { commitCapture() }
-                    .onExitCommand { closeCapture() }
+            } else {
+                Text(">").foregroundColor(Theme.green)
+                // 行內上色：彩色 Text 墊底、透明字 TextField 疊上 — 等寬字體讓兩層逐字對齊
+                ZStack(alignment: .leading) {
+                    if captureText.isEmpty {
+                        Text("新任務…  due:fri  +List  @Tag")
+                            .foregroundColor(Theme.dim.opacity(0.3))
+                    }
+                    colorized(captureText)
+                    TextField("", text: $captureText)
+                        .textFieldStyle(.plain).foregroundColor(.clear).tint(Theme.green)
+                        .focused($captureFocused)
+                        .onSubmit { commitCapture() }
+                        .onExitCommand { closeCapture() }
+                }
             }
             Text("⏎ 新增 · esc 取消").font(Theme.monoSmall).foregroundColor(Theme.dim)
         }

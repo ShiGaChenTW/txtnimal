@@ -32,6 +32,10 @@ struct txtnimalApp: App {
             Picker("外觀", selection: $store.appearanceMode) {
                 Text("跟隨系統").tag(0); Text("深色").tag(1); Text("淺色").tag(2)
             }
+            .disabled(store.appTheme == .phosphorTerminal)
+            Picker("介面主題", selection: $store.appTheme) {
+                ForEach(AppTheme.allCases, id: \.self) { theme in Text(LocalizedStringKey(theme.label)).tag(theme) }
+            }
             Divider()
             Button("快速捕捉") { GlobalCapture.shared.toggle() }
             Toggle("開機自啟", isOn: Binding(

@@ -1,26 +1,49 @@
 import SwiftUI
 
-// TUI 終端色票。每個顏色都是動態色：深色終端 / 淺色「紙終端」，隨系統或手動切換自動變。
-enum Theme {
-    // dyn(深, 淺)
-    static let bg      = dyn(0x15171e, 0xfbfaf7)
-    static let panel   = dyn(0x1b1e27, 0xefece6)
-    static let fg      = dyn(0xd7d9df, 0x2a2d34)
-    static let dim     = dyn(0x6b7280, 0x9aa0aa)
-    static let border  = dyn(0x2b303b, 0xddd8cf)
+enum AppTheme: String, CaseIterable, Hashable {
+    case classic
+    case phosphorTerminal
 
-    static let blue    = dyn(0x7aa2f7, 0x2f6bd6)   // 選取 / 一般強調
-    static let green   = dyn(0x9ece6a, 0x2e8b57)   // 完成
-    static let red     = dyn(0xf7768e, 0xd43d30)   // 逾期（唯一的紅）
-    static let yellow  = dyn(0xe0af68, 0xb26a00)   // q2
-    static let cyan    = dyn(0x7dcfff, 0x0e7490)   // q3 / @context
-    static let mag     = dyn(0xbb9af7, 0x8250df)   // +project
-    static let focus   = dyn(0x4fd6c4, 0x0d9488)   // Focus（teal，非紅）
+    var label: String {
+        switch self {
+        case .classic: return "經典 TUI"
+        case .phosphorTerminal: return "Phosphor Terminal"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .classic: return "跟隨深淺外觀的低彩度工作台"
+        case .phosphorTerminal: return "IDE 式深色工作區、shell prompt 與結構化狀態"
+        }
+    }
+}
+
+// Theme token 全部由使用者選擇即時計算；TaskStore 的 @Published theme 會驅動畫面重繪。
+enum Theme {
+    static var current: AppTheme {
+        AppTheme(rawValue: UserDefaults.standard.string(forKey: "appTheme") ?? "classic") ?? .classic
+    }
+    static var isTerminal: Bool { current == .phosphorTerminal }
+
+    static var bg: Color     { token(classicDark: 0x15171e, classicLight: 0xfbfaf7, terminal: 0x090d0b) }
+    static var panel: Color  { token(classicDark: 0x1b1e27, classicLight: 0xefece6, terminal: 0x101613) }
+    static var fg: Color     { token(classicDark: 0xd7d9df, classicLight: 0x2a2d34, terminal: 0xd5ddd7) }
+    static var dim: Color    { token(classicDark: 0x6b7280, classicLight: 0x9aa0aa, terminal: 0x77837c) }
+    static var border: Color { token(classicDark: 0x2b303b, classicLight: 0xddd8cf, terminal: 0x26332c) }
+
+    static var blue: Color   { token(classicDark: 0x7aa2f7, classicLight: 0x2f6bd6, terminal: 0x78bdf2) }
+    static var green: Color  { token(classicDark: 0x9ece6a, classicLight: 0x2e8b57, terminal: 0x45ff79) }
+    static var red: Color    { token(classicDark: 0xf7768e, classicLight: 0xd43d30, terminal: 0xff6b6b) }
+    static var yellow: Color { token(classicDark: 0xe0af68, classicLight: 0xb26a00, terminal: 0xe3b765) }
+    static var cyan: Color   { token(classicDark: 0x7dcfff, classicLight: 0x0e7490, terminal: 0x65c9ba) }
+    static var mag: Color    { token(classicDark: 0xbb9af7, classicLight: 0x8250df, terminal: 0xa8a3d9) }
+    static var focus: Color  { token(classicDark: 0x4fd6c4, classicLight: 0x0d9488, terminal: 0x39ff88) }
 
     /// 可選強調色(設定頁):語意色(紅=逾期/teal=Focus/綠=完成)不列入,避免撞語意
-    static let accentPalette: [(name: String, color: Color)] = [
+    static var accentPalette: [(name: String, color: Color)] { [
         ("藍", blue), ("青", cyan), ("洋紅", mag), ("黃", yellow),
-    ]
+    ] }
 
     static var focusBg: Color { focus.opacity(0.15) }
     static var selBg: Color { blue.opacity(0.13) }
@@ -49,6 +72,10 @@ enum Theme {
         Color(nsColor: NSColor(name: nil) { ap in
             ap.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(hex: dark) : NSColor(hex: light)
         })
+    }
+
+    private static func token(classicDark: UInt, classicLight: UInt, terminal: UInt) -> Color {
+        isTerminal ? Color(nsColor: NSColor(hex: terminal)) : dyn(classicDark, classicLight)
     }
 }
 

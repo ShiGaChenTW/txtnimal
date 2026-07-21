@@ -23,8 +23,8 @@ struct ListView: View {
             overdueSection(g.overdue)                                          // 逾期=紅(獨佔)
             section("Upcoming", g.upcoming, group: "up", color: Theme.yellow) // 未來=黃(呼應 q2 Schedule)
             // No date 區塊 + 尾端新增列;帶 due: 的新任務由重新分組自動跳到對應區塊
-            if !g.noDate.isEmpty { sectionHeader("No date", g.noDate.count, color: Theme.dim) }
-            else { sectionHeader("No date", 0, color: Theme.dim) }
+            if !g.noDate.isEmpty { sectionHeader("No date", g.noDate.count, color: Theme.dim, neutral: true) }
+            else { sectionHeader("No date", 0, color: Theme.dim, neutral: true) }
             ForEach(g.noDate, id: \.self) { rowOrEdit($0, "nd") }
             if addVisible { addRow }   // 預設隱藏,按 n 才出現
             section("Done", g.done, group: "done", color: Theme.green)        // 完成=綠(色彩契約)
@@ -115,23 +115,25 @@ struct ListView: View {
 
     private var addRow: some View {
         HStack(spacing: 10) {
-            Text("+").foregroundColor(Theme.green)
-            TextField("", text: $addText,
-                      prompt: Text("新增任務…  due:fri  +List  @Tag").foregroundColor(Theme.dim.opacity(0.35)))
-                .textFieldStyle(.plain).font(store.taskFont).foregroundColor(Theme.fg)
-                .focused($addFocused)
-                .onSubmit {
-                    let t = addText.trimmingCharacters(in: .whitespaces)
-                    if !t.isEmpty { store.addFromCapture(t) }
-                    addText = ""; addFocused = true   // 連續新增:留在輸入列
+            if Theme.isTerminal {
+                Text("❯").foregroundColor(Theme.fg).fontWeight(.bold)
+                ZStack(alignment: .leading) {
+                    if addText.isEmpty {
+                        Text("輸入任務…  due:fri  +List  @Tag")
+                            .foregroundColor(Theme.dim.opacity(0.45))
+                    }
+                    TerminalInputField(text: $addText, onSubmit: submitInlineAdd, onCancel: closeInlineAdd)
+                        .frame(height: 20)
                 }
-                .onExitCommand {
-                    addText = ""
-                    addFocused = false
-                    addVisible = false
-                    store.inlineAddActive = false
-                    store.ensureCursor()
-                }
+            } else {
+                Text("+").foregroundColor(Theme.green)
+                TextField("", text: $addText,
+                          prompt: Text("新增任務…  due:fri  +List  @Tag").foregroundColor(Theme.dim.opacity(0.35)))
+                    .textFieldStyle(.plain).font(store.taskFont).foregroundColor(Theme.fg)
+                    .focused($addFocused)
+                    .onSubmit { submitInlineAdd() }
+                    .onExitCommand { closeInlineAdd() }
+            }
         }
         .font(Theme.mono)
         .padding(.leading, 16)
@@ -140,6 +142,21 @@ struct ListView: View {
         .background(Theme.cursorBg)                                      // 游標移到新增列:同選取樣式
         .overlay(alignment: .leading) { Rectangle().fill(Theme.dim).frame(width: 3) }
         .onAppear { addFocused = true }
+    }
+
+    private func submitInlineAdd() {
+        let task = addText.trimmingCharacters(in: .whitespaces)
+        if !task.isEmpty { store.addFromCapture(task) }
+        addText = ""
+        addFocused = true
+    }
+
+    private func closeInlineAdd() {
+        addText = ""
+        addFocused = false
+        addVisible = false
+        store.inlineAddActive = false
+        store.ensureCursor()
     }
 
     private func focusBar(_ t: TaskLine) -> some View {
@@ -185,12 +202,12 @@ struct ListView: View {
         }
     }
 
-    private func sectionHeader(_ title: String, _ count: Int, color: Color) -> some View {
+    private func sectionHeader(_ title: String, _ count: Int, color: Color, neutral: Bool = false) -> some View {
         HStack(spacing: 8) {
             Text(title).foregroundColor(color)
             Text("\(count)").foregroundColor(color)   // 計數與標題同色
             // 灰組維持既有邊框線,彩色組用同色低透明度 — 標題與線條成一組分類訊號
-            Rectangle().fill(color == Theme.dim ? Theme.border : color.opacity(0.35)).frame(height: 1)
+            Rectangle().fill(neutral ? Theme.border : color.opacity(0.35)).frame(height: 1)
         }
         .font(Theme.monoSmall).tracking(1)
         .padding(.horizontal, 16).padding(.top, store.density.sectionTop).padding(.bottom, 6)
