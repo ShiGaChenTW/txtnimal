@@ -146,6 +146,7 @@ final class TaskStore: ObservableObject {
         return UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
     }()
     @Published private(set) var installedPluginPackages: [InstalledPluginPackage] = []
+    @Published private(set) var pluginExecutionRecords: [PluginExecutionRecord] = []
     func completeOnboarding() {
         hasCompletedOnboarding = true
         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
@@ -278,6 +279,7 @@ final class TaskStore: ObservableObject {
     private(set) var archiveURL: URL
     private var documentStore: FileSystemTaskDocumentStore
     private var pluginPackageStore: PluginPackageStore?
+    private var pluginExecutionLogStore: PluginExecutionLogStore?
     private var generation: UInt64 = 0
 
     static let defaultDataDir = FileManager.default.homeDirectoryForCurrentUser
@@ -331,7 +333,9 @@ final class TaskStore: ObservableObject {
         do { documentStore = try FileSystemTaskDocumentStore(directory: dir, tasksFilename: selectedFile.lastPathComponent) }
         catch { fatalError("Cannot initialize task document store: \(error)") }
         pluginPackageStore = try? PluginPackageStore(directory: dir.appendingPathComponent(".plugins", isDirectory: true))
+        pluginExecutionLogStore = try? PluginExecutionLogStore(directory: dir.appendingPathComponent(".plugins", isDirectory: true))
         refreshInstalledPlugins()
+        refreshPluginExecutionRecords()
         bootstrapIfMissing()
         load()
         archiveOldDone()
@@ -345,6 +349,15 @@ final class TaskStore: ObservableObject {
 
     func refreshInstalledPlugins() {
         installedPluginPackages = (try? pluginPackageStore?.list()) ?? []
+    }
+
+    func refreshPluginExecutionRecords() {
+        pluginExecutionRecords = (try? pluginExecutionLogStore?.load()) ?? []
+    }
+
+    func clearPluginExecutionRecords() {
+        do { try pluginExecutionLogStore?.clear(); refreshPluginExecutionRecords() }
+        catch { report(error) }
     }
 
     func removeInstalledPlugin(_ package: InstalledPluginPackage) {

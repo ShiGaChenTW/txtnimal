@@ -306,6 +306,21 @@ struct SettingsView: View {
             }
             Button("重新掃描已安裝插件") { store.refreshInstalledPlugins() }
             Button("安裝插件 package…") { installPluginPackage() }
+            HStack {
+                Text("執行紀錄").foregroundColor(Theme.dim)
+                Spacer()
+                Button("重新整理") { store.refreshPluginExecutionRecords() }
+                Button("清除") { store.clearPluginExecutionRecords() }.buttonStyle(.plain)
+            }
+            ForEach(store.pluginExecutionRecords.suffix(10), id: \.timestamp) { record in
+                HStack(alignment: .top, spacing: 8) {
+                    Text(record.succeeded ? "✓" : "×").foregroundColor(record.succeeded ? Theme.green : Theme.red)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(record.pluginID) · \(record.command)").font(Theme.monoSmall)
+                        if let error = record.error { Text(error).font(Theme.monoSmall).foregroundColor(Theme.red) }
+                    }
+                }
+            }
             }
             .font(Theme.mono)
             .padding(.horizontal, 28).padding(.vertical, 24).frame(maxWidth: 600, alignment: .leading)
