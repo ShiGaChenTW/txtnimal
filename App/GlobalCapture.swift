@@ -32,6 +32,7 @@ private final class KeyablePanel: NSPanel {
 final class SidebarController {
     static let shared = SidebarController()
     private var panel: KeyablePanel?
+    private var slider: NSView?           // 視窗內會滑動的內容容器(被視窗邊界裁切)
     private var handle: NSPanel?
     private weak var store: TaskStore?
     /// 側邊寬度須 ≥ ContentView 的 minWidth(660),否則內容被裁。
@@ -76,7 +77,8 @@ final class SidebarController {
         self.store = store
         guard store.windowMode == .sidebar else { return }
         if panel?.isVisible == true {
-            animate(to: frames().on, animated: true)
+            panel?.setFrame(onFrame(), display: true, animate: true)  // 同螢幕重定位,不跨螢幕
+            slider?.setFrameOrigin(.zero)
         } else {
             positionHandle()
         }
@@ -85,89 +87,96 @@ final class SidebarController {
     @discardableResult
     private func ensurePanel() -> KeyablePanel {
         if let panel { return panel }
-        let (on, _) = frames()
-        let p = KeyablePanel(contentRect: on,
+        let p = KeyablePanel(contentRect: onFrame(),
                              styleMask: [.borderless, .nonactivatingPanel],
                              backing: .buffered, defer: false)
         p.isFloatingPanel = true
         p.level = .floating
         p.hidesOnDeactivate = false
         p.backgroundColor = .clear
-        p.hasShadow = true
-        p.animationBehavior = .none   // 關掉系統預設視窗動畫,改用自訂 easeOut
+        p.hasShadow = false           // 視窗固定不動、內容在內部滑動,關陰影避免出現靜止外框
+        p.animationBehavior = .none
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         p.isOpaque = false            // 讓 behind-window 毛玻璃透得出去
-        if let store, let container = p.contentView {
+        if let store, let clip = p.contentView {
+            clip.wantsLayer = true
+            clip.layer?.masksToBounds = true   // 關鍵:內容滑出視窗邊界即被裁切,絕不溢到隔壁螢幕
+            let slider = NSView(frame: clip.bounds)
+            slider.autoresizingMask = [.width, .height]
+            slider.wantsLayer = true
             // 毛玻璃背板:模糊面板後方(桌面/其他 app),文字層鋪在上面維持清楚。
-            let fx = NSVisualEffectView(frame: container.bounds)
+            let fx = NSVisualEffectView(frame: slider.bounds)
             fx.autoresizingMask = [.width, .height]
             fx.material = .hudWindow
             fx.blendingMode = .behindWindow
             fx.state = .active
-            container.addSubview(fx)
+            slider.addSubview(fx)
             let host = NSHostingView(rootView:
                 ContentView().environmentObject(store).environment(\.isSidebarPanel, true))
-            host.frame = container.bounds
+            host.frame = slider.bounds
             host.autoresizingMask = [.width, .height]
-            container.addSubview(host)
+            slider.addSubview(host)
+            clip.addSubview(slider)
+            self.slider = slider
         }
         panel = p
         return p
     }
 
-    /// 依鎖定螢幕與目前邊緣算出「就位(on)/藏起(off)」兩個 frame。
-    /// 同尺寸、只差位移 → 滑動時內容不重排。座標一律相對 activeScreen,雙螢幕才不會飛。
-    private func frames() -> (on: NSRect, off: NSRect) {
+    /// 面板「就位」時的視窗 frame:相對鎖定螢幕,貼在目標邊。視窗只會擺在這裡,不做滑動。
+    private func onFrame() -> NSRect {
         let vf = (activeScreen ?? currentScreen()).visibleFrame
         switch store?.sidebarEdge ?? .right {
-        case .right:
-            let w = min(sideWidth, vf.width)
-            let on = NSRect(x: vf.maxX - w, y: vf.minY, width: w, height: vf.height)
-            return (on, on.offsetBy(dx: w, dy: 0))
-        case .left:
-            let w = min(sideWidth, vf.width)
-            let on = NSRect(x: vf.minX, y: vf.minY, width: w, height: vf.height)
-            return (on, on.offsetBy(dx: -w, dy: 0))
-        case .top:
-            let h = max(600, vf.height * 0.55)   // ≥ ContentView minHeight
-            let on = NSRect(x: vf.minX, y: vf.maxY - h, width: vf.width, height: h)
-            return (on, on.offsetBy(dx: 0, dy: h))   // 往上推出畫面 → 下滑進場
+        case .right: let w = min(sideWidth, vf.width); return NSRect(x: vf.maxX - w, y: vf.minY, width: w, height: vf.height)
+        case .left:  let w = min(sideWidth, vf.width); return NSRect(x: vf.minX, y: vf.minY, width: w, height: vf.height)
+        case .top:   let h = max(600, vf.height * 0.55); return NSRect(x: vf.minX, y: vf.maxY - h, width: vf.width, height: h)
+        }
+    }
+
+    /// 內容「藏起」時在視窗內的位移(推出視窗邊界外,被 clip 裁掉)。
+    private func hiddenOrigin(_ f: NSRect) -> CGPoint {
+        switch store?.sidebarEdge ?? .right {
+        case .right: return CGPoint(x: f.width, y: 0)     // 往右推出
+        case .left:  return CGPoint(x: -f.width, y: 0)    // 往左推出
+        case .top:   return CGPoint(x: 0, y: f.height)    // 往上推出 → 下滑進場
         }
     }
 
     private func reveal(animated: Bool) {
         let p = ensurePanel()
-        if !p.isVisible { activeScreen = currentScreen() }   // reveal 當下鎖定螢幕
+        let firstShow = !p.isVisible
+        if firstShow { activeScreen = currentScreen() }    // reveal 當下鎖定螢幕
         hideHandle()
-        let (on, off) = frames()
-        if !p.isVisible {
-            p.setFrame(off, display: true)
+        let on = onFrame()
+        p.setFrame(on, display: true)                       // 視窗固定在正確螢幕,永不跨螢幕
+        guard let slider else { p.makeKeyAndOrderFront(nil); return }
+        if firstShow {
+            slider.setFrameOrigin(hiddenOrigin(on))         // 內容先藏在視窗外
             p.makeKeyAndOrderFront(nil)
             if animated {
-                // 讓 off 起始位置先被 window server 提交,下一拍再滑進 → 才有進場動畫。
-                DispatchQueue.main.async { [weak self] in self?.animate(to: on, animated: true) }
+                DispatchQueue.main.async { [weak self] in self?.animateSlider(to: .zero, animated: true) }
                 return
             }
         }
-        animate(to: on, animated: animated)
+        animateSlider(to: .zero, animated: animated)
     }
 
     private func hide(animated: Bool, orderOut: Bool) {
         guard let p = panel, p.isVisible else { return }
-        let (_, off) = frames()
-        animate(to: off, animated: animated) { [weak self] in
+        animateSlider(to: hiddenOrigin(p.frame), animated: animated) { [weak self] in
             if orderOut { p.orderOut(nil) }
             if self?.store?.windowMode == .sidebar { self?.showHandle() }
         }
     }
 
-    /// 平滑滑動：NSAnimationContext + easeOut,比 setFrame(display:animate:) 順。
-    private func animate(to frame: NSRect, animated: Bool, then: (() -> Void)? = nil) {
-        guard animated, let p = panel else { panel?.setFrame(frame, display: true); then?(); return }
+    /// 只滑「視窗內的內容容器」,視窗本身不動 → 動畫再快也不會跨進另一個螢幕。
+    private func animateSlider(to origin: CGPoint, animated: Bool, then: (() -> Void)? = nil) {
+        guard let slider else { then?(); return }
+        guard animated else { slider.setFrameOrigin(origin); then?(); return }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.22
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            p.animator().setFrame(frame, display: true)
+            slider.animator().setFrameOrigin(origin)
         }, completionHandler: then)
     }
 
