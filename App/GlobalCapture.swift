@@ -33,10 +33,11 @@ final class SidebarController {
     static let shared = SidebarController()
     private var panel: KeyablePanel?
     private var slider: NSView?           // 視窗內會滑動的內容容器(被視窗邊界裁切)
+    private var resizeHandle: EdgeResizeHandle?  // 內緣拖曳把手,調整側邊寬度
     private var handle: NSPanel?
     private weak var store: TaskStore?
-    /// 側邊寬度須 ≥ ContentView 的 minWidth(660),否則內容被裁。
-    private let sideWidth: CGFloat = 700
+    /// 側邊寬度下限須 ≥ ContentView 的 minWidth(660),否則內容被裁。
+    private let minSideWidth: Double = 660
     /// reveal 當下鎖定的螢幕;收回前都用它,避免焦點切螢幕導致座標飛掉(雙螢幕 bug)。
     private var activeScreen: NSScreen?
 
@@ -79,6 +80,7 @@ final class SidebarController {
         if panel?.isVisible == true {
             panel?.setFrame(onFrame(), display: true, animate: true)  // 同螢幕重定位,不跨螢幕
             slider?.setFrameOrigin(.zero)
+            layoutResizeHandle()
         } else {
             positionHandle()
         }
@@ -116,19 +118,36 @@ final class SidebarController {
             host.frame = slider.bounds
             host.autoresizingMask = [.width, .height]
             slider.addSubview(host)
+            // 內緣拖曳把手(疊在最上層才收得到滑鼠):拖曳 → 依滑鼠絕對座標算新寬度。
+            let rh = EdgeResizeHandle()
+            rh.onDragTo = { [weak self] mouse in
+                guard let self else { return }
+                let vf = (self.activeScreen ?? self.currentScreen()).visibleFrame
+                let raw: Double = (self.store?.sidebarEdge == .left)
+                    ? Double(mouse.x - vf.minX) : Double(vf.maxX - mouse.x)
+                self.store?.sidebarWidth = min(max(raw, self.minSideWidth), Double(vf.width))
+            }
+            slider.addSubview(rh)
+            self.resizeHandle = rh
             clip.addSubview(slider)
             self.slider = slider
+            layoutResizeHandle()
         }
         panel = p
         return p
+    }
+
+    /// 使用者設定的側邊寬度,夾在 [minSideWidth, 螢幕寬] 之間。
+    private func spanWidth(_ vf: NSRect) -> CGFloat {
+        CGFloat(min(max(store?.sidebarWidth ?? 700, minSideWidth), Double(vf.width)))
     }
 
     /// 面板「就位」時的視窗 frame:相對鎖定螢幕,貼在目標邊。視窗只會擺在這裡,不做滑動。
     private func onFrame() -> NSRect {
         let vf = (activeScreen ?? currentScreen()).visibleFrame
         switch store?.sidebarEdge ?? .right {
-        case .right: let w = min(sideWidth, vf.width); return NSRect(x: vf.maxX - w, y: vf.minY, width: w, height: vf.height)
-        case .left:  let w = min(sideWidth, vf.width); return NSRect(x: vf.minX, y: vf.minY, width: w, height: vf.height)
+        case .right: let w = spanWidth(vf); return NSRect(x: vf.maxX - w, y: vf.minY, width: w, height: vf.height)
+        case .left:  let w = spanWidth(vf); return NSRect(x: vf.minX, y: vf.minY, width: w, height: vf.height)
         case .top:   let h = max(600, vf.height * 0.55); return NSRect(x: vf.minX, y: vf.maxY - h, width: vf.width, height: h)
         }
     }
@@ -149,35 +168,64 @@ final class SidebarController {
         hideHandle()
         let on = onFrame()
         p.setFrame(on, display: true)                       // 視窗固定在正確螢幕,永不跨螢幕
+        layoutResizeHandle()
         guard let slider else { p.makeKeyAndOrderFront(nil); return }
         if firstShow {
             slider.setFrameOrigin(hiddenOrigin(on))         // 內容先藏在視窗外
+            slider.alphaValue = 0
             p.makeKeyAndOrderFront(nil)
             if animated {
-                DispatchQueue.main.async { [weak self] in self?.animateSlider(to: .zero, animated: true) }
+                DispatchQueue.main.async { [weak self] in self?.animateSlider(to: .zero, alpha: 1, animated: true) }
                 return
             }
         }
-        animateSlider(to: .zero, animated: animated)
+        animateSlider(to: .zero, alpha: 1, animated: animated)
     }
 
     private func hide(animated: Bool, orderOut: Bool) {
         guard let p = panel, p.isVisible else { return }
-        animateSlider(to: hiddenOrigin(p.frame), animated: animated) { [weak self] in
+        animateSlider(to: hiddenOrigin(p.frame), alpha: 0, animated: animated) { [weak self] in
             if orderOut { p.orderOut(nil) }
+            self?.slider?.alphaValue = 1                     // 復位,供下次 reveal
             if self?.store?.windowMode == .sidebar { self?.showHandle() }
         }
     }
 
-    /// 只滑「視窗內的內容容器」,視窗本身不動 → 動畫再快也不會跨進另一個螢幕。
-    private func animateSlider(to origin: CGPoint, animated: Bool, then: (() -> Void)? = nil) {
+    /// 拖曳把手改了寬度:即時把視窗調整到新尺寸(拖曳中不加動畫)。
+    func resize() {
+        guard store?.windowMode == .sidebar else { return }
+        if panel?.isVisible == true {
+            panel?.setFrame(onFrame(), display: true)
+            slider?.setFrameOrigin(.zero)
+            layoutResizeHandle()
+        } else {
+            positionHandle()
+        }
+    }
+
+    /// 只滑「視窗內的內容容器」+ 淡入淡出。視窗本身不動 → 動畫再快也不會跨進另一個螢幕。
+    /// expo-out 曲線:起步快、尾段柔和收尾,比 easeOut 更有記憶點。
+    private func animateSlider(to origin: CGPoint, alpha: CGFloat, animated: Bool, then: (() -> Void)? = nil) {
         guard let slider else { then?(); return }
-        guard animated else { slider.setFrameOrigin(origin); then?(); return }
+        guard animated else { slider.setFrameOrigin(origin); slider.alphaValue = alpha; then?(); return }
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.22
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            ctx.duration = 0.30
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
             slider.animator().setFrameOrigin(origin)
+            slider.animator().alphaValue = alpha
         }, completionHandler: then)
+    }
+
+    /// 把內緣拖曳把手擺到目前邊緣的內側(頂部模式本版不提供寬度調整)。
+    private func layoutResizeHandle() {
+        guard let slider, let h = resizeHandle else { return }
+        let b = slider.bounds, t: CGFloat = 8
+        switch store?.sidebarEdge ?? .right {
+        case .right: h.isHidden = false; h.frame = NSRect(x: 0, y: 0, width: t, height: b.height); h.autoresizingMask = [.height]
+        case .left:  h.isHidden = false; h.frame = NSRect(x: b.width - t, y: 0, width: t, height: b.height); h.autoresizingMask = [.height, .minXMargin]
+        case .top:   h.isHidden = true
+        }
+        h.window?.invalidateCursorRects(for: h)
     }
 
     /// 找出 WindowGroup 主視窗（非 panel 的標準視窗）並顯示/隱藏。
@@ -242,6 +290,15 @@ final class SidebarController {
         handle = p
         return p
     }
+}
+
+/// 側邊面板內緣的拖曳把手:拖動時回報滑鼠絕對座標,由 controller 換算成新寬度。
+/// 用 NSEvent.mouseLocation(螢幕絕對座標)→ 視窗即時重繪也不會抖。
+private final class EdgeResizeHandle: NSView {
+    var onDragTo: ((NSPoint) -> Void)?
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeLeftRight) }
+    override func mouseDown(with event: NSEvent) {}                 // 接管,避免拖到底層
+    override func mouseDragged(with event: NSEvent) { onDragTo?(NSEvent.mouseLocation) }
 }
 
 /// 貼邊的小指示條:平時半透明,滑鼠移上去變亮並加寬提示,點一下把面板滑出。

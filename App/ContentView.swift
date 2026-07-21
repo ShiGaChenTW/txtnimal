@@ -35,6 +35,7 @@ struct ContentView: View {
             }
             if store.focusMode { focusOverlay }   // 技法 B：純變暗
             if showingPalette { paletteOverlay }  // ⌘K:條件掛載,不常駐樹中(焦點教訓)
+            if isSidebarPanel { sidebarInnerEdge }  // 內緣外框 + 柔和陰影
         }
         .frame(minWidth: 660, minHeight: 580)
         .background(WindowAccessor { hostWindow = $0 })
@@ -750,6 +751,24 @@ struct ContentView: View {
 
     private func animatedDone() {
         withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { store.toggleDone() }
+    }
+
+    /// 側邊面板內緣(朝螢幕中央那側)的外框線 + 柔和陰影,給浮出的面板立體邊界。
+    @ViewBuilder private var sidebarInnerEdge: some View {
+        let edge = store.sidebarEdge
+        let horizontal = edge == .top          // top 模式外框在底邊(水平線)
+        let align: Alignment = edge == .right ? .leading : (edge == .left ? .trailing : .bottom)
+        ZStack(alignment: align) {
+            Color.clear
+            LinearGradient(colors: [Color.black.opacity(0.28), .clear],
+                           startPoint: edge == .right ? .leading : (edge == .left ? .trailing : .bottom),
+                           endPoint:   edge == .right ? .trailing : (edge == .left ? .leading : .top))
+                .frame(width: horizontal ? nil : 16, height: horizontal ? 16 : nil)
+            Rectangle().fill(Theme.dim.opacity(0.55))
+                .frame(width: horizontal ? nil : 1, height: horizontal ? 1 : nil)
+        }
+        .allowsHitTesting(false)
+        .ignoresSafeArea()
     }
 
     private func installMonitor() {

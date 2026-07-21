@@ -206,6 +206,15 @@ final class TaskStore: ObservableObject {
     }() {
         didSet { UserDefaults.standard.set(sidebarOpacity, forKey: "sidebarOpacity") }
     }
+    /// 側邊面板可變邊長(側邊=寬,頂部=高),由內緣把手拖曳調整。下限吃 ContentView 的 minWidth。
+    @Published var sidebarWidth: Double = {
+        (UserDefaults.standard.object(forKey: "sidebarWidth") as? Double) ?? 700
+    }() {
+        didSet {
+            UserDefaults.standard.set(sidebarWidth, forKey: "sidebarWidth")
+            SidebarController.shared.resize()
+        }
+    }
     // 0 系統 / 1 深色 / 2 淺色
     @Published var appearanceMode: Int = UserDefaults.standard.integer(forKey: "appearance") {
         didSet { UserDefaults.standard.set(appearanceMode, forKey: "appearance"); applyAppearance() }
