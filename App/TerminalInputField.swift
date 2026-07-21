@@ -11,7 +11,7 @@ struct TerminalInputField: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView()
+        let scroll = TerminalInputScrollView()
         scroll.drawsBackground = false
         scroll.borderType = .noBorder
         scroll.hasVerticalScroller = false
@@ -31,6 +31,8 @@ struct TerminalInputField: NSViewRepresentable {
         input.isHorizontallyResizable = true
         input.isVerticallyResizable = false
         input.autoresizingMask = [.width]
+        input.minSize = NSSize(width: 0, height: 20)
+        input.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: 20)
         input.string = text
         input.setAccessibilityLabel("Terminal task input")
         scroll.documentView = input
@@ -40,6 +42,7 @@ struct TerminalInputField: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let input = scroll.documentView as? BlockCursorTextView else { return }
+        context.coordinator.parent = self
         input.onSubmit = onSubmit
         input.onCancel = onCancel
         input.font = NSFont.monospacedSystemFont(ofSize: 13.5, weight: .regular)
@@ -64,6 +67,14 @@ struct TerminalInputField: NSViewRepresentable {
             guard let input = notification.object as? NSTextView else { return }
             parent.text = input.string.replacingOccurrences(of: "\n", with: "")
         }
+    }
+}
+
+private final class TerminalInputScrollView: NSScrollView {
+    override func layout() {
+        super.layout()
+        guard let documentView else { return }
+        documentView.frame = NSRect(origin: .zero, size: contentSize)
     }
 }
 
