@@ -8,6 +8,9 @@ private func applyResourceLimits() {
     // Keep accidental runaway output bounded independently of Broker framing.
     var fileSize = rlimit(rlim_cur: 512 * 1024, rlim_max: 512 * 1024)
     _ = setrlimit(RLIMIT_FSIZE, &fileSize)
+    // Prevent unbounded heap/data growth; the Broker remains the final watchdog.
+    var dataSize = rlimit(rlim_cur: 256 * 1024 * 1024, rlim_max: 256 * 1024 * 1024)
+    _ = setrlimit(RLIMIT_DATA, &dataSize)
 }
 
 applyResourceLimits()
