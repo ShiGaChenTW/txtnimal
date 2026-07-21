@@ -114,13 +114,15 @@ struct ListView: View {
     }
 
     private var addRow: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Theme.isTerminal ? 0 : 10) {
             if Theme.isTerminal {
-                Text("❯").foregroundColor(Theme.fg).fontWeight(.bold)
+                Text("❯ ")
+                    .foregroundColor(Theme.green)
+                    .fontWeight(.bold)
                 ZStack(alignment: .leading) {
                     if addText.isEmpty {
-                        Text("輸入任務…  due:fri  +List  @Tag")
-                            .foregroundColor(Theme.dim.opacity(0.45))
+                        Text("輸入任務指令  due:fri  +List  @Tag")
+                            .foregroundColor(Theme.dim.opacity(0.62))
                     }
                     TerminalInputField(text: $addText, onSubmit: submitInlineAdd, onCancel: closeInlineAdd)
                         .frame(height: 20)
@@ -136,11 +138,18 @@ struct ListView: View {
             }
         }
         .font(Theme.mono)
-        .padding(.leading, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16).padding(.vertical, store.density.rowPad)
-        .background(Theme.cursorBg)                                      // 游標移到新增列:同選取樣式
-        .overlay(alignment: .leading) { Rectangle().fill(Theme.dim).frame(width: 3) }
+        .background(Theme.isTerminal ? Theme.bg : Theme.cursorBg)
+        .overlay(alignment: .leading) {
+            if !Theme.isTerminal { Rectangle().fill(Theme.dim).frame(width: 3) }
+        }
+        .overlay(alignment: .top) {
+            if Theme.isTerminal { Rectangle().fill(Theme.border).frame(height: 1) }
+        }
+        .overlay(alignment: .bottom) {
+            if Theme.isTerminal { Rectangle().fill(Theme.border.opacity(0.55)).frame(height: 1) }
+        }
         .onAppear { addFocused = true }
     }
 

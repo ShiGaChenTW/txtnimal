@@ -258,13 +258,18 @@ struct ContentView: View {
 
     @FocusState private var captureFocused: Bool
     private var captureBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.isTerminal ? 0 : 8) {
             if Theme.isTerminal {
-                Text(store.fileURL.lastPathComponent).font(Theme.monoSmall).foregroundColor(Theme.dim)
-                Text("❯").foregroundColor(Theme.fg).fontWeight(.bold)
+                Text("\(store.fileURL.lastPathComponent) ")
+                    .font(Theme.monoSmall)
+                    .foregroundColor(Theme.dim)
+                Text("❯ ")
+                    .foregroundColor(Theme.green)
+                    .fontWeight(.bold)
                 ZStack(alignment: .leading) {
                     if captureText.isEmpty {
-                        Text("輸入任務…  due:fri  +List  @Tag").foregroundColor(Theme.dim.opacity(0.45))
+                        Text("輸入任務指令  due:fri  +List  @Tag")
+                            .foregroundColor(Theme.dim.opacity(0.62))
                     }
                     TerminalInputField(text: $captureText, onSubmit: commitCapture, onCancel: closeCapture)
                         .frame(height: 20)
@@ -285,13 +290,17 @@ struct ContentView: View {
                         .onExitCommand { closeCapture() }
                 }
             }
-            Text("⏎ 新增 · esc 取消").font(Theme.monoSmall).foregroundColor(Theme.dim)
+            if !Theme.isTerminal {
+                Text("⏎ 新增 · esc 取消").font(Theme.monoSmall).foregroundColor(Theme.dim)
+            }
         }
         .font(Theme.mono)
         .frame(minHeight: 40)                              // 與 statusBar 同高,互換零跳動
         .padding(.horizontal, 16)
-        .background(Theme.panel)
-        .overlay(Rectangle().fill(Theme.green).frame(width: 3), alignment: .leading)
+        .background(Theme.isTerminal ? Theme.bg : Theme.panel)
+        .overlay(alignment: .leading) {
+            if !Theme.isTerminal { Rectangle().fill(Theme.green).frame(width: 3) }
+        }
     }
     /// 逐 token 上色,以空格切分後原樣重組 — 與 TextField 內容位元組級一致才能對齊
     private func colorized(_ s: String) -> Text {
