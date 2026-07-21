@@ -73,6 +73,7 @@ final class SidebarController {
         p.hasShadow = true
         p.animationBehavior = .none   // 關掉系統預設視窗動畫,改用自訂 easeOut
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        p.alphaValue = CGFloat(store?.sidebarOpacity ?? 1.0)
         if let store {
             let host = NSHostingView(rootView: ContentView().environmentObject(store))
             host.frame = p.contentView?.bounds ?? .zero
@@ -81,6 +82,12 @@ final class SidebarController {
         }
         panel = p
         return p
+    }
+
+    /// ponytail: 用 window alphaValue 做整體透明(文字也會一起淡)。若要「背景透明、
+    /// 文字不透明」的毛玻璃效果,改成 NSVisualEffectView 背板 + Theme.bg 透明變體。
+    func applyOpacity(_ value: Double) {
+        panel?.alphaValue = CGFloat(value)
     }
 
     /// 依目前邊緣算出「就位(on)/藏起(off)」兩個 frame。同尺寸、只差位移 → 滑動時內容不重排。
@@ -106,8 +113,13 @@ final class SidebarController {
         let p = ensurePanel()
         let (on, off) = frames()
         if !p.isVisible {
-            p.setFrame(off, display: false)
+            p.setFrame(off, display: true)
             p.makeKeyAndOrderFront(nil)
+            if animated {
+                // 讓 off 起始位置先被 window server 提交,下一拍再滑進 → 才有進場動畫。
+                DispatchQueue.main.async { [weak self] in self?.animate(to: on, animated: true) }
+                return
+            }
         }
         animate(to: on, animated: animated)
     }
@@ -334,6 +346,14 @@ struct SettingsView: View {
             HStack(spacing: 8) {
                 Text("滑出熱鍵").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
                 KeyboardShortcuts.Recorder("", name: .toggleSidebar)
+            }
+            HStack(spacing: 8) {
+                Text("背景透明").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Slider(value: $store.sidebarOpacity, in: 0.3...1.0)
+                    .frame(width: 150)
+                    .disabled(store.windowMode != .sidebar)
+                Text("\(Int(store.sidebarOpacity * 100))%").foregroundColor(Theme.dim)
+                    .font(Theme.monoSmall).frame(width: 40, alignment: .leading)
             }
             hint("側邊模式：面板貼邊常駐，按熱鍵滑出/收回;「頂部下拉」為 Ghostty 式滿寬下拉")
 

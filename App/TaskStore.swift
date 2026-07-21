@@ -199,6 +199,15 @@ final class TaskStore: ObservableObject {
             SidebarController.shared.edgeChanged(store: self)
         }
     }
+    /// 側邊面板透明度(0.3~1.0)。只作用於滑出面板,不影響一般視窗。
+    @Published var sidebarOpacity: Double = {
+        (UserDefaults.standard.object(forKey: "sidebarOpacity") as? Double) ?? 1.0
+    }() {
+        didSet {
+            UserDefaults.standard.set(sidebarOpacity, forKey: "sidebarOpacity")
+            SidebarController.shared.applyOpacity(sidebarOpacity)
+        }
+    }
     // 0 系統 / 1 深色 / 2 淺色
     @Published var appearanceMode: Int = UserDefaults.standard.integer(forKey: "appearance") {
         didSet { UserDefaults.standard.set(appearanceMode, forKey: "appearance"); applyAppearance() }
