@@ -4,6 +4,13 @@ import TasksTxtCore
 
 enum AppView { case list, grid, pad, dash, settings }
 
+struct InstalledPlugin: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let version: String
+    let capabilities: [String]
+}
+
 enum Density: Int, CaseIterable, Hashable {
     case compact = 0, normal = 1, spacious = 2
     var rowPad: CGFloat { [CGFloat(3), 6, 11][rawValue] }       // 每列上下內距
@@ -96,6 +103,20 @@ enum ChineseFontChoice: String, CaseIterable, Hashable {
 /// 全部狀態的家：檔案內容 + UI 狀態（游標 / 視圖 / Focus 模式）。
 /// v1 每次變更即存檔;FSEvents 外部監看為 v2。
 final class TaskStore: ObservableObject {
+    static let bundledPlugins: [InstalledPlugin] = [
+        InstalledPlugin(id: "app.txtnimal.reschedule-tomorrow", name: "Reschedule Tomorrow", version: "1.0.0", capabilities: ["tasks.update"]),
+        InstalledPlugin(id: "app.txtnimal.weekly-review", name: "Weekly Review", version: "1.0.0", capabilities: ["tasks.all.read", "ui.page"])
+    ]
+    @Published var enabledPluginIDs: Set<String> = {
+        Set(UserDefaults.standard.stringArray(forKey: "enabledPluginIDs") ?? bundledPlugins.map(\.id))
+    }() {
+        didSet { UserDefaults.standard.set(Array(enabledPluginIDs), forKey: "enabledPluginIDs") }
+    }
+
+    func isPluginEnabled(_ plugin: InstalledPlugin) -> Bool { enabledPluginIDs.contains(plugin.id) }
+    func setPluginEnabled(_ plugin: InstalledPlugin, _ enabled: Bool) {
+        if enabled { enabledPluginIDs.insert(plugin.id) } else { enabledPluginIDs.remove(plugin.id) }
+    }
     @Published private(set) var lines: [TaskLine] = []
     @Published private(set) var archiveLines: [TaskLine] = []
     @Published var lastError: String?

@@ -281,6 +281,21 @@ struct SettingsView: View {
                 Button("選擇／釘選…") { showingTaskFiles = true }
             }
             hint("開啟其他 .txt 文件，或管理已釘選的常用文件")
+            section("插件")
+            ForEach(TaskStore.bundledPlugins) { plugin in
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(plugin.name).foregroundColor(Theme.fg)
+                        Text("\(plugin.id) · v\(plugin.version)").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                        Text(plugin.capabilities.joined(separator: ", ")).font(Theme.monoSmall).foregroundColor(Theme.dim.opacity(0.75))
+                    }
+                    Spacer()
+                    Toggle("", isOn: Binding(get: { store.isPluginEnabled(plugin) },
+                                             set: { store.setPluginEnabled(plugin, $0) })).labelsHidden()
+                }
+                .padding(.vertical, 4)
+            }
+            hint("插件目前採內建 registry；正式公開插件前仍需簽章與權限驗證")
             }
             .font(Theme.mono)
             .padding(.horizontal, 28).padding(.vertical, 24).frame(maxWidth: 600, alignment: .leading)
