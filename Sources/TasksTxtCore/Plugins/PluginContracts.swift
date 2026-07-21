@@ -63,6 +63,18 @@ public struct PluginTaskSnapshot: Codable, Equatable, Sendable {
     }
 }
 
+public struct PluginDocumentSnapshot: Codable, Equatable, Sendable {
+    public let schemaVersion: Int
+    public let documentRevision: String
+    public let tasks: [PluginTaskSnapshot]
+
+    public init(schemaVersion: Int = 1, documentRevision: String, tasks: [PluginTaskSnapshot]) {
+        self.schemaVersion = schemaVersion
+        self.documentRevision = documentRevision
+        self.tasks = tasks
+    }
+}
+
 public enum PluginHostCommand: String, Codable, Equatable, Sendable {
     case rescheduleTask = "tasks.reschedule"
     case rescheduleOverdue = "tasks.rescheduleOverdue"
@@ -75,11 +87,12 @@ public struct PluginAction: Codable, Equatable, Sendable {
     public let taskIDs: [String]?
     public let due: String?
     public let expectedRevision: String?
+    public let documentRevision: String?
 
     public init(type: Kind, command: String, taskIDs: [String]? = nil, due: String? = nil,
-                expectedRevision: String? = nil) {
+                expectedRevision: String? = nil, documentRevision: String? = nil) {
         self.type = type; self.command = command; self.taskIDs = taskIDs
-        self.due = due; self.expectedRevision = expectedRevision
+        self.due = due; self.expectedRevision = expectedRevision; self.documentRevision = documentRevision
     }
 }
 
@@ -89,4 +102,5 @@ public struct ValidatedPluginIntent: Equatable, Sendable {
     public let taskIDs: [String]
     public let due: String?
     public let expectedRevision: String?
+    public let documentRevision: String?
 }

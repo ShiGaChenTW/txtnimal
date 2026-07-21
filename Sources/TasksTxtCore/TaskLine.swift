@@ -17,7 +17,7 @@ public struct TaskLine: Equatable {
     /// whitespace) reproduces `raw` exactly.
     private struct Segment { var ws: String; var word: String }
 
-    private static let knownKeys: Set<String> = ["due", "q", "focus", "created", "done"]
+    private static let knownKeys: Set<String> = ["due", "q", "focus", "created", "done", "id"]
 
     private func tokenize() -> (segs: [Segment], trailing: String) {
         var segs: [Segment] = []
@@ -69,6 +69,8 @@ public struct TaskLine: Equatable {
     public var isFocused: Bool { value(forKey: "focus") == "true" }
     public var created: String? { value(forKey: "created") }
     public var completedDate: String? { value(forKey: "done") }
+    /// Stable identity persisted as an `id:` metadata token when available.
+    public var stableID: String? { value(forKey: "id") }
 
     public var projects: [String] {
         words.filter { $0.hasPrefix("+") && $0.count > 1 }.map { String($0.dropFirst()) }
@@ -146,6 +148,10 @@ public struct TaskLine: Equatable {
 
     public mutating func setFocus(_ on: Bool) {
         if on { setValue("true", forKey: "focus") } else { removeKey("focus") }
+    }
+
+    public mutating func setStableID(_ id: String?) {
+        if let id, !id.isEmpty { setValue(id, forKey: "id") } else { removeKey("id") }
     }
 
     /// Replace the task's title text while preserving metadata tokens (x, +project,

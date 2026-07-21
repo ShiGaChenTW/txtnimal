@@ -1,16 +1,23 @@
 import Foundation
+import CryptoKit
 
 public struct TaskDocumentSnapshot: Equatable {
     public var lines: [TaskLine]
     public var scratch: String
     public var archiveLines: [TaskLine]
     public var generation: UInt64
+    public var tasksText: String
+    public var documentRevision: String
 
-    public init(lines: [TaskLine], scratch: String = "", archiveLines: [TaskLine] = [], generation: UInt64 = 0) {
+    public init(lines: [TaskLine], scratch: String = "", archiveLines: [TaskLine] = [], generation: UInt64 = 0,
+                tasksText: String? = nil) {
         self.lines = lines
         self.scratch = scratch
         self.archiveLines = archiveLines
         self.generation = generation
+        let text = tasksText ?? TasksDocument.serialize(lines)
+        self.tasksText = text
+        self.documentRevision = DocumentRevision.make(for: text)
     }
 }
 public enum TaskDocumentStoreError: LocalizedError, Equatable {
@@ -66,15 +73,18 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         let archive = try readOptional(archiveURL)
         generation &+= 1
         return TaskDocumentSnapshot(lines: TasksDocument.parse(tasks), scratch: scratch,
-                                    archiveLines: TasksDocument.parse(archive), generation: generation)
+                                    archiveLines: TasksDocument.parse(archive), generation: generation,
+                                    tasksText: tasks)
     }
 
     public func save(lines: [TaskLine], expectedGeneration: UInt64) throws -> TaskDocumentSnapshot {
         try requireGeneration(expectedGeneration)
         try write(TasksDocument.serialize(lines), to: tasksURL)
         generation &+= 1
+        let text = TasksDocument.serialize(lines)
         return TaskDocumentSnapshot(lines: lines, scratch: try readOptional(scratchURL),
-                                    archiveLines: TasksDocument.parse(try readOptional(archiveURL)), generation: generation)
+                                    archiveLines: TasksDocument.parse(try readOptional(archiveURL)), generation: generation,
+                                    tasksText: text)
     }
 
     public func saveScratch(_ text: String) throws { try write(text, to: scratchURL) }
@@ -96,8 +106,10 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
             throw error
         }
         generation &+= 1
+        let text = TasksDocument.serialize(kept)
         return TaskDocumentSnapshot(lines: kept, scratch: try readOptional(scratchURL),
-                                    archiveLines: TasksDocument.parse(archiveText), generation: generation)
+                                    archiveLines: TasksDocument.parse(archiveText), generation: generation,
+                                    tasksText: text)
     }
 
     private func requireGeneration(_ expected: UInt64) throws {
@@ -117,5 +129,12 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
     private func write(_ text: String, to url: URL) throws {
         do { try text.write(to: url, atomically: true, encoding: .utf8) }
         catch { throw TaskDocumentStoreError.writeFailed(url.path) }
+    }
+}
+
+public enum DocumentRevision {
+    public static func make(for text: String) -> String {
+        let digest = SHA256.hash(data: Data(text.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 }

@@ -21,6 +21,7 @@ public enum PluginValidationError: String, Error, Equatable, LocalizedError, Sen
     case invalidEntryPath
     case missingCapability
     case invalidAction
+    case staleDocument
     case invalidPageRoot
     case invalidNode
     case payloadTooLarge
@@ -103,6 +104,11 @@ public enum PluginValidator {
                                 taskRevisions: [String: String]? = nil,
                                 documentRevision: String? = nil,
                                 limits: PluginLimits = .init()) throws -> ValidatedPluginIntent {
+        if let expected = action.documentRevision {
+            guard let current = documentRevision, expected == current else {
+                throw PluginValidationError.staleDocument
+            }
+        }
         guard action.type == .hostCommand, let command = PluginHostCommand(rawValue: action.command) else {
             throw PluginValidationError.invalidAction
         }
@@ -123,7 +129,8 @@ public enum PluginValidator {
                   documentRevision.map({ expected == $0 }) ?? true else { throw PluginValidationError.invalidAction }
         }
         return ValidatedPluginIntent(pluginID: manifest.id, command: command, taskIDs: taskIDs,
-                                     due: action.due, expectedRevision: action.expectedRevision)
+                                     due: action.due, expectedRevision: action.expectedRevision,
+                                     documentRevision: action.documentRevision)
     }
 
     private static func validateNode(_ node: PluginPageNode, depth: Int, isRoot: Bool,
@@ -194,7 +201,7 @@ public enum PluginValidator {
         }
         if node.keys.contains("action"), !(node["action"] is [String: Any]) { throw PluginValidationError.invalidNode }
         if let action = node["action"] as? [String: Any] {
-            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "due", "expectedRevision"])
+            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "due", "expectedRevision", "documentRevision"])
         }
         if node.keys.contains("children"), !(node["children"] is [[String: Any]]) { throw PluginValidationError.invalidNode }
         for child in node["children"] as? [[String: Any]] ?? [] { try validateNodeKeys(child) }
