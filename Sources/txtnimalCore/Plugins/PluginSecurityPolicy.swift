@@ -15,11 +15,13 @@ public struct PluginSecurityPolicy: Equatable, Sendable {
     public let revokedPluginIDs: Set<String>
     public let minimumAPIVersion: Int
     public let requiredSignerTeamID: String?
+    public let trustedPublicKeys: [String: String]
 
-    public init(revokedPluginIDs: Set<String> = [], minimumAPIVersion: Int = 1, requiredSignerTeamID: String? = nil) {
+    public init(revokedPluginIDs: Set<String> = [], minimumAPIVersion: Int = 1, requiredSignerTeamID: String? = nil, trustedPublicKeys: [String: String] = [:]) {
         self.revokedPluginIDs = revokedPluginIDs
         self.minimumAPIVersion = minimumAPIVersion
         self.requiredSignerTeamID = requiredSignerTeamID
+        self.trustedPublicKeys = trustedPublicKeys
     }
 
     public func validate(_ manifest: PluginManifest, signerTeamID: String? = nil) throws {
@@ -36,14 +38,14 @@ public struct PluginSecurityPolicy: Equatable, Sendable {
         }
         let digest = SHA256.hash(data: entryData).map { String(format: "%02x", $0) }.joined()
         guard digest == signature.entrySHA256 else { throw PluginValidationError.invalidEntryPath }
-        if let publicKeyBase64 = signature.publicKeyBase64, let signatureBase64 = signature.signatureBase64 {
-            guard let publicKeyData = Data(base64Encoded: publicKeyBase64),
-                  let signatureData = Data(base64Encoded: signatureBase64),
+        if let signatureBase64 = signature.signatureBase64 {
+            let keyBase64 = requiredSignerTeamID == nil ? signature.publicKeyBase64 : trustedPublicKeys[signature.teamID]
+            guard let keyBase64, let publicKeyData = Data(base64Encoded: keyBase64),
                   let publicKey = try? P256.Signing.PublicKey(rawRepresentation: publicKeyData),
+                  (signature.publicKeyBase64 == nil || signature.publicKeyBase64 == keyBase64),
+                  let signatureData = Data(base64Encoded: signatureBase64),
                   let signed = try? P256.Signing.ECDSASignature(derRepresentation: signatureData),
-                  publicKey.isValidSignature(signed, for: Data(digest.utf8)) else {
-                throw PluginValidationError.invalidIdentifier
-            }
+                  publicKey.isValidSignature(signed, for: Data(digest.utf8)) else { throw PluginValidationError.invalidIdentifier }
         } else if requiredSignerTeamID != nil {
             throw PluginValidationError.invalidIdentifier
         }

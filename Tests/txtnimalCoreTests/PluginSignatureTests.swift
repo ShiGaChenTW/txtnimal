@@ -20,6 +20,10 @@ final class PluginSignatureTests: XCTestCase {
         let value = PluginSignature(teamID: "TEAM", entrySHA256: digest,
                                     publicKeyBase64: key.publicKey.rawRepresentation.base64EncodedString(),
                                     signatureBase64: signature.derRepresentation.base64EncodedString())
-        XCTAssertNoThrow(try PluginSecurityPolicy(requiredSignerTeamID: "TEAM").validateSignature(value, entryData: data))
+        let trusted = PluginSecurityPolicy(requiredSignerTeamID: "TEAM", trustedPublicKeys: ["TEAM": key.publicKey.rawRepresentation.base64EncodedString()])
+        XCTAssertNoThrow(try trusted.validateSignature(value, entryData: data))
+        let attacker = P256.Signing.PrivateKey()
+        let forged = PluginSignature(teamID: "TEAM", entrySHA256: digest, publicKeyBase64: attacker.publicKey.rawRepresentation.base64EncodedString(), signatureBase64: try attacker.signature(for: Data(digest.utf8)).derRepresentation.base64EncodedString())
+        XCTAssertThrowsError(try trusted.validateSignature(forged, entryData: data))
     }
 }
