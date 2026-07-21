@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var showingAddProject = false
     @State private var projectText = ""
     @State private var monitor: Any?
+    @State private var hostWindow: NSWindow?
 
     var body: some View {
         ZStack {
@@ -36,6 +37,7 @@ struct ContentView: View {
             if showingPalette { paletteOverlay }  // ⌘K:條件掛載,不常駐樹中(焦點教訓)
         }
         .frame(minWidth: 660, minHeight: 580)
+        .background(WindowAccessor { hostWindow = $0 })
         .font(Theme.mono).foregroundColor(Theme.fg)
         .environment(\.locale, store.appLanguage.locale)
         .onAppear {
@@ -705,6 +707,9 @@ struct ContentView: View {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in handle(e) }
     }
     private func handle(_ e: NSEvent) -> NSEvent? {
+        // 本地 monitor 是 app 層級的:側邊模式下有兩個 ContentView(主視窗+側邊面板),
+        // 各裝一個。只讓事件目標視窗的那個實例處理,否則另一個會吞掉 capture 的按鍵。
+        if let hw = hostWindow, let ew = e.window, ew !== hw { return e }
         if showingPalette {
             switch e.keyCode {
             case 125: paletteSel = min(paletteSel + 1, max(0, filteredPalette.count - 1)); return nil  // ↓
@@ -827,5 +832,18 @@ private struct FlowLayout: Layout {
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
         }
+    }
+}
+
+/// 回報承載此 View 的 NSWindow(用來把 app 層級鍵盤 monitor 限定在自己的視窗)。
+private struct WindowAccessor: NSViewRepresentable {
+    let onResolve: (NSWindow?) -> Void
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView()
+        DispatchQueue.main.async { onResolve(v.window) }
+        return v
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { onResolve(nsView.window) }
     }
 }

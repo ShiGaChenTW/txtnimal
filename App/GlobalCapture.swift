@@ -32,15 +32,25 @@ private final class KeyablePanel: NSPanel {
 final class SidebarController {
     static let shared = SidebarController()
     private var panel: KeyablePanel?
+    private var handle: NSPanel?
     private weak var store: TaskStore?
     /// 側邊寬度須 ≥ ContentView 的 minWidth(660),否則內容被裁。
     private let sideWidth: CGFloat = 700
+    /// reveal 當下鎖定的螢幕;收回前都用它,避免焦點切螢幕導致座標飛掉(雙螢幕 bug)。
+    private var activeScreen: NSScreen?
 
     func install(store: TaskStore) {
         self.store = store
         KeyboardShortcuts.onKeyUp(for: .toggleSidebar) { [weak self] in self?.toggle() }
         ensurePanel()                 // 預熱：首次滑出不卡頓
         apply(store.windowMode, store: store)
+    }
+
+    /// 滑鼠所在的螢幕優先(使用者正在看的那個);退回 key window 螢幕、再退回 main。
+    private func currentScreen() -> NSScreen {
+        let mouse = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
+            ?? NSApp.keyWindow?.screen ?? NSScreen.main ?? NSScreen.screens.first!
     }
 
     func apply(_ mode: WindowMode, store: TaskStore) {
@@ -51,6 +61,7 @@ final class SidebarController {
             reveal(animated: false)
         case .window:
             hide(animated: false, orderOut: true)
+            hideHandle()
             setMainWindowVisible(true)
         }
     }
@@ -60,12 +71,15 @@ final class SidebarController {
         (panel?.isVisible == true) ? hide(animated: true, orderOut: true) : reveal(animated: true)
     }
 
-    /// 使用者在設定改了邊緣：若正顯示,重新擺位(同尺寸只換幾何,不重繪內容樹)。
+    /// 使用者在設定改了邊緣：面板/指示條都重新擺位(同尺寸只換幾何,不重繪內容樹)。
     func edgeChanged(store: TaskStore) {
         self.store = store
-        guard store.windowMode == .sidebar, panel?.isVisible == true else { return }
-        let (on, _) = frames()
-        animate(to: on, animated: true)
+        guard store.windowMode == .sidebar else { return }
+        if panel?.isVisible == true {
+            animate(to: frames().on, animated: true)
+        } else {
+            positionHandle()
+        }
     }
 
     @discardableResult
@@ -101,9 +115,10 @@ final class SidebarController {
         return p
     }
 
-    /// 依目前邊緣算出「就位(on)/藏起(off)」兩個 frame。同尺寸、只差位移 → 滑動時內容不重排。
+    /// 依鎖定螢幕與目前邊緣算出「就位(on)/藏起(off)」兩個 frame。
+    /// 同尺寸、只差位移 → 滑動時內容不重排。座標一律相對 activeScreen,雙螢幕才不會飛。
     private func frames() -> (on: NSRect, off: NSRect) {
-        let vf = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let vf = (activeScreen ?? currentScreen()).visibleFrame
         switch store?.sidebarEdge ?? .right {
         case .right:
             let w = min(sideWidth, vf.width)
@@ -122,6 +137,8 @@ final class SidebarController {
 
     private func reveal(animated: Bool) {
         let p = ensurePanel()
+        if !p.isVisible { activeScreen = currentScreen() }   // reveal 當下鎖定螢幕
+        hideHandle()
         let (on, off) = frames()
         if !p.isVisible {
             p.setFrame(off, display: true)
@@ -138,7 +155,10 @@ final class SidebarController {
     private func hide(animated: Bool, orderOut: Bool) {
         guard let p = panel, p.isVisible else { return }
         let (_, off) = frames()
-        animate(to: off, animated: animated) { if orderOut { p.orderOut(nil) } }
+        animate(to: off, animated: animated) { [weak self] in
+            if orderOut { p.orderOut(nil) }
+            if self?.store?.windowMode == .sidebar { self?.showHandle() }
+        }
     }
 
     /// 平滑滑動：NSAnimationContext + easeOut,比 setFrame(display:animate:) 順。
@@ -156,6 +176,83 @@ final class SidebarController {
         for w in NSApp.windows where !(w is NSPanel) && w.contentView != nil {
             visible ? w.makeKeyAndOrderFront(nil) : w.orderOut(nil)
         }
+    }
+
+    // MARK: - 貼邊指示條(面板收起時顯示,點一下滑出)
+
+    /// 指示條幾何:貼在鎖定螢幕的目標邊,置中的一小段。
+    private func handleFrame() -> NSRect {
+        let vf = (activeScreen ?? currentScreen()).visibleFrame
+        let t: CGFloat = 6, len: CGFloat = 132
+        switch store?.sidebarEdge ?? .right {
+        case .right: return NSRect(x: vf.maxX - t, y: vf.midY - len / 2, width: t, height: len)
+        case .left:  return NSRect(x: vf.minX,     y: vf.midY - len / 2, width: t, height: len)
+        case .top:   return NSRect(x: vf.midX - len / 2, y: vf.maxY - t, width: len, height: t)
+        }
+    }
+
+    private func showHandle() {
+        if activeScreen == nil { activeScreen = currentScreen() }
+        let h = ensureHandle()
+        positionHandle()
+        h.orderFrontRegardless()
+    }
+
+    private func hideHandle() { handle?.orderOut(nil) }
+
+    private func positionHandle() {
+        guard let h = handle else { return }
+        h.setFrame(handleFrame(), display: true)
+        (h.contentView?.subviews.first as? NSHostingView<SidebarHandleView>)?
+            .rootView = SidebarHandleView(edge: store?.sidebarEdge ?? .right,
+                                          color: store?.accent ?? Theme.focus) { [weak self] in
+                self?.reveal(animated: true)
+            }
+    }
+
+    private func ensureHandle() -> NSPanel {
+        if let handle { return handle }
+        let p = NSPanel(contentRect: handleFrame(),
+                        styleMask: [.borderless, .nonactivatingPanel],
+                        backing: .buffered, defer: false)
+        p.isFloatingPanel = true
+        p.level = .floating
+        p.hidesOnDeactivate = false
+        p.backgroundColor = .clear
+        p.hasShadow = false
+        p.animationBehavior = .none
+        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        p.isOpaque = false
+        let host = NSHostingView(rootView: SidebarHandleView(edge: store?.sidebarEdge ?? .right,
+                                                             color: store?.accent ?? Theme.focus) { [weak self] in
+            self?.reveal(animated: true)
+        })
+        host.frame = p.contentView?.bounds ?? .zero
+        host.autoresizingMask = [.width, .height]
+        p.contentView?.addSubview(host)
+        handle = p
+        return p
+    }
+}
+
+/// 貼邊的小指示條:平時半透明,滑鼠移上去變亮並加寬提示,點一下把面板滑出。
+private struct SidebarHandleView: View {
+    let edge: SidebarEdge
+    var color: Color = Theme.focus
+    let onActivate: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        let horizontal = edge == .top
+        Capsule()
+            .fill(color.opacity(hovering ? 0.95 : 0.5))
+            .frame(width: horizontal ? nil : (hovering ? 5 : 3),
+                   height: horizontal ? (hovering ? 5 : 3) : nil)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
+            .onTapGesture { onActivate() }
+            .help("點一下滑出 tasks.txt")
     }
 }
 
