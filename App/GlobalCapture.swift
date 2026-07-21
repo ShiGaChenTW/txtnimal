@@ -217,10 +217,7 @@ struct SettingsView: View {
                 Text("App 圖示").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
                 Picker("", selection: $store.appIconStyle) {
                     ForEach(AppIconStyle.allCases, id: \.self) { style in
-                        HStack {
-                            Image(nsImage: appIconPreview(style)).resizable().frame(width: 22, height: 22)
-                            Text(LocalizedStringKey(style.label))
-                        }.tag(style)
+                        Text(LocalizedStringKey(style.label)).tag(style)
                     }
                 }.labelsHidden().frame(width: 180)
                 Image(nsImage: appIconPreview(store.appIconStyle))
@@ -315,9 +312,7 @@ struct SettingsView: View {
     }
 
     private func appIconPreview(_ style: AppIconStyle) -> NSImage {
-        guard let url = Bundle.main.url(forResource: style.resourceName, withExtension: "png"),
-              let image = NSImage(contentsOf: url) else { return NSApp.applicationIconImage }
-        return image
+        style.image() ?? AppIconStyle.flatGeometric.image() ?? NSApp.applicationIconImage
     }
 
     private func pickFolder() {

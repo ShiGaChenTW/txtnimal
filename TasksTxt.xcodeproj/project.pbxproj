@@ -12,7 +12,6 @@
 		10502D1FCD23810C1FA0E0D0 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FBA8003D5BEA6A0E95831E /* WelcomeView.swift */; };
 		15BC98BD2ADCEE9CD8406864 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 12E08F2462D08FB91C54D441 /* KeyboardShortcuts */; };
 		190B9A30226CC451E1AE9022 /* TasksTxtCore in Frameworks */ = {isa = PBXBuildFile; productRef = D411136A0660DC97A6F35AC4 /* TasksTxtCore */; };
-		22F2379C6DA0B47DB44BC232 /* txtnimal-icon-flat.png in Resources */ = {isa = PBXBuildFile; fileRef = 49390A1CDC1E734D812F1B55 /* txtnimal-icon-flat.png */; };
 		24D4A271D4F9D44F360E4AAD /* TaskFileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FF919F83B8C5CDD175B7D53 /* TaskFileBrowserView.swift */; };
 		2508B8139B23886CCE7ADA9A /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7DEA97BAE60C0DF04858BCC /* Theme.swift */; };
 		5F3C3DA4493C87566FCBC117 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B86CAF85692F3714DF6DFD5 /* ContentView.swift */; };
@@ -33,7 +32,6 @@
 		303E85BB36C973D970D831F5 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		3B86CAF85692F3714DF6DFD5 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		3FF919F83B8C5CDD175B7D53 /* TaskFileBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskFileBrowserView.swift; sourceTree = "<group>"; };
-		49390A1CDC1E734D812F1B55 /* txtnimal-icon-flat.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "txtnimal-icon-flat.png"; sourceTree = "<group>"; };
 		5FC11CBF0BFCDB869E6770C0 /* txtnimal-icon-glass.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "txtnimal-icon-glass.png"; sourceTree = "<group>"; };
 		6EC1A512925FA0657DCEC472 /* GlobalCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalCapture.swift; sourceTree = "<group>"; };
 		86397E6127F43A004403705D /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
@@ -83,7 +81,6 @@
 			isa = PBXGroup;
 			children = (
 				20C2968F02928F7C2A7104A6 /* txtnimal-icon-crt.png */,
-				49390A1CDC1E734D812F1B55 /* txtnimal-icon-flat.png */,
 				5FC11CBF0BFCDB869E6770C0 /* txtnimal-icon-glass.png */,
 			);
 			path = Resources;
@@ -184,7 +181,6 @@
 				E4782D661B49CB4F22BC4BE7 /* Assets.xcassets in Resources */,
 				C6E50B9DD12851B1E346CFDC /* Localizable.strings in Resources */,
 				E1120B3752C65A947A9A81E0 /* txtnimal-icon-crt.png in Resources */,
-				22F2379C6DA0B47DB44BC232 /* txtnimal-icon-flat.png in Resources */,
 				D015D551450D56BAA28496DA /* txtnimal-icon-glass.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -304,7 +300,9 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
+				COPY_PHASE_STRIP = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -318,6 +316,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = app.taskstxt.TasksTxt;
 				PRODUCT_NAME = txtnimal;
 				SDKROOT = macosx;
+				STRIP_INSTALLED_PRODUCT = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Osize";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;

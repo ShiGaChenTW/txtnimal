@@ -43,3 +43,9 @@ targets:
         CODE_SIGNING_ALLOWED: YES
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
+      configs:
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: "-Osize"
+          DEAD_CODE_STRIPPING: YES
+          STRIP_INSTALLED_PRODUCT: YES
+          COPY_PHASE_STRIP: YES

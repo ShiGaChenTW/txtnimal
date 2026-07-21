@@ -18,6 +18,7 @@ enum DashboardIconStyle: Int, CaseIterable, Hashable {
 
 enum AppIconStyle: String, CaseIterable, Hashable {
     case flatGeometric, macOSGlass, retroCRTPixel
+    private static let imageCache = NSCache<NSString, NSImage>()
 
     var label: String {
         switch self {
@@ -27,12 +28,21 @@ enum AppIconStyle: String, CaseIterable, Hashable {
         }
     }
 
-    var resourceName: String {
+    private var resource: (name: String, extension: String) {
         switch self {
-        case .flatGeometric: return "txtnimal-icon-flat"
-        case .macOSGlass: return "txtnimal-icon-glass"
-        case .retroCRTPixel: return "txtnimal-icon-crt"
+        case .flatGeometric: return ("AppIcon", "icns")
+        case .macOSGlass: return ("txtnimal-icon-glass", "png")
+        case .retroCRTPixel: return ("txtnimal-icon-crt", "png")
         }
+    }
+
+    func image(in bundle: Bundle = .main) -> NSImage? {
+        let cacheKey = "\(bundle.bundlePath)|\(resource.name).\(resource.extension)" as NSString
+        if let cached = Self.imageCache.object(forKey: cacheKey) { return cached }
+        guard let url = bundle.url(forResource: resource.name, withExtension: resource.extension) else { return nil }
+        guard let image = NSImage(contentsOf: url) else { return nil }
+        Self.imageCache.setObject(image, forKey: cacheKey)
+        return image
     }
 }
 
@@ -143,7 +153,13 @@ final class TaskStore: ObservableObject {
         didSet { UserDefaults.standard.set(appearanceMode, forKey: "appearance"); applyAppearance() }
     }
     @Published var appIconStyle: AppIconStyle = {
-        AppIconStyle(rawValue: UserDefaults.standard.string(forKey: "appIconStyle") ?? "flatGeometric") ?? .flatGeometric
+        let defaults = UserDefaults.standard
+        guard let saved = defaults.string(forKey: "appIconStyle"),
+              let style = AppIconStyle(rawValue: saved) else {
+            defaults.set(AppIconStyle.flatGeometric.rawValue, forKey: "appIconStyle")
+            return .flatGeometric
+        }
+        return style
     }() {
         didSet {
             UserDefaults.standard.set(appIconStyle.rawValue, forKey: "appIconStyle")
@@ -151,9 +167,32 @@ final class TaskStore: ObservableObject {
         }
     }
     func applyAppIcon() {
-        guard let url = Bundle.main.url(forResource: appIconStyle.resourceName, withExtension: "png"),
-              let image = NSImage(contentsOf: url) else { return }
-        NSApp.applicationIconImage = image
+        if let image = appIconStyle.image() {
+            NSApp.applicationIconImage = image
+            return
+        }
+        let failedStyle = appIconStyle
+        if failedStyle != .flatGeometric {
+            appIconStyle = .flatGeometric
+            UserDefaults.standard.set(AppIconStyle.flatGeometric.rawValue, forKey: "appIconStyle")
+        }
+        let message: String
+        if let fallback = AppIconStyle.flatGeometric.image() {
+            NSApp.applicationIconImage = fallback
+            message = appLanguage == .english
+                ? "Could not load the selected app icon. The default icon has been restored."
+                : "無法載入「\(failedStyle.label)」App 圖示，已恢復預設圖示。"
+        } else if let systemFallback = NSImage(named: NSImage.applicationIconName) {
+            NSApp.applicationIconImage = systemFallback
+            message = appLanguage == .english
+                ? "Could not load the selected or default app icon. A system fallback is being used."
+                : "無法載入選用及預設 App 圖示，目前使用系統備援圖示。"
+        } else {
+            message = appLanguage == .english
+                ? "Could not load or restore the app icon."
+                : "無法載入或恢復 App 圖示。"
+        }
+        lastError = message
     }
     func applyAppearance() {
         switch appearanceMode {

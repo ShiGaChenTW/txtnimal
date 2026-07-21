@@ -132,6 +132,12 @@ struct ContentView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
+            Image(nsImage: headerAppIcon)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 28, height: 28)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .accessibilityHidden(true)
             Text((store.fileURL.path as NSString).abbreviatingWithTildeInPath)
                 .font(Theme.monoSmall).foregroundColor(Theme.dim)
                 .lineLimit(1).truncationMode(.middle)
@@ -140,6 +146,9 @@ struct ContentView: View {
             tab("⌘5 設定", .settings)
         }
         .padding(.horizontal, 14).padding(.vertical, 11).background(Theme.panel)
+    }
+    private var headerAppIcon: NSImage {
+        store.appIconStyle.image() ?? AppIconStyle.flatGeometric.image() ?? NSApp.applicationIconImage
     }
     private func tab(_ label: String, _ v: AppView) -> some View {
         let on = store.view == v
