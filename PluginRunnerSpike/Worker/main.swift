@@ -1,6 +1,16 @@
-import Darwin
 import Foundation
 import JavaScriptCore
+import Darwin
+
+private func applyResourceLimits() {
+    var cpu = rlimit(rlim_cur: 2, rlim_max: 2)
+    _ = setrlimit(RLIMIT_CPU, &cpu)
+    // Keep accidental runaway output bounded independently of Broker framing.
+    var fileSize = rlimit(rlim_cur: 512 * 1024, rlim_max: 512 * 1024)
+    _ = setrlimit(RLIMIT_FSIZE, &fileSize)
+}
+
+applyResourceLimits()
 
 private struct WorkerRequest: Codable {
     let version: Int
