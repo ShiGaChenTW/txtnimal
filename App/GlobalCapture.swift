@@ -305,6 +305,7 @@ struct SettingsView: View {
                 }
             }
             Button("重新掃描已安裝插件") { store.refreshInstalledPlugins() }
+            Button("安裝插件 package…") { installPluginPackage() }
             }
             .font(Theme.mono)
             .padding(.horizontal, 28).padding(.vertical, 24).frame(maxWidth: 600, alignment: .leading)
@@ -346,5 +347,13 @@ struct SettingsView: View {
         p.canCreateDirectories = true
         p.prompt = store.appLanguage == .english ? "Choose Folder" : "選這個資料夾"
         if p.runModal() == .OK, let url = p.url { store.setDataDir(url) }
+    }
+
+    private func installPluginPackage() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.prompt = store.appLanguage == .english ? "Install" : "安裝"
+        if panel.runModal() == .OK, let url = panel.url { store.installPluginPackage(from: url) }
     }
 }

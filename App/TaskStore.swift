@@ -355,6 +355,16 @@ final class TaskStore: ObservableObject {
         } catch { report(error) }
     }
 
+    func installPluginPackage(from url: URL) {
+        do {
+            guard url.startAccessingSecurityScopedResource() else { throw PluginPackageStoreError.invalidPackage }
+            defer { url.stopAccessingSecurityScopedResource() }
+            guard let installed = try pluginPackageStore?.install(from: url) else { throw PluginPackageStoreError.invalidPackage }
+            enabledPluginIDs.insert(installed.manifest.id)
+            refreshInstalledPlugins()
+        } catch { report(error) }
+    }
+
     /// 每日歸檔：把「非今天完成」的已完成任務搬到 archive.txt（保留歷史、不擋今天）。
     private func archiveOldDone() {
         do {

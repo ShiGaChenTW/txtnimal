@@ -25,10 +25,12 @@ public struct InstalledPluginPackage: Equatable, Sendable {
 public final class PluginPackageStore {
     public let directory: URL
     private let fileManager: FileManager
+    private let securityPolicy: PluginSecurityPolicy
 
-    public init(directory: URL, fileManager: FileManager = .default) throws {
+    public init(directory: URL, fileManager: FileManager = .default, securityPolicy: PluginSecurityPolicy = .init()) throws {
         self.directory = directory.standardizedFileURL
         self.fileManager = fileManager
+        self.securityPolicy = securityPolicy
         do { try fileManager.createDirectory(at: self.directory, withIntermediateDirectories: true) }
         catch { throw PluginPackageStoreError.packageCopyFailed }
     }
@@ -49,6 +51,7 @@ public final class PluginPackageStore {
             throw PluginPackageStoreError.invalidPackage
         }
         let manifest = try loadManifest(at: source)
+        try securityPolicy.validate(manifest)
         _ = try PluginValidator.resolveEntry(manifest.entry, in: source, fileManager: fileManager)
         let destination = directory.appendingPathComponent(manifest.id, isDirectory: true)
         guard !fileManager.fileExists(atPath: destination.path) else { throw PluginPackageStoreError.packageExists }
@@ -66,6 +69,7 @@ public final class PluginPackageStore {
 
     private func load(at url: URL) throws -> InstalledPluginPackage {
         let manifest = try loadManifest(at: url)
+        try securityPolicy.validate(manifest)
         _ = try PluginValidator.resolveEntry(manifest.entry, in: url, fileManager: fileManager)
         return InstalledPluginPackage(manifest: manifest, url: url)
     }
