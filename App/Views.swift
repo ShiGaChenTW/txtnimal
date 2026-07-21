@@ -115,23 +115,26 @@ struct ListView: View {
 
     private var addRow: some View {
         HStack(spacing: 10) {
-            Text("+").foregroundColor(Theme.green)
-            TextField("", text: $addText,
-                      prompt: Text("新增任務…  due:fri  +List  @Tag").foregroundColor(Theme.dim.opacity(0.35)))
-                .textFieldStyle(.plain).font(store.taskFont).foregroundColor(Theme.fg)
-                .focused($addFocused)
-                .onSubmit {
-                    let t = addText.trimmingCharacters(in: .whitespaces)
-                    if !t.isEmpty { store.addFromCapture(t) }
-                    addText = ""; addFocused = true   // 連續新增:留在輸入列
+            if Theme.isTerminal {
+                Text("$").foregroundColor(Theme.cyan)
+                Text("❯").foregroundColor(Theme.green).fontWeight(.bold)
+                ZStack(alignment: .leading) {
+                    if addText.isEmpty {
+                        Text("new task  due:fri  +List  @Tag")
+                            .foregroundColor(Theme.dim.opacity(0.45))
+                    }
+                    TerminalInputField(text: $addText, onSubmit: submitInlineAdd, onCancel: closeInlineAdd)
+                        .frame(height: 20)
                 }
-                .onExitCommand {
-                    addText = ""
-                    addFocused = false
-                    addVisible = false
-                    store.inlineAddActive = false
-                    store.ensureCursor()
-                }
+            } else {
+                Text("+").foregroundColor(Theme.green)
+                TextField("", text: $addText,
+                          prompt: Text("新增任務…  due:fri  +List  @Tag").foregroundColor(Theme.dim.opacity(0.35)))
+                    .textFieldStyle(.plain).font(store.taskFont).foregroundColor(Theme.fg)
+                    .focused($addFocused)
+                    .onSubmit { submitInlineAdd() }
+                    .onExitCommand { closeInlineAdd() }
+            }
         }
         .font(Theme.mono)
         .padding(.leading, 16)
@@ -140,6 +143,21 @@ struct ListView: View {
         .background(Theme.cursorBg)                                      // 游標移到新增列:同選取樣式
         .overlay(alignment: .leading) { Rectangle().fill(Theme.dim).frame(width: 3) }
         .onAppear { addFocused = true }
+    }
+
+    private func submitInlineAdd() {
+        let task = addText.trimmingCharacters(in: .whitespaces)
+        if !task.isEmpty { store.addFromCapture(task) }
+        addText = ""
+        addFocused = true
+    }
+
+    private func closeInlineAdd() {
+        addText = ""
+        addFocused = false
+        addVisible = false
+        store.inlineAddActive = false
+        store.ensureCursor()
     }
 
     private func focusBar(_ t: TaskLine) -> some View {
