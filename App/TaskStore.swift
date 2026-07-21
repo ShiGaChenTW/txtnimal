@@ -4,10 +4,16 @@ import txtnimalCore
 
 enum AppView { case list, grid, pad, dash, settings }
 
-/// 視窗承載模式：一般視窗 或 常駐螢幕右緣的滑出面板。兩者共用同一個 TaskStore。
+/// 視窗承載模式：一般視窗 或 常駐螢幕邊緣的滑出面板。兩者共用同一個 TaskStore。
 enum WindowMode: String, CaseIterable, Hashable {
     case window, sidebar
     var label: String { self == .window ? "一般視窗" : "側邊滑出" }
+}
+
+/// 滑出面板從哪一邊出現。top = Ghostty 式頂部下拉(滿寬)。
+enum SidebarEdge: String, CaseIterable, Hashable {
+    case right, left, top
+    var label: String { ["right": "右側", "left": "左側", "top": "頂部下拉"][rawValue]! }
 }
 
 struct InstalledPlugin: Identifiable, Hashable {
@@ -183,6 +189,14 @@ final class TaskStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(windowMode.rawValue, forKey: "windowMode")
             SidebarController.shared.apply(windowMode, store: self)
+        }
+    }
+    @Published var sidebarEdge: SidebarEdge = {
+        SidebarEdge(rawValue: UserDefaults.standard.string(forKey: "sidebarEdge") ?? "right") ?? .right
+    }() {
+        didSet {
+            UserDefaults.standard.set(sidebarEdge.rawValue, forKey: "sidebarEdge")
+            SidebarController.shared.edgeChanged(store: self)
         }
     }
     // 0 系統 / 1 深色 / 2 淺色

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import QuartzCore
 import KeyboardShortcuts
 import txtnimalCore
 
@@ -15,23 +16,24 @@ private final class KeyablePanel: NSPanel {
     override var canBecomeKey: Bool { true }
 }
 
-/// 常駐螢幕右緣的滑出面板：把整個 ContentView 掛進一個貼邊、滿高的無邊框 panel。
-/// 與一般 WindowGroup 共用同一個 TaskStore，兩邊編輯自動同步。
+/// 常駐螢幕邊緣的滑出面板：把整個 ContentView 掛進一個貼邊的無邊框 panel。
+/// 邊緣可選右/左/頂(top = Ghostty 式下拉)。與 WindowGroup 共用同一個 TaskStore。
 /// ponytail: 主視窗切換用 orderOut/orderFront（Route A）。若 WindowGroup 生命週期在
 /// 全螢幕/重開窗邊角出問題，升級成把主 UI 也移出 WindowGroup（Route B）。
 final class SidebarController {
     static let shared = SidebarController()
     private var panel: KeyablePanel?
     private weak var store: TaskStore?
-    private let width: CGFloat = 420
+    /// 側邊寬度須 ≥ ContentView 的 minWidth(660),否則內容被裁。
+    private let sideWidth: CGFloat = 700
 
     func install(store: TaskStore) {
         self.store = store
         KeyboardShortcuts.onKeyUp(for: .toggleSidebar) { [weak self] in self?.toggle() }
+        ensurePanel()                 // 預熱：首次滑出不卡頓
         apply(store.windowMode, store: store)
     }
 
-    /// 依模式擺放兩個承載面：sidebar 模式顯示面板、收主視窗;window 模式相反。
     func apply(_ mode: WindowMode, store: TaskStore) {
         self.store = store
         switch mode {
@@ -39,19 +41,29 @@ final class SidebarController {
             setMainWindowVisible(false)
             reveal(animated: false)
         case .window:
-            hide(animated: false)
+            hide(animated: false, orderOut: true)
             setMainWindowVisible(true)
         }
     }
 
     func toggle() {
         guard store?.windowMode == .sidebar else { return }
-        (panel?.isVisible == true) ? hide(animated: true) : reveal(animated: true)
+        (panel?.isVisible == true) ? hide(animated: true, orderOut: true) : reveal(animated: true)
     }
 
+    /// 使用者在設定改了邊緣：若正顯示,重新擺位(同尺寸只換幾何,不重繪內容樹)。
+    func edgeChanged(store: TaskStore) {
+        self.store = store
+        guard store.windowMode == .sidebar, panel?.isVisible == true else { return }
+        let (on, _) = frames()
+        animate(to: on, animated: true)
+    }
+
+    @discardableResult
     private func ensurePanel() -> KeyablePanel {
         if let panel { return panel }
-        let p = KeyablePanel(contentRect: NSRect(x: 0, y: 0, width: width, height: 600),
+        let (on, _) = frames()
+        let p = KeyablePanel(contentRect: on,
                              styleMask: [.borderless, .nonactivatingPanel],
                              backing: .buffered, defer: false)
         p.isFloatingPanel = true
@@ -59,6 +71,7 @@ final class SidebarController {
         p.hidesOnDeactivate = false
         p.backgroundColor = .clear
         p.hasShadow = true
+        p.animationBehavior = .none   // 關掉系統預設視窗動畫,改用自訂 easeOut
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         if let store {
             let host = NSHostingView(rootView: ContentView().environmentObject(store))
@@ -70,26 +83,49 @@ final class SidebarController {
         return p
     }
 
-    private func reveal(animated: Bool) {
-        guard let screen = NSScreen.main else { return }
-        let p = ensurePanel()
-        let vf = screen.visibleFrame
-        let onEdge = NSRect(x: vf.maxX - width, y: vf.minY, width: width, height: vf.height)
-        let offEdge = NSRect(x: vf.maxX, y: vf.minY, width: width, height: vf.height)
-        if !p.isVisible {
-            p.setFrame(animated ? offEdge : onEdge, display: false)
-            p.makeKeyAndOrderFront(nil)
+    /// 依目前邊緣算出「就位(on)/藏起(off)」兩個 frame。同尺寸、只差位移 → 滑動時內容不重排。
+    private func frames() -> (on: NSRect, off: NSRect) {
+        let vf = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        switch store?.sidebarEdge ?? .right {
+        case .right:
+            let w = min(sideWidth, vf.width)
+            let on = NSRect(x: vf.maxX - w, y: vf.minY, width: w, height: vf.height)
+            return (on, on.offsetBy(dx: w, dy: 0))
+        case .left:
+            let w = min(sideWidth, vf.width)
+            let on = NSRect(x: vf.minX, y: vf.minY, width: w, height: vf.height)
+            return (on, on.offsetBy(dx: -w, dy: 0))
+        case .top:
+            let h = max(600, vf.height * 0.55)   // ≥ ContentView minHeight
+            let on = NSRect(x: vf.minX, y: vf.maxY - h, width: vf.width, height: h)
+            return (on, on.offsetBy(dx: 0, dy: h))   // 往上推出畫面 → 下滑進場
         }
-        p.setFrame(onEdge, display: true, animate: animated)
     }
 
-    private func hide(animated: Bool) {
+    private func reveal(animated: Bool) {
+        let p = ensurePanel()
+        let (on, off) = frames()
+        if !p.isVisible {
+            p.setFrame(off, display: false)
+            p.makeKeyAndOrderFront(nil)
+        }
+        animate(to: on, animated: animated)
+    }
+
+    private func hide(animated: Bool, orderOut: Bool) {
         guard let p = panel, p.isVisible else { return }
-        guard animated, let screen = NSScreen.main else { p.orderOut(nil); return }
-        let vf = screen.visibleFrame
-        let offEdge = NSRect(x: vf.maxX, y: vf.minY, width: width, height: vf.height)
-        p.setFrame(offEdge, display: true, animate: true)
-        p.orderOut(nil)
+        let (_, off) = frames()
+        animate(to: off, animated: animated) { if orderOut { p.orderOut(nil) } }
+    }
+
+    /// 平滑滑動：NSAnimationContext + easeOut,比 setFrame(display:animate:) 順。
+    private func animate(to frame: NSRect, animated: Bool, then: (() -> Void)? = nil) {
+        guard animated, let p = panel else { panel?.setFrame(frame, display: true); then?(); return }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.22
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            p.animator().setFrame(frame, display: true)
+        }, completionHandler: then)
     }
 
     /// 找出 WindowGroup 主視窗（非 panel 的標準視窗）並顯示/隱藏。
@@ -289,10 +325,17 @@ struct SettingsView: View {
                 }.labelsHidden().frame(width: 150)
             }
             HStack(spacing: 8) {
-                Text("側邊滑出").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Text("出現位置").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Picker("", selection: $store.sidebarEdge) {
+                    ForEach(SidebarEdge.allCases, id: \.self) { Text($0.label).tag($0) }
+                }.labelsHidden().frame(width: 150)
+                    .disabled(store.windowMode != .sidebar)
+            }
+            HStack(spacing: 8) {
+                Text("滑出熱鍵").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
                 KeyboardShortcuts.Recorder("", name: .toggleSidebar)
             }
-            hint("側邊模式：面板常駐螢幕右緣，按熱鍵滑出/收回;一般模式為原本的視窗")
+            hint("側邊模式：面板貼邊常駐，按熱鍵滑出/收回;「頂部下拉」為 Ghostty 式滿寬下拉")
 
             section("外觀")
             HStack(spacing: 8) {
