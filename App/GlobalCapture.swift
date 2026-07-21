@@ -4,6 +4,15 @@ import QuartzCore
 import KeyboardShortcuts
 import txtnimalCore
 
+/// 標記某個 ContentView 實例正跑在側邊面板裡(用來只讓側邊的背景層透明)。
+private struct SidebarPanelKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var isSidebarPanel: Bool {
+        get { self[SidebarPanelKey.self] }
+        set { self[SidebarPanelKey.self] = newValue }
+    }
+}
+
 extension KeyboardShortcuts.Name {
     /// 全域捕捉，預設 ⌥Space;可在「設定」重綁。
     static let capture = Self("globalCapture", default: .init(.space, modifiers: [.option]))
@@ -73,21 +82,23 @@ final class SidebarController {
         p.hasShadow = true
         p.animationBehavior = .none   // 關掉系統預設視窗動畫,改用自訂 easeOut
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        p.alphaValue = CGFloat(store?.sidebarOpacity ?? 1.0)
-        if let store {
-            let host = NSHostingView(rootView: ContentView().environmentObject(store))
-            host.frame = p.contentView?.bounds ?? .zero
+        p.isOpaque = false            // 讓 behind-window 毛玻璃透得出去
+        if let store, let container = p.contentView {
+            // 毛玻璃背板:模糊面板後方(桌面/其他 app),文字層鋪在上面維持清楚。
+            let fx = NSVisualEffectView(frame: container.bounds)
+            fx.autoresizingMask = [.width, .height]
+            fx.material = .hudWindow
+            fx.blendingMode = .behindWindow
+            fx.state = .active
+            container.addSubview(fx)
+            let host = NSHostingView(rootView:
+                ContentView().environmentObject(store).environment(\.isSidebarPanel, true))
+            host.frame = container.bounds
             host.autoresizingMask = [.width, .height]
-            p.contentView?.addSubview(host)
+            container.addSubview(host)
         }
         panel = p
         return p
-    }
-
-    /// ponytail: 用 window alphaValue 做整體透明(文字也會一起淡)。若要「背景透明、
-    /// 文字不透明」的毛玻璃效果,改成 NSVisualEffectView 背板 + Theme.bg 透明變體。
-    func applyOpacity(_ value: Double) {
-        panel?.alphaValue = CGFloat(value)
     }
 
     /// 依目前邊緣算出「就位(on)/藏起(off)」兩個 frame。同尺寸、只差位移 → 滑動時內容不重排。

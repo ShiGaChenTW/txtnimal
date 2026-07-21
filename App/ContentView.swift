@@ -3,6 +3,7 @@ import txtnimalCore
 
 struct ContentView: View {
     @EnvironmentObject var store: TaskStore
+    @Environment(\.isSidebarPanel) private var isSidebarPanel
     @State private var showingCapture = false
     @State private var captureText = ""
     @State private var showingAddProject = false
@@ -11,7 +12,8 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            Theme.bg.ignoresSafeArea()
+            // 側邊模式讓根背景層透明,露出面板後方的毛玻璃;一般視窗維持不透明。
+            Theme.bg.opacity(isSidebarPanel ? store.sidebarOpacity : 1).ignoresSafeArea()
             VStack(spacing: 0) {
                 header
                 hline
