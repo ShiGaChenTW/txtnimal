@@ -6,11 +6,98 @@ import txtnimalCore
 extension KeyboardShortcuts.Name {
     /// 全域捕捉，預設 ⌥Space;可在「設定」重綁。
     static let capture = Self("globalCapture", default: .init(.space, modifiers: [.option]))
+    /// 側邊面板滑出/收回，預設 ⌥T;可在「設定」重綁。
+    static let toggleSidebar = Self("toggleSidebar", default: .init(.t, modifiers: [.option]))
 }
 
 /// 借過鍵盤焦點的無邊框浮窗（borderless 預設不能成為 key window，要覆寫）。
 private final class KeyablePanel: NSPanel {
     override var canBecomeKey: Bool { true }
+}
+
+/// 常駐螢幕右緣的滑出面板：把整個 ContentView 掛進一個貼邊、滿高的無邊框 panel。
+/// 與一般 WindowGroup 共用同一個 TaskStore，兩邊編輯自動同步。
+/// ponytail: 主視窗切換用 orderOut/orderFront（Route A）。若 WindowGroup 生命週期在
+/// 全螢幕/重開窗邊角出問題，升級成把主 UI 也移出 WindowGroup（Route B）。
+final class SidebarController {
+    static let shared = SidebarController()
+    private var panel: KeyablePanel?
+    private weak var store: TaskStore?
+    private let width: CGFloat = 420
+
+    func install(store: TaskStore) {
+        self.store = store
+        KeyboardShortcuts.onKeyUp(for: .toggleSidebar) { [weak self] in self?.toggle() }
+        apply(store.windowMode, store: store)
+    }
+
+    /// 依模式擺放兩個承載面：sidebar 模式顯示面板、收主視窗;window 模式相反。
+    func apply(_ mode: WindowMode, store: TaskStore) {
+        self.store = store
+        switch mode {
+        case .sidebar:
+            setMainWindowVisible(false)
+            reveal(animated: false)
+        case .window:
+            hide(animated: false)
+            setMainWindowVisible(true)
+        }
+    }
+
+    func toggle() {
+        guard store?.windowMode == .sidebar else { return }
+        (panel?.isVisible == true) ? hide(animated: true) : reveal(animated: true)
+    }
+
+    private func ensurePanel() -> KeyablePanel {
+        if let panel { return panel }
+        let p = KeyablePanel(contentRect: NSRect(x: 0, y: 0, width: width, height: 600),
+                             styleMask: [.borderless, .nonactivatingPanel],
+                             backing: .buffered, defer: false)
+        p.isFloatingPanel = true
+        p.level = .floating
+        p.hidesOnDeactivate = false
+        p.backgroundColor = .clear
+        p.hasShadow = true
+        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        if let store {
+            let host = NSHostingView(rootView: ContentView().environmentObject(store))
+            host.frame = p.contentView?.bounds ?? .zero
+            host.autoresizingMask = [.width, .height]
+            p.contentView?.addSubview(host)
+        }
+        panel = p
+        return p
+    }
+
+    private func reveal(animated: Bool) {
+        guard let screen = NSScreen.main else { return }
+        let p = ensurePanel()
+        let vf = screen.visibleFrame
+        let onEdge = NSRect(x: vf.maxX - width, y: vf.minY, width: width, height: vf.height)
+        let offEdge = NSRect(x: vf.maxX, y: vf.minY, width: width, height: vf.height)
+        if !p.isVisible {
+            p.setFrame(animated ? offEdge : onEdge, display: false)
+            p.makeKeyAndOrderFront(nil)
+        }
+        p.setFrame(onEdge, display: true, animate: animated)
+    }
+
+    private func hide(animated: Bool) {
+        guard let p = panel, p.isVisible else { return }
+        guard animated, let screen = NSScreen.main else { p.orderOut(nil); return }
+        let vf = screen.visibleFrame
+        let offEdge = NSRect(x: vf.maxX, y: vf.minY, width: width, height: vf.height)
+        p.setFrame(offEdge, display: true, animate: true)
+        p.orderOut(nil)
+    }
+
+    /// 找出 WindowGroup 主視窗（非 panel 的標準視窗）並顯示/隱藏。
+    private func setMainWindowVisible(_ visible: Bool) {
+        for w in NSApp.windows where !(w is NSPanel) && w.contentView != nil {
+            visible ? w.makeKeyAndOrderFront(nil) : w.orderOut(nil)
+        }
+    }
 }
 
 /// 全域熱鍵 → 螢幕上方浮出一行捕捉框。任何 app 裡都能叫出來。
@@ -193,6 +280,19 @@ struct SettingsView: View {
             }
             hint("在任何 app 按此熱鍵即可快速記一筆")
             hint("app 內快速鍵固定：⌘1 清單 · ⌘2 象限 · ⌘3 便箋 · ⌘4 統計 · ⌘E 編輯 · ⌘K 指令")
+
+            section("視窗")
+            HStack(spacing: 8) {
+                Text("視窗模式").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Picker("", selection: $store.windowMode) {
+                    ForEach(WindowMode.allCases, id: \.self) { Text($0.label).tag($0) }
+                }.labelsHidden().frame(width: 150)
+            }
+            HStack(spacing: 8) {
+                Text("側邊滑出").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                KeyboardShortcuts.Recorder("", name: .toggleSidebar)
+            }
+            hint("側邊模式：面板常駐螢幕右緣，按熱鍵滑出/收回;一般模式為原本的視窗")
 
             section("外觀")
             HStack(spacing: 8) {

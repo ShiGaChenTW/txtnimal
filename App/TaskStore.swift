@@ -4,6 +4,12 @@ import txtnimalCore
 
 enum AppView { case list, grid, pad, dash, settings }
 
+/// 視窗承載模式：一般視窗 或 常駐螢幕右緣的滑出面板。兩者共用同一個 TaskStore。
+enum WindowMode: String, CaseIterable, Hashable {
+    case window, sidebar
+    var label: String { self == .window ? "一般視窗" : "側邊滑出" }
+}
+
 struct InstalledPlugin: Identifiable, Hashable {
     let id: String
     let name: String
@@ -170,6 +176,14 @@ final class TaskStore: ObservableObject {
         Density(rawValue: (UserDefaults.standard.object(forKey: "density") as? Int) ?? 1) ?? .normal
     }() {
         didSet { UserDefaults.standard.set(density.rawValue, forKey: "density") }
+    }
+    @Published var windowMode: WindowMode = {
+        WindowMode(rawValue: UserDefaults.standard.string(forKey: "windowMode") ?? "window") ?? .window
+    }() {
+        didSet {
+            UserDefaults.standard.set(windowMode.rawValue, forKey: "windowMode")
+            SidebarController.shared.apply(windowMode, store: self)
+        }
     }
     // 0 系統 / 1 深色 / 2 淺色
     @Published var appearanceMode: Int = UserDefaults.standard.integer(forKey: "appearance") {
