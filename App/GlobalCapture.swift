@@ -306,6 +306,7 @@ struct SettingsView: View {
             }
             Button("重新掃描已安裝插件") { store.refreshInstalledPlugins() }
             Button("安裝插件 package…") { installPluginPackage() }
+            Button("執行 Reschedule Tomorrow（目前 task）") { store.runRescheduleTomorrow() }
             HStack {
                 Text("執行紀錄").foregroundColor(Theme.dim)
                 Spacer()

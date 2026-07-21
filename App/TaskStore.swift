@@ -360,6 +360,37 @@ final class TaskStore: ObservableObject {
         catch { report(error) }
     }
 
+    func runRescheduleTomorrow() {
+        guard let index = cursor, lines.indices.contains(index), let taskID = lines[index].stableID else {
+            lastError = "目前 task 沒有穩定 ID，無法由插件安全操作。"
+            return
+        }
+        let manifest = PluginManifest(id: "app.txtnimal.reschedule-tomorrow", name: "Reschedule Tomorrow",
+                                      version: "1.0.0", apiVersion: 1, entry: "main.js", capabilities: [.tasksUpdate],
+                                      commands: [.init(id: "tasks.reschedule", title: "Reschedule")])
+        let action = PluginAction(type: .hostCommand, command: "tasks.reschedule", taskIDs: [taskID],
+                                  due: RelativeDate.todayYMD(Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()), expectedRevision: DocumentRevision.make(for: lines[index].raw),
+                                  documentRevision: documentStoreSnapshot().documentRevision)
+        do {
+            let intent = try PluginValidator.validate(action: action, manifest: manifest,
+                                                      taskRevisions: [taskID: action.expectedRevision!],
+                                                      documentRevision: action.documentRevision)
+            let snapshot = documentStoreSnapshot()
+            let changed = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: RelativeDate.todayYMD())
+            apply(try documentStore.save(lines: changed, expectedGeneration: generation))
+            try pluginExecutionLogStore?.append(PluginExecutionRecord(pluginID: manifest.id, command: intent.command.rawValue, succeeded: true))
+            refreshPluginExecutionRecords()
+        } catch {
+            try? pluginExecutionLogStore?.append(PluginExecutionRecord(pluginID: manifest.id, command: "tasks.reschedule", succeeded: false, error: String(describing: error)))
+            refreshPluginExecutionRecords(); report(error)
+        }
+    }
+
+    private func documentStoreSnapshot() -> TaskDocumentSnapshot {
+        TaskDocumentSnapshot(lines: lines, scratch: scratch, archiveLines: archiveLines, generation: generation,
+                             tasksText: TasksDocument.serialize(lines))
+    }
+
     func removeInstalledPlugin(_ package: InstalledPluginPackage) {
         do {
             try pluginPackageStore?.remove(id: package.manifest.id)
