@@ -77,6 +77,7 @@ final class SidebarController {
     func edgeChanged(store: TaskStore) {
         self.store = store
         guard store.windowMode == .sidebar else { return }
+        applyCornerMask()
         if panel?.isVisible == true {
             panel?.setFrame(onFrame(), display: true, animate: true)  // 同螢幕重定位,不跨螢幕
             slider?.setFrameOrigin(.zero)
@@ -103,8 +104,6 @@ final class SidebarController {
         if let store, let clip = p.contentView {
             clip.wantsLayer = true
             clip.layer?.masksToBounds = true   // 關鍵:內容滑出視窗邊界即被裁切,絕不溢到隔壁螢幕
-            clip.layer?.cornerRadius = 12       // 圓角浮動卡片
-            clip.layer?.cornerCurve = .continuous
             let slider = NSView(frame: clip.bounds)
             slider.autoresizingMask = [.width, .height]
             slider.wantsLayer = true
@@ -136,7 +135,20 @@ final class SidebarController {
             layoutResizeHandle()
         }
         panel = p
+        applyCornerMask()
         return p
+    }
+
+    /// 只圓「內側」兩角(朝螢幕中央那側);接縫側維持方角,做出鑲嵌在螢幕邊的感覺。
+    private func applyCornerMask() {
+        guard let layer = panel?.contentView?.layer else { return }
+        layer.cornerRadius = 12
+        layer.cornerCurve = .continuous
+        switch store?.sidebarEdge ?? .right {          // CALayer 非翻轉:MinY=底、MaxY=頂
+        case .right: layer.maskedCorners = [.layerMinXMinYCorner, .layerMinXMaxYCorner]  // 左側兩角
+        case .left:  layer.maskedCorners = [.layerMaxXMinYCorner, .layerMaxXMaxYCorner]  // 右側兩角
+        case .top:   layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]  // 底部兩角
+        }
     }
 
     /// 使用者設定的側邊寬度,夾在 [minSideWidth, 螢幕寬] 之間。

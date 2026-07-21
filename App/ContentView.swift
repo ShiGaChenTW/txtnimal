@@ -765,8 +765,8 @@ struct ContentView: View {
                            endPoint:   edge == .right ? .trailing : (edge == .left ? .leading : .top))
                 .frame(width: horizontal ? nil : 16, height: horizontal ? 16 : nil)
         }
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(Theme.dim.opacity(0.28), lineWidth: 1))  // 浮動面板四周淡外框(圓角)
+        .overlay(SidebarEdgeBorder(edge: edge)
+            .stroke(Theme.dim.opacity(0.28), lineWidth: 1))  // 只描露出的三邊(接縫側不畫)
         .allowsHitTesting(false)
         .ignoresSafeArea()
     }
@@ -913,5 +913,39 @@ private struct WindowAccessor: NSViewRepresentable {
     }
     func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async { onResolve(nsView.window) }
+    }
+}
+
+/// 只描側邊面板「露出的三邊」,接縫側(貼螢幕邊那側)不畫線;圓角只在內側兩角。
+private struct SidebarEdgeBorder: Shape {
+    let edge: SidebarEdge
+    var r: CGFloat = 12
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let (minX, minY, maxX, maxY) = (rect.minX, rect.minY, rect.maxX, rect.maxY)
+        switch edge {
+        case .right:   // 略過右(外)緣;圓左上、左下
+            p.move(to: CGPoint(x: maxX, y: minY))
+            p.addLine(to: CGPoint(x: minX + r, y: minY))
+            p.addQuadCurve(to: CGPoint(x: minX, y: minY + r), control: CGPoint(x: minX, y: minY))
+            p.addLine(to: CGPoint(x: minX, y: maxY - r))
+            p.addQuadCurve(to: CGPoint(x: minX + r, y: maxY), control: CGPoint(x: minX, y: maxY))
+            p.addLine(to: CGPoint(x: maxX, y: maxY))
+        case .left:    // 略過左(外)緣;圓右上、右下
+            p.move(to: CGPoint(x: minX, y: minY))
+            p.addLine(to: CGPoint(x: maxX - r, y: minY))
+            p.addQuadCurve(to: CGPoint(x: maxX, y: minY + r), control: CGPoint(x: maxX, y: minY))
+            p.addLine(to: CGPoint(x: maxX, y: maxY - r))
+            p.addQuadCurve(to: CGPoint(x: maxX - r, y: maxY), control: CGPoint(x: maxX, y: maxY))
+            p.addLine(to: CGPoint(x: minX, y: maxY))
+        case .top:     // 略過上(外)緣;圓左下、右下
+            p.move(to: CGPoint(x: minX, y: minY))
+            p.addLine(to: CGPoint(x: minX, y: maxY - r))
+            p.addQuadCurve(to: CGPoint(x: minX + r, y: maxY), control: CGPoint(x: minX, y: maxY))
+            p.addLine(to: CGPoint(x: maxX - r, y: maxY))
+            p.addQuadCurve(to: CGPoint(x: maxX, y: maxY - r), control: CGPoint(x: maxX, y: maxY))
+            p.addLine(to: CGPoint(x: maxX, y: minY))
+        }
+        return p
     }
 }
