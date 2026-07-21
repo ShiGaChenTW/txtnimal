@@ -35,7 +35,6 @@ struct TerminalInputField: NSViewRepresentable {
         input.setAccessibilityLabel("Terminal task input")
         scroll.documentView = input
 
-        DispatchQueue.main.async { input.window?.makeFirstResponder(input) }
         return scroll
     }
 
@@ -49,6 +48,7 @@ struct TerminalInputField: NSViewRepresentable {
         // theme accent or macOS's outlined insertion indicator.
         input.insertionPointColor = .clear
         input.blockColor = NSColor(Theme.fg)
+        input.focusWhenAttached()
         if input.string != text {
             let selection = input.selectedRange()
             input.string = text
@@ -71,6 +71,18 @@ private final class BlockCursorTextView: NSTextView {
     var onSubmit: (() -> Void)?
     var onCancel: (() -> Void)?
     var blockColor = NSColor.systemGreen
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        focusWhenAttached()
+    }
+
+    func focusWhenAttached() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window, window.firstResponder !== self else { return }
+            window.makeFirstResponder(self)
+        }
+    }
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 36, !event.modifierFlags.contains(.shift) {
