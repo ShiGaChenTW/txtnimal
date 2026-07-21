@@ -116,11 +116,10 @@ struct ListView: View {
     private var addRow: some View {
         HStack(spacing: 10) {
             if Theme.isTerminal {
-                Text("$").foregroundColor(Theme.cyan)
-                Text("❯").foregroundColor(Theme.green).fontWeight(.bold)
+                Text("❯").foregroundColor(Theme.fg).fontWeight(.bold)
                 ZStack(alignment: .leading) {
                     if addText.isEmpty {
-                        Text("new task  due:fri  +List  @Tag")
+                        Text("輸入任務…  due:fri  +List  @Tag")
                             .foregroundColor(Theme.dim.opacity(0.45))
                     }
                     TerminalInputField(text: $addText, onSubmit: submitInlineAdd, onCancel: closeInlineAdd)

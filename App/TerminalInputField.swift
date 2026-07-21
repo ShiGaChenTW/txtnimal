@@ -45,8 +45,10 @@ struct TerminalInputField: NSViewRepresentable {
         input.onCancel = onCancel
         input.font = NSFont.monospacedSystemFont(ofSize: 13.5, weight: .regular)
         input.textColor = NSColor(Theme.fg)
-        input.insertionPointColor = NSColor(Theme.green)
-        input.blockColor = NSColor(Theme.green)
+        // Codex-style caret: a high-contrast, fully opaque block rather than the
+        // theme accent or macOS's outlined insertion indicator.
+        input.insertionPointColor = .clear
+        input.blockColor = NSColor(Theme.fg)
         if input.string != text {
             let selection = input.selectedRange()
             input.string = text

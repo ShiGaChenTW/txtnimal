@@ -261,11 +261,10 @@ struct ContentView: View {
         HStack(spacing: 8) {
             if Theme.isTerminal {
                 Text(store.fileURL.lastPathComponent).font(Theme.monoSmall).foregroundColor(Theme.dim)
-                Text("$").foregroundColor(Theme.cyan)
-                Text("❯").foregroundColor(Theme.green).fontWeight(.bold)
+                Text("❯").foregroundColor(Theme.fg).fontWeight(.bold)
                 ZStack(alignment: .leading) {
                     if captureText.isEmpty {
-                        Text("new task  due:fri  +List  @Tag").foregroundColor(Theme.dim.opacity(0.45))
+                        Text("輸入任務…  due:fri  +List  @Tag").foregroundColor(Theme.dim.opacity(0.45))
                     }
                     TerminalInputField(text: $captureText, onSubmit: commitCapture, onCancel: closeCapture)
                         .frame(height: 20)
