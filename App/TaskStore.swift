@@ -145,6 +145,7 @@ final class TaskStore: ObservableObject {
         if UserDefaults.standard.bool(forKey: "showWelcomeOnLaunch") { return false }
         return UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
     }()
+    @Published private(set) var installedPluginPackages: [InstalledPluginPackage] = []
     func completeOnboarding() {
         hasCompletedOnboarding = true
         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
@@ -276,6 +277,7 @@ final class TaskStore: ObservableObject {
     private(set) var scratchURL: URL
     private(set) var archiveURL: URL
     private var documentStore: FileSystemTaskDocumentStore
+    private var pluginPackageStore: PluginPackageStore?
     private var generation: UInt64 = 0
 
     static let defaultDataDir = FileManager.default.homeDirectoryForCurrentUser
@@ -328,6 +330,8 @@ final class TaskStore: ObservableObject {
         archiveURL = dir.appendingPathComponent("archive.txt")
         do { documentStore = try FileSystemTaskDocumentStore(directory: dir, tasksFilename: selectedFile.lastPathComponent) }
         catch { fatalError("Cannot initialize task document store: \(error)") }
+        pluginPackageStore = try? PluginPackageStore(directory: dir.appendingPathComponent(".plugins", isDirectory: true))
+        refreshInstalledPlugins()
         bootstrapIfMissing()
         load()
         archiveOldDone()
@@ -337,6 +341,18 @@ final class TaskStore: ObservableObject {
         NotificationCenter.default.addObserver(forName: .NSCalendarDayChanged, object: nil, queue: .main) { [weak self] _ in
             self?.archiveOldDone()
         }
+    }
+
+    func refreshInstalledPlugins() {
+        installedPluginPackages = (try? pluginPackageStore?.list()) ?? []
+    }
+
+    func removeInstalledPlugin(_ package: InstalledPluginPackage) {
+        do {
+            try pluginPackageStore?.remove(id: package.manifest.id)
+            enabledPluginIDs.remove(package.manifest.id)
+            refreshInstalledPlugins()
+        } catch { report(error) }
     }
 
     /// 每日歸檔：把「非今天完成」的已完成任務搬到 archive.txt（保留歷史、不擋今天）。

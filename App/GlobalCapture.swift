@@ -296,6 +296,15 @@ struct SettingsView: View {
                 .padding(.vertical, 4)
             }
             hint("插件目前採內建 registry；正式公開插件前仍需簽章與權限驗證")
+            ForEach(store.installedPluginPackages, id: \.manifest.id) { package in
+                HStack {
+                    Text(package.manifest.name)
+                    Text("v\(package.manifest.version)").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                    Spacer()
+                    Button("移除") { store.removeInstalledPlugin(package) }.buttonStyle(.plain)
+                }
+            }
+            Button("重新掃描已安裝插件") { store.refreshInstalledPlugins() }
             }
             .font(Theme.mono)
             .padding(.horizontal, 28).padding(.vertical, 24).frame(maxWidth: 600, alignment: .leading)
