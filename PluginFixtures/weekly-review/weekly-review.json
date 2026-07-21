@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "page": {
+    "type": "page",
+    "id": "weekly-review-root",
+    "pageID": "weekly-review",
+    "title": "Weekly Review",
+    "children": [
+      {
+        "type": "section",
+        "id": "overdue-section",
+        "title": "Overdue",
+        "children": [
+          {
+            "type": "taskList",
+            "id": "overdue-list",
+            "query": {"status": "open", "due": "overdue", "limit": 50}
+          },
+          {
+            "type": "button",
+            "id": "move-overdue",
+            "title": "Move all to today",
+            "action": {"type": "hostCommand", "command": "tasks.rescheduleOverdue", "expectedRevision": "rev-1"}
+          }
+        ]
+      }
+    ]
+  }
+}

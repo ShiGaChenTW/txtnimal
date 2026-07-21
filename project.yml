@@ -49,3 +49,64 @@ targets:
           DEAD_CODE_STRIPPING: YES
           STRIP_INSTALLED_PRODUCT: YES
           COPY_PHASE_STRIP: YES
+  PluginRunnerSpikeService:
+    type: xpc-service
+    platform: macOS
+    sources:
+      - path: PluginRunnerSpike/Shared
+      - path: PluginRunnerSpike/Service
+    dependencies:
+      - target: PluginRunnerSpikeWorker
+        embed: true
+    info:
+      path: PluginRunnerSpike/Service-Info.plist
+      properties:
+        XPCService:
+          ServiceType: Application
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.taskstxt.PluginRunnerSpikeService
+        PRODUCT_NAME: PluginRunnerSpikeService
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        ENABLE_APP_SANDBOX: NO
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+  PluginRunnerSpikeWorker:
+    type: application
+    platform: macOS
+    sources:
+      - path: PluginRunnerSpike/Worker
+    entitlements:
+      path: PluginRunnerSpike/Worker.entitlements
+    info:
+      path: PluginRunnerSpike/Worker-Info.plist
+      properties:
+        LSBackgroundOnly: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.taskstxt.PluginRunnerSpikeWorker
+        PRODUCT_NAME: PluginRunnerSpikeWorker
+        SWIFT_VERSION: "5.0"
+        ENABLE_APP_SANDBOX: YES
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+  PluginRunnerSpikeHost:
+    type: application
+    platform: macOS
+    sources:
+      - path: PluginRunnerSpike/Shared
+      - path: PluginRunnerSpike/Host
+    dependencies:
+      - target: PluginRunnerSpikeService
+        embed: true
+      - package: TasksTxtCore
+        product: TasksTxtCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.taskstxt.PluginRunnerSpikeHost
+        PRODUCT_NAME: PluginRunnerSpikeHost
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"

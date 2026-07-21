@@ -1,0 +1,92 @@
+import Foundation
+
+public enum PluginCapability: String, Codable, CaseIterable, Sendable {
+    case tasksSelectedRead = "tasks.selected.read"
+    case tasksAllRead = "tasks.all.read"
+    case tasksCreate = "tasks.create"
+    case tasksUpdate = "tasks.update"
+    case tasksComplete = "tasks.complete"
+    case scratchReadWrite = "scratch.read/write"
+    case importRead = "import.read"
+    case exportWrite = "export.write"
+    case uiPage = "ui.page"
+    case uiNotify = "ui.notify"
+    case storageKV = "storage.kv"
+}
+
+public struct PluginCommandDeclaration: Codable, Equatable, Sendable {
+    public let id: String
+    public let title: String
+    public init(id: String, title: String) { self.id = id; self.title = title }
+}
+
+public struct PluginPageDeclaration: Codable, Equatable, Sendable {
+    public let id: String
+    public let title: String
+    public let entryFunction: String
+    public init(id: String, title: String, entryFunction: String) {
+        self.id = id; self.title = title; self.entryFunction = entryFunction
+    }
+}
+
+public struct PluginManifest: Codable, Equatable, Sendable {
+    public let id: String
+    public let name: String
+    public let version: String
+    public let apiVersion: Int
+    public let entry: String
+    public let capabilities: [PluginCapability]
+    public let commands: [PluginCommandDeclaration]
+    public let pages: [PluginPageDeclaration]
+
+    public init(id: String, name: String, version: String, apiVersion: Int, entry: String,
+                capabilities: [PluginCapability], commands: [PluginCommandDeclaration] = [],
+                pages: [PluginPageDeclaration] = []) {
+        self.id = id; self.name = name; self.version = version; self.apiVersion = apiVersion
+        self.entry = entry; self.capabilities = capabilities; self.commands = commands; self.pages = pages
+    }
+}
+
+public struct PluginTaskSnapshot: Codable, Equatable, Sendable {
+    public let id: String
+    public let title: String
+    public let due: String?
+    public let completed: Bool
+    public let lists: [String]
+    public let tags: [String]
+    public let revision: String
+
+    public init(id: String, title: String, due: String? = nil, completed: Bool = false,
+                lists: [String] = [], tags: [String] = [], revision: String) {
+        self.id = id; self.title = title; self.due = due; self.completed = completed
+        self.lists = lists; self.tags = tags; self.revision = revision
+    }
+}
+
+public enum PluginHostCommand: String, Codable, Equatable, Sendable {
+    case rescheduleTask = "tasks.reschedule"
+    case rescheduleOverdue = "tasks.rescheduleOverdue"
+}
+
+public struct PluginAction: Codable, Equatable, Sendable {
+    public enum Kind: String, Codable, Sendable { case hostCommand, pluginAction }
+    public let type: Kind
+    public let command: String
+    public let taskIDs: [String]?
+    public let due: String?
+    public let expectedRevision: String?
+
+    public init(type: Kind, command: String, taskIDs: [String]? = nil, due: String? = nil,
+                expectedRevision: String? = nil) {
+        self.type = type; self.command = command; self.taskIDs = taskIDs
+        self.due = due; self.expectedRevision = expectedRevision
+    }
+}
+
+public struct ValidatedPluginIntent: Equatable, Sendable {
+    public let pluginID: String
+    public let command: PluginHostCommand
+    public let taskIDs: [String]
+    public let due: String?
+    public let expectedRevision: String?
+}
