@@ -212,7 +212,7 @@ struct SettingsView: View {
                     Text("跟隨系統").tag(0); Text("深色").tag(1); Text("淺色").tag(2)
                 }.labelsHidden().frame(width: 150).disabled(store.appTheme == .phosphorTerminal)
             }
-            if store.appTheme == .phosphorTerminal { hint("Phosphor Terminal 固定使用深色，以維持 CRT 對比") }
+            if store.appTheme == .phosphorTerminal { hint("Phosphor Terminal 固定使用深色，以維持終端介面的清楚層次") }
             HStack(spacing: 8) {
                 Text("強調色").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
                 ForEach(Array(Theme.accentPalette.enumerated()), id: \.offset) { i, item in

@@ -33,8 +33,8 @@
 "經典 TUI" = "Classic TUI";
 "Phosphor Terminal" = "Phosphor Terminal";
 "跟隨深淺外觀的低彩度工作台" = "A muted workbench that follows light and dark appearance";
-"黑底綠磷光、掃描線與 shell prompt" = "Green phosphor on black with scanlines and a shell prompt";
-"Phosphor Terminal 固定使用深色，以維持 CRT 對比" = "Phosphor Terminal stays dark to preserve CRT contrast";
+"IDE 式深色工作區、shell prompt 與結構化狀態" = "An IDE-like dark workspace with a shell prompt and structured status";
+"Phosphor Terminal 固定使用深色，以維持終端介面的清楚層次" = "Phosphor Terminal stays dark to preserve clear terminal hierarchy";
 "跟隨系統" = "System";
 "深色" = "Dark";
 "淺色" = "Light";

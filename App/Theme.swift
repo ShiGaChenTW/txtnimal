@@ -14,7 +14,7 @@ enum AppTheme: String, CaseIterable, Hashable {
     var detail: String {
         switch self {
         case .classic: return "跟隨深淺外觀的低彩度工作台"
-        case .phosphorTerminal: return "黑底綠磷光、掃描線與 shell prompt"
+        case .phosphorTerminal: return "IDE 式深色工作區、shell prompt 與結構化狀態"
         }
     }
 }
@@ -26,18 +26,18 @@ enum Theme {
     }
     static var isTerminal: Bool { current == .phosphorTerminal }
 
-    static var bg: Color     { token(classicDark: 0x15171e, classicLight: 0xfbfaf7, terminal: 0x07110b) }
-    static var panel: Color  { token(classicDark: 0x1b1e27, classicLight: 0xefece6, terminal: 0x0b1a10) }
-    static var fg: Color     { token(classicDark: 0xd7d9df, classicLight: 0x2a2d34, terminal: 0xb7f7c5) }
-    static var dim: Color    { token(classicDark: 0x6b7280, classicLight: 0x9aa0aa, terminal: 0x568563) }
-    static var border: Color { token(classicDark: 0x2b303b, classicLight: 0xddd8cf, terminal: 0x174626) }
+    static var bg: Color     { token(classicDark: 0x15171e, classicLight: 0xfbfaf7, terminal: 0x090d0b) }
+    static var panel: Color  { token(classicDark: 0x1b1e27, classicLight: 0xefece6, terminal: 0x101613) }
+    static var fg: Color     { token(classicDark: 0xd7d9df, classicLight: 0x2a2d34, terminal: 0xd5ddd7) }
+    static var dim: Color    { token(classicDark: 0x6b7280, classicLight: 0x9aa0aa, terminal: 0x77837c) }
+    static var border: Color { token(classicDark: 0x2b303b, classicLight: 0xddd8cf, terminal: 0x26332c) }
 
-    static var blue: Color   { token(classicDark: 0x7aa2f7, classicLight: 0x2f6bd6, terminal: 0x69f59a) }
+    static var blue: Color   { token(classicDark: 0x7aa2f7, classicLight: 0x2f6bd6, terminal: 0x78bdf2) }
     static var green: Color  { token(classicDark: 0x9ece6a, classicLight: 0x2e8b57, terminal: 0x45ff79) }
     static var red: Color    { token(classicDark: 0xf7768e, classicLight: 0xd43d30, terminal: 0xff6b6b) }
-    static var yellow: Color { token(classicDark: 0xe0af68, classicLight: 0xb26a00, terminal: 0xe5f36b) }
-    static var cyan: Color   { token(classicDark: 0x7dcfff, classicLight: 0x0e7490, terminal: 0x62e6d2) }
-    static var mag: Color    { token(classicDark: 0xbb9af7, classicLight: 0x8250df, terminal: 0x9dbbff) }
+    static var yellow: Color { token(classicDark: 0xe0af68, classicLight: 0xb26a00, terminal: 0xe3b765) }
+    static var cyan: Color   { token(classicDark: 0x7dcfff, classicLight: 0x0e7490, terminal: 0x65c9ba) }
+    static var mag: Color    { token(classicDark: 0xbb9af7, classicLight: 0x8250df, terminal: 0xa8a3d9) }
     static var focus: Color  { token(classicDark: 0x4fd6c4, classicLight: 0x0d9488, terminal: 0x39ff88) }
 
     /// 可選強調色(設定頁):語意色(紅=逾期/teal=Focus/綠=完成)不列入,避免撞語意
@@ -76,24 +76,6 @@ enum Theme {
 
     private static func token(classicDark: UInt, classicLight: UInt, terminal: UInt) -> Color {
         isTerminal ? Color(nsColor: NSColor(hex: terminal)) : dyn(classicDark, classicLight)
-    }
-}
-
-/// CRT 掃描線只是一層很淡的材質，不攔截滑鼠，也不影響內容對比。
-struct TerminalScanlines: View {
-    var body: some View {
-        if Theme.isTerminal {
-            Canvas { context, size in
-                var y: CGFloat = 1
-                while y < size.height {
-                    context.fill(Path(CGRect(x: 0, y: y, width: size.width, height: 1)),
-                                 with: .color(.black.opacity(0.16)))
-                    y += 4
-                }
-            }
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-        }
     }
 }
 

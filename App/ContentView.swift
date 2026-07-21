@@ -32,7 +32,6 @@ struct ContentView: View {
             }
             if store.focusMode { focusOverlay }   // 技法 B：純變暗
             if showingPalette { paletteOverlay }  // ⌘K:條件掛載,不常駐樹中(焦點教訓)
-            TerminalScanlines()
         }
         .frame(minWidth: 660, minHeight: 580)
         .font(Theme.mono).foregroundColor(Theme.fg)
@@ -67,7 +66,7 @@ struct ContentView: View {
     @FocusState private var searchFocused: Bool
     private var searchBar: some View {
         HStack(spacing: 8) {
-            Text("/").foregroundColor(store.accent)
+            Text(Theme.isTerminal ? "find >" : "/").foregroundColor(Theme.isTerminal ? Theme.green : store.accent)
             TextField("搜尋標題 / +project / @context…", text: $store.searchQuery)
                 .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
                 .focused($searchFocused)
@@ -133,19 +132,23 @@ struct ContentView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image(nsImage: headerAppIcon)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 28, height: 28)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .accessibilityHidden(true)
+            if !Theme.isTerminal {
+                Image(nsImage: headerAppIcon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 28, height: 28)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .accessibilityHidden(true)
+            }
             Group {
                 if Theme.isTerminal {
-                    Text("txtnimal@local").foregroundColor(Theme.green)
-                    Text(":" + (store.fileURL.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath + "/")
-                        .foregroundColor(Theme.dim)
+                    Text("●").foregroundColor(Theme.green).accessibilityHidden(true)
+                    Text("txtnimal").foregroundColor(Theme.fg).fontWeight(.semibold)
+                    Text("//").foregroundColor(Theme.dim)
                     Text(store.fileURL.lastPathComponent).foregroundColor(Theme.fg)
-                    Text("$").foregroundColor(Theme.green)
+                    if let filter = store.tagFilter {
+                        Text(filter).foregroundColor(tagColor(filter))
+                    }
                 } else {
                     Text((store.fileURL.path as NSString).abbreviatingWithTildeInPath)
                         .foregroundColor(Theme.dim)
@@ -167,10 +170,10 @@ struct ContentView: View {
         let localized = Text(LocalizedStringKey(label))
         let rendered = Theme.isTerminal ? Text("[") + localized + Text("]") : localized
         return rendered.font(Theme.monoSmall)
-            .foregroundColor(on ? Theme.fg : Theme.dim)
+            .foregroundColor(on ? (Theme.isTerminal ? Theme.green : Theme.fg) : Theme.dim)
             .padding(.horizontal, 9).padding(.vertical, 3)
-            .background(on ? Theme.bg : .clear)
-            .overlay(Rectangle().stroke(on ? Theme.border : .clear))
+            .background(on ? (Theme.isTerminal ? Theme.green.opacity(0.08) : Theme.bg) : .clear)
+            .overlay(Rectangle().stroke(on ? (Theme.isTerminal ? Theme.green.opacity(0.45) : Theme.border) : .clear))
             .onTapGesture { store.view = v; store.ensureCursor() }
     }
 
@@ -178,7 +181,15 @@ struct ContentView: View {
 
     private var statusBar: some View {
         HStack(spacing: 8) {
-            if Theme.isTerminal { Text("-- NORMAL --").foregroundColor(Theme.green) }
+            if Theme.isTerminal {
+                Text("NORMAL").foregroundColor(Theme.bg)
+                    .padding(.horizontal, 6).padding(.vertical, 2).background(Theme.green)
+                Text("file:").foregroundColor(Theme.dim)
+                Text(store.fileURL.lastPathComponent).foregroundColor(Theme.fg)
+                Text("open:").foregroundColor(Theme.dim)
+                Text("\(store.lines.filter { !$0.isDone }.count)").foregroundColor(Theme.cyan)
+                Text("|").foregroundColor(Theme.border)
+            }
             Group {
             if store.focusMode {
                 Text("● Focus 模式 — 其他變暗；z / esc 離開").foregroundColor(Theme.focus)
@@ -248,7 +259,7 @@ struct ContentView: View {
     @FocusState private var captureFocused: Bool
     private var captureBar: some View {
         HStack(spacing: 8) {
-            Text(">").foregroundColor(Theme.green)
+            Text(Theme.isTerminal ? "\(store.fileURL.lastPathComponent) >" : ">").foregroundColor(Theme.green)
             // 行內上色：彩色 Text 墊底、透明字 TextField 疊上 — 等寬字體讓兩層逐字對齊
             ZStack(alignment: .leading) {
                 if captureText.isEmpty {
