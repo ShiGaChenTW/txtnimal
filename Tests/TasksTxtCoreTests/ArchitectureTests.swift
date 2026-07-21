@@ -15,6 +15,15 @@ final class ArchitectureTests: XCTestCase {
         XCTAssertThrowsError(try store.save(lines: changed, expectedGeneration: first.generation))
     }
 
+    func testFilesystemStoreCanOpenCustomTaskFilename() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try FileSystemTaskDocumentStore(directory: dir, tasksFilename: "work.txt")
+        try store.bootstrap(sample: "custom task")
+        XCTAssertEqual(store.tasksURL.lastPathComponent, "work.txt")
+        XCTAssertEqual(try store.load().lines.first?.title, "custom task")
+    }
+
     func testArchiveMovesOnlyOldDoneTasks() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }

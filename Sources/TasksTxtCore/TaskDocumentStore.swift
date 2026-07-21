@@ -38,15 +38,17 @@ public protocol TaskDocumentStore {
 /// writes never remove tasks from the live file.
 public final class FileSystemTaskDocumentStore: TaskDocumentStore {
     public let directory: URL
-    public var tasksURL: URL { directory.appendingPathComponent("tasks.txt") }
+    public let tasksFilename: String
+    public var tasksURL: URL { directory.appendingPathComponent(tasksFilename) }
     public var scratchURL: URL { directory.appendingPathComponent("scratch.txt") }
     public var archiveURL: URL { directory.appendingPathComponent("archive.txt") }
 
     private let fm: FileManager
     private var generation: UInt64 = 0
 
-    public init(directory: URL, fileManager: FileManager = .default) throws {
+    public init(directory: URL, tasksFilename: String = "tasks.txt", fileManager: FileManager = .default) throws {
         self.directory = directory
+        self.tasksFilename = tasksFilename
         self.fm = fileManager
         do { try fm.createDirectory(at: directory, withIntermediateDirectories: true) }
         catch { throw TaskDocumentStoreError.writeFailed(directory.path) }

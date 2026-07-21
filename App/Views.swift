@@ -8,11 +8,16 @@ struct ListView: View {
     @EnvironmentObject var store: TaskStore
     @State private var addText = ""
     @State private var addVisible = false
+    @State private var showingListEditor = false
+    @State private var editingListOriginal: String?
+    @State private var listName = ""
+    @State private var listDescription = ""
     @FocusState private var addFocused: Bool
 
     var body: some View {
         let g = store.groups()
         VStack(alignment: .leading, spacing: 0) {
+            if selectedList != nil { listInfoBar }
             if let i = store.focusIndex { focusBar(store.lines[i]) }
             section("Today", g.today, group: "today", color: store.accent)    // 當下=強調色(設定頁可換)
             overdueSection(g.overdue)                                          // 逾期=紅(獨佔)
@@ -26,23 +31,107 @@ struct ListView: View {
         }
         .padding(.top, 4).padding(.bottom, 14)
         .onChange(of: store.requestInlineAdd) { req in   // n 鍵:顯示並聚焦輸入列,游標移到此
-            if req { addVisible = true; addFocused = true; store.cursor = nil; store.requestInlineAdd = false }
+            if req { activateInlineAdd() }
         }
+        // 從其他頁切回清單時，request 可能在 ListView 掛載前已變成 true；
+        // onChange 不會對初始值觸發，所以掛載時也必須消費一次。
+        .onAppear { if store.requestInlineAdd { activateInlineAdd() } }
+        .onDisappear { store.inlineAddActive = false }
+        .sheet(isPresented: $showingListEditor) { listEditor }
+    }
+
+    private var selectedList: String? {
+        guard let filter = store.tagFilter, filter.hasPrefix("+") else { return nil }
+        return String(filter.dropFirst())
+    }
+
+    private var listInfoBar: some View {
+        HStack(alignment: .top, spacing: 12) {
+            if let name = selectedList {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("+\(name)").font(store.tagFont).foregroundColor(Theme.mag)
+                    let detail = store.listDescription(name)
+                    Text(detail.isEmpty ? LocalizedStringKey("尚未加入 List 說明") : LocalizedStringKey(detail))
+                        .font(Theme.monoSmall).foregroundColor(Theme.dim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer()
+            Button("List 增加／編輯") { openListEditor() }
+                .buttonStyle(.plain).font(Theme.monoSmall).foregroundColor(store.accent)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.panel)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
+    }
+
+    private func openListEditor() {
+        editingListOriginal = selectedList
+        listName = selectedList ?? ""
+        listDescription = selectedList.map(store.listDescription) ?? ""
+        showingListEditor = true
+    }
+
+    private var listEditor: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(editingListOriginal == nil ? LocalizedStringKey("新增 List") : LocalizedStringKey("編輯 List"))
+                .font(Theme.mono).fontWeight(.semibold)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("List 名稱").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                HStack(spacing: 6) {
+                    Text("+").foregroundColor(Theme.mag)
+                    TextField("marketing", text: $listName).textFieldStyle(.plain)
+                }
+                .padding(8).background(Theme.panel).overlay(Rectangle().stroke(Theme.border))
+            }
+            VStack(alignment: .leading, spacing: 5) {
+                Text("List 說明").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                TextEditor(text: $listDescription)
+                    .scrollContentBackground(.hidden).frame(height: 92).padding(6)
+                    .background(Theme.panel).overlay(Rectangle().stroke(Theme.border))
+            }
+            HStack {
+                Spacer()
+                Button("取消") { showingListEditor = false }.keyboardShortcut(.cancelAction)
+                Button("儲存") {
+                    store.saveList(originalName: editingListOriginal, name: listName, description: listDescription)
+                    showingListEditor = false
+                }
+                .disabled(listName.trimmingCharacters(in: .whitespaces).isEmpty)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .font(Theme.mono).padding(20).frame(width: 480).background(Theme.bg).foregroundColor(Theme.fg)
+    }
+
+    private func activateInlineAdd() {
+        addVisible = true
+        store.inlineAddActive = true
+        store.cursor = nil
+        store.requestInlineAdd = false
+        DispatchQueue.main.async { addFocused = true }
     }
 
     private var addRow: some View {
         HStack(spacing: 10) {
             Text("+").foregroundColor(Theme.green)
             TextField("", text: $addText,
-                      prompt: Text("新增任務…  due:fri  +專案  @情境").foregroundColor(Theme.dim.opacity(0.35)))
-                .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
+                      prompt: Text("新增任務…  due:fri  +List  @Tag").foregroundColor(Theme.dim.opacity(0.35)))
+                .textFieldStyle(.plain).font(store.taskFont).foregroundColor(Theme.fg)
                 .focused($addFocused)
                 .onSubmit {
                     let t = addText.trimmingCharacters(in: .whitespaces)
                     if !t.isEmpty { store.addFromCapture(t) }
                     addText = ""; addFocused = true   // 連續新增:留在輸入列
                 }
-                .onExitCommand { addText = ""; addVisible = false; store.ensureCursor() }   // esc 收起輸入列
+                .onExitCommand {
+                    addText = ""
+                    addFocused = false
+                    addVisible = false
+                    store.inlineAddActive = false
+                    store.ensureCursor()
+                }
         }
         .font(Theme.mono)
         .padding(.leading, 16)
@@ -123,6 +212,7 @@ struct RowView: View {
         HStack(spacing: 10) {
             Text(t.isDone ? "[✓]" : "[ ]").foregroundColor(t.isDone ? Theme.green : groupColor)
             Text(t.title)
+                .font(store.taskFont)
                 .foregroundColor(t.isFocused ? Theme.focus : (t.isDone ? Theme.dim : Theme.fg))
                 .fontWeight(t.isFocused ? .semibold : .regular)
                 .strikethrough(t.isDone, color: Theme.dim)
@@ -130,10 +220,12 @@ struct RowView: View {
             Spacer(minLength: 8)
             ForEach(t.projects, id: \.self) { p in
                 Text("+\(p)").foregroundColor(Theme.mag)
+                    .font(store.tagFont)
                     .onTapGesture { store.toggleTagFilter("+" + p) }
             }
             ForEach(t.contexts, id: \.self) { c in
                 Text("@\(c)").foregroundColor(Theme.cyan)
+                    .font(store.tagFont)
                     .onTapGesture { store.toggleTagFilter("@" + c) }
             }
             dueBadge(t)
@@ -142,7 +234,7 @@ struct RowView: View {
         // 便箋另起第二行,對齊標題起點,透明灰 — 次要資訊不與標題爭寬度
         if let note = t.note, !note.isEmpty {
             Text(note)
-                .font(Theme.monoSmall).foregroundColor(Theme.dim.opacity(0.65))
+                .font(store.taskSmallFont).foregroundColor(Theme.dim.opacity(0.65))
                 .lineLimit(2).padding(.leading, 34)
         }
         }
@@ -287,6 +379,7 @@ struct QuadrantView: View {
         return HStack(spacing: 7) {
             Text("[ ]").foregroundColor(Theme.dim)
             Text(t.title).foregroundColor(t.isFocused ? Theme.focus : Theme.fg).lineLimit(1)
+                .font(store.taskFont)
         }
         .font(Theme.mono).padding(.horizontal, 4).padding(.vertical, 2)
         .background(store.cursor == i ? Theme.selBg : .clear)

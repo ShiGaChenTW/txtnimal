@@ -1,6 +1,7 @@
 name: TasksTxt
 options:
   bundleIdPrefix: app.taskstxt
+  developmentLanguage: zh-Hant
   deploymentTarget:
     macOS: "13.0"
   createIntermediateGroups: true
@@ -18,6 +19,8 @@ targets:
     platform: macOS
     sources:
       - App
+    resources:
+      - path: App/Resources
     dependencies:
       - package: TasksTxtCore
         product: TasksTxtCore
@@ -26,7 +29,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.taskstxt.TasksTxt
-        PRODUCT_NAME: TasksTxt
+        PRODUCT_NAME: txtnimal
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: YES

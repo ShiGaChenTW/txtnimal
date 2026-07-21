@@ -131,8 +131,8 @@ struct CaptureHelp: View {
             if open {
                 VStack(alignment: .leading, spacing: 3) {
                     row("due:", "due:fri · due:tomorrow · due:3d · due:2026-07-25", Theme.blue)
-                    row("+專案", "+business +side（可多個）", Theme.mag)
-                    row("@情境", "@mac @calls @home（可多個）", Theme.cyan)
+                    row("+List", "+business +side（可多個）", Theme.mag)
+                    row("@Tag", "@mac @calls @home（可多個）", Theme.cyan)
                     row("note:", "note:\"含空格要加引號\"", Theme.dim)
                     Text("例：寄出報價單給王經理 due:fri +business @mac note:\"附上7月折扣方案\"")
                         .foregroundColor(Theme.fg).padding(.top, 3)
@@ -152,7 +152,7 @@ struct CaptureHelp: View {
         }
     }
 
-    private func row(_ k: String, _ v: String, _ c: Color) -> some View {
+    private func row(_ k: LocalizedStringKey, _ v: LocalizedStringKey, _ c: Color) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Text(k).foregroundColor(c).frame(width: 52, alignment: .leading)
             Text(v).foregroundColor(Theme.dim)
@@ -163,10 +163,20 @@ struct CaptureHelp: View {
 /// 設定視窗(⌘,)：個人 / 快速鍵 / 外觀 / 檔案。
 struct SettingsView: View {
     @EnvironmentObject var store: TaskStore
+    @State private var showingTaskFiles = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
             section("個人")
+            HStack(spacing: 8) {
+                Text("語言").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Picker("", selection: $store.appLanguage) {
+                    ForEach(AppLanguage.allCases, id: \.self) { language in
+                        Text(LocalizedStringKey(language.label)).tag(language)
+                    }
+                }.labelsHidden().frame(width: 150)
+            }
             HStack(spacing: 8) {
                 Text("使用者名稱").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
                 TextField("", text: $store.userName,
@@ -204,9 +214,50 @@ struct SettingsView: View {
             }
             hint("逾期紅 · Focus teal · 完成綠 為語意固定色，不受此設定影響")
             HStack(spacing: 8) {
+                Text("App 圖示").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Picker("", selection: $store.appIconStyle) {
+                    ForEach(AppIconStyle.allCases, id: \.self) { style in
+                        HStack {
+                            Image(nsImage: appIconPreview(style)).resizable().frame(width: 22, height: 22)
+                            Text(LocalizedStringKey(style.label))
+                        }.tag(style)
+                    }
+                }.labelsHidden().frame(width: 180)
+                Image(nsImage: appIconPreview(store.appIconStyle))
+                    .resizable().frame(width: 36, height: 36)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            hint("選擇後會立即更新 Dock 圖示，並保留至下次啟動")
+            HStack(spacing: 8) {
                 Text("行距").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
                 Picker("", selection: $store.density) {
-                    ForEach(Density.allCases, id: \.self) { Text($0.label).tag($0) }
+                    ForEach(Density.allCases, id: \.self) { Text(LocalizedStringKey($0.label)).tag($0) }
+                }.labelsHidden().frame(width: 150)
+            }
+            HStack(spacing: 8) {
+                Text("英數字體").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Picker("", selection: $store.latinFontChoice) {
+                    ForEach(LatinFontChoice.allCases, id: \.self) { choice in
+                        Text(LocalizedStringKey(choice.label)).tag(choice)
+                    }
+                }.labelsHidden().frame(width: 180)
+            }
+            HStack(spacing: 8) {
+                Text("中文字體").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Picker("", selection: $store.chineseFontChoice) {
+                    ForEach(ChineseFontChoice.allCases, id: \.self) { choice in
+                        Text(LocalizedStringKey(choice.label)).tag(choice)
+                    }
+                }.labelsHidden().frame(width: 180)
+            }
+            hint("中英文字體可分別選擇，並會套用至全 app")
+            fontSizeRow("Task 內容", value: $store.taskTextSize, range: 10...24)
+            fontSizeRow("List／Tag", value: $store.tagTextSize, range: 9...20)
+            hint("兩種文字大小可分開設定，並會即時套用")
+            HStack(spacing: 8) {
+                Text("統計圖示").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Picker("", selection: $store.dashboardIconStyle) {
+                    ForEach(DashboardIconStyle.allCases, id: \.self) { Text(LocalizedStringKey($0.label)).tag($0) }
                 }.labelsHidden().frame(width: 150)
             }
             HStack(spacing: 8) {
@@ -217,29 +268,56 @@ struct SettingsView: View {
 
             section("檔案")
             HStack(spacing: 8) {
-                Text("位置").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Text("資料夾").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
                 Text((store.dataDirPath as NSString).abbreviatingWithTildeInPath)
                     .font(Theme.monoSmall).foregroundColor(Theme.dim)
                     .lineLimit(1).truncationMode(.middle)
                 Button("更改…") { pickFolder() }
             }
             hint("tasks.txt / scratch.txt / archive.txt 所在資料夾；搬到空資料夾會自動帶檔（複製，原檔保留）")
+            HStack(spacing: 8) {
+                Text("任務檔案").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Text(store.fileURL.lastPathComponent)
+                    .font(Theme.monoSmall).foregroundColor(Theme.fg)
+                    .lineLimit(1).truncationMode(.middle)
+                Spacer()
+                Button("選擇／釘選…") { showingTaskFiles = true }
+            }
+            hint("開啟其他 .txt 文件，或管理已釘選的常用文件")
+            }
+            .font(Theme.mono)
+            .padding(.horizontal, 28).padding(.vertical, 24).frame(maxWidth: 600, alignment: .leading)
         }
-        .font(Theme.mono)
-        .padding(.horizontal, 28).padding(.vertical, 24).frame(maxWidth: 600, alignment: .leading)
+        .sheet(isPresented: $showingTaskFiles) { TaskFileBrowserView().environmentObject(store) }
     }
 
-    private func section(_ title: String) -> some View {
+    private func section(_ title: LocalizedStringKey) -> some View {
         HStack(spacing: 8) {
             Text(title).font(Theme.monoSmall).foregroundColor(Theme.dim).tracking(1.5)
             Rectangle().fill(Theme.border).frame(height: 1)
         }
         .padding(.top, 14).padding(.bottom, 4)
     }
-    private func hint(_ s: String) -> some View {
+    private func hint(_ s: LocalizedStringKey) -> some View {
         Text(s).font(Theme.monoSmall).foregroundColor(Theme.dim.opacity(0.75))
             .padding(.leading, 104).padding(.top, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private func fontSizeRow(_ label: LocalizedStringKey, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
+        HStack(spacing: 8) {
+            Text(label).frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+            Stepper(value: value, in: range, step: 1) {
+                Text("\(Int(value.wrappedValue)) pt")
+                    .frame(width: 54, alignment: .leading).foregroundColor(Theme.fg)
+            }
+            .frame(width: 150)
+        }
+    }
+
+    private func appIconPreview(_ style: AppIconStyle) -> NSImage {
+        guard let url = Bundle.main.url(forResource: style.resourceName, withExtension: "png"),
+              let image = NSImage(contentsOf: url) else { return NSApp.applicationIconImage }
+        return image
     }
 
     private func pickFolder() {
@@ -247,7 +325,7 @@ struct SettingsView: View {
         p.canChooseFiles = false
         p.canChooseDirectories = true
         p.canCreateDirectories = true
-        p.prompt = "選這個資料夾"
+        p.prompt = store.appLanguage == .english ? "Choose Folder" : "選這個資料夾"
         if p.runModal() == .OK, let url = p.url { store.setDataDir(url) }
     }
 }

@@ -11,21 +11,128 @@ enum Density: Int, CaseIterable, Hashable {
     var label: String { ["緊湊", "標準", "寬鬆"][rawValue] }
 }
 
+enum DashboardIconStyle: Int, CaseIterable, Hashable {
+    case chronoOrb, terminalPulse, completionCompass, quietHorizon
+    var label: String { ["時序光環", "終端脈衝", "完成羅盤", "安靜地平線"][rawValue] }
+}
+
+enum AppIconStyle: String, CaseIterable, Hashable {
+    case flatGeometric, macOSGlass, retroCRTPixel
+
+    var label: String {
+        switch self {
+        case .flatGeometric: return "平面幾何"
+        case .macOSGlass: return "macOS 玻璃"
+        case .retroCRTPixel: return "復古 CRT 像素"
+        }
+    }
+
+    var resourceName: String {
+        switch self {
+        case .flatGeometric: return "txtnimal-icon-flat"
+        case .macOSGlass: return "txtnimal-icon-glass"
+        case .retroCRTPixel: return "txtnimal-icon-crt"
+        }
+    }
+}
+
+enum AppLanguage: String, CaseIterable, Hashable {
+    case traditionalChinese = "zh-Hant"
+    case english = "en"
+    var label: String { self == .traditionalChinese ? "繁體中文" : "English" }
+    var locale: Locale { Locale(identifier: rawValue) }
+}
+
+enum LatinFontChoice: String, CaseIterable, Hashable {
+    case systemMonospaced, menlo, monaco, courierNew
+    var label: String {
+        switch self {
+        case .systemMonospaced: return "系統等寬"
+        case .menlo: return "Menlo"
+        case .monaco: return "Monaco"
+        case .courierNew: return "Courier New"
+        }
+    }
+    var fontName: String? {
+        switch self {
+        case .systemMonospaced: return nil
+        case .menlo: return "Menlo"
+        case .monaco: return "Monaco"
+        case .courierNew: return "Courier New"
+        }
+    }
+}
+
+enum ChineseFontChoice: String, CaseIterable, Hashable {
+    case pingFangTC, heitiTC, songtiTC, kaitiTC
+    var label: String {
+        switch self {
+        case .pingFangTC: return "蘋方繁體"
+        case .heitiTC: return "黑體繁體"
+        case .songtiTC: return "宋體繁體"
+        case .kaitiTC: return "楷體繁體"
+        }
+    }
+    var fontName: String {
+        switch self {
+        case .pingFangTC: return "PingFang TC"
+        case .heitiTC: return "Heiti TC"
+        case .songtiTC: return "Songti TC"
+        case .kaitiTC: return "Kaiti TC"
+        }
+    }
+}
+
 /// 全部狀態的家：檔案內容 + UI 狀態（游標 / 視圖 / Focus 模式）。
 /// v1 每次變更即存檔;FSEvents 外部監看為 v2。
 final class TaskStore: ObservableObject {
     @Published private(set) var lines: [TaskLine] = []
     @Published private(set) var archiveLines: [TaskLine] = []
     @Published var lastError: String?
+    @Published var appLanguage: AppLanguage = {
+        AppLanguage(rawValue: UserDefaults.standard.string(forKey: "appLanguage") ?? "zh-Hant") ?? .traditionalChinese
+    }() {
+        didSet { UserDefaults.standard.set(appLanguage.rawValue, forKey: "appLanguage") }
+    }
+    @Published var latinFontChoice: LatinFontChoice = {
+        let saved = UserDefaults.standard.string(forKey: "latinFontChoice")
+            ?? UserDefaults.standard.string(forKey: "appFontChoice")
+            ?? "systemMonospaced"
+        return LatinFontChoice(rawValue: saved) ?? .systemMonospaced
+    }() {
+        didSet { UserDefaults.standard.set(latinFontChoice.rawValue, forKey: "latinFontChoice") }
+    }
+    @Published var chineseFontChoice: ChineseFontChoice = {
+        ChineseFontChoice(rawValue: UserDefaults.standard.string(forKey: "chineseFontChoice") ?? "pingFangTC") ?? .pingFangTC
+    }() {
+        didSet { UserDefaults.standard.set(chineseFontChoice.rawValue, forKey: "chineseFontChoice") }
+    }
+    @Published var showWelcomeOnLaunch = UserDefaults.standard.bool(forKey: "showWelcomeOnLaunch") {
+        didSet { UserDefaults.standard.set(showWelcomeOnLaunch, forKey: "showWelcomeOnLaunch") }
+    }
+    @Published var hasCompletedOnboarding: Bool = {
+        if UserDefaults.standard.bool(forKey: "showWelcomeOnLaunch") { return false }
+        return UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+    }()
+    func completeOnboarding() {
+        hasCompletedOnboarding = true
+        UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+    }
     @Published var view: AppView = .list
     @Published var cursor: Int? = nil          // index into `lines`
     @Published var focusMode = false
     @Published var scratch = ""
     @Published var tagFilter: String? = nil   // "+project" 或 "@context";nil = 不篩選
+    @Published private(set) var listDescriptions: [String: String] = {
+        guard let data = UserDefaults.standard.data(forKey: "listDescriptions"),
+              let value = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+        return value
+    }()
     @Published var editingIndex: Int? = nil   // 正在行內編輯的列
     @Published var searchQuery = ""           // `/` 即打即濾
     @Published var searchActive = false
     @Published var requestInlineAdd = false   // `n` 鍵 → 聚焦清單尾端新增列
+    @Published var inlineAddActive = false    // 新增列正在接收鍵盤事件
     @Published var density: Density = {
         Density(rawValue: (UserDefaults.standard.object(forKey: "density") as? Int) ?? 1) ?? .normal
     }() {
@@ -34,6 +141,19 @@ final class TaskStore: ObservableObject {
     // 0 系統 / 1 深色 / 2 淺色
     @Published var appearanceMode: Int = UserDefaults.standard.integer(forKey: "appearance") {
         didSet { UserDefaults.standard.set(appearanceMode, forKey: "appearance"); applyAppearance() }
+    }
+    @Published var appIconStyle: AppIconStyle = {
+        AppIconStyle(rawValue: UserDefaults.standard.string(forKey: "appIconStyle") ?? "flatGeometric") ?? .flatGeometric
+    }() {
+        didSet {
+            UserDefaults.standard.set(appIconStyle.rawValue, forKey: "appIconStyle")
+            applyAppIcon()
+        }
+    }
+    func applyAppIcon() {
+        guard let url = Bundle.main.url(forResource: appIconStyle.resourceName, withExtension: "png"),
+              let image = NSImage(contentsOf: url) else { return }
+        NSApp.applicationIconImage = image
     }
     func applyAppearance() {
         switch appearanceMode {
@@ -54,6 +174,34 @@ final class TaskStore: ObservableObject {
     }
     var accent: Color { Theme.accentPalette[max(0, min(accentIndex, Theme.accentPalette.count - 1))].color }
 
+    /// 內容與標籤分開調整，數值持久化並限制在可讀範圍。
+    @Published var taskTextSize: Double = {
+        let saved = UserDefaults.standard.double(forKey: "taskTextSize")
+        return saved == 0 ? 13.5 : max(10, min(24, saved))
+    }() {
+        didSet {
+            taskTextSize = max(10, min(24, taskTextSize))
+            UserDefaults.standard.set(taskTextSize, forKey: "taskTextSize")
+        }
+    }
+    @Published var tagTextSize: Double = {
+        let saved = UserDefaults.standard.double(forKey: "tagTextSize")
+        return saved == 0 ? 11.5 : max(9, min(20, saved))
+    }() {
+        didSet {
+            tagTextSize = max(9, min(20, tagTextSize))
+            UserDefaults.standard.set(tagTextSize, forKey: "tagTextSize")
+        }
+    }
+    var taskFont: Font { Theme.appFont(size: taskTextSize) }
+    var taskSmallFont: Font { Theme.appFont(size: max(9, taskTextSize - 2)) }
+    var tagFont: Font { Theme.appFont(size: tagTextSize) }
+    @Published var dashboardIconStyle: DashboardIconStyle = {
+        DashboardIconStyle(rawValue: UserDefaults.standard.integer(forKey: "dashboardIconStyle")) ?? .chronoOrb
+    }() {
+        didSet { UserDefaults.standard.set(dashboardIconStyle.rawValue, forKey: "dashboardIconStyle") }
+    }
+
     // 開機自啟（SMAppService, macOS 13+）
     var launchAtLogin: Bool { SMAppService.mainApp.status == .enabled }
     func setLaunchAtLogin(_ on: Bool) {
@@ -72,6 +220,12 @@ final class TaskStore: ObservableObject {
 
     static let defaultDataDir = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Documents/tasks-txt", isDirectory: true)
+    private static func storedTaskFile() -> URL {
+        if let path = UserDefaults.standard.string(forKey: "activeTaskFile") {
+            return URL(fileURLWithPath: path)
+        }
+        return storedDataDir().appendingPathComponent("tasks.txt")
+    }
     private static func storedDataDir() -> URL {
         guard let p = UserDefaults.standard.string(forKey: "dataDir") else { return defaultDataDir }
         return URL(fileURLWithPath: p, isDirectory: true)
@@ -96,6 +250,7 @@ final class TaskStore: ObservableObject {
             }
             documentStore = try FileSystemTaskDocumentStore(directory: dir)
             UserDefaults.standard.set(dir.path, forKey: "dataDir")
+            UserDefaults.standard.set(documentStore.tasksURL.path, forKey: "activeTaskFile")
             fileURL = documentStore.tasksURL; scratchURL = documentStore.scratchURL; archiveURL = documentStore.archiveURL
         } catch { report(error); return }
         bootstrapIfMissing()
@@ -106,11 +261,12 @@ final class TaskStore: ObservableObject {
     }
 
     init() {
-        let dir = Self.storedDataDir()
-        fileURL = dir.appendingPathComponent("tasks.txt")
+        let selectedFile = Self.storedTaskFile()
+        let dir = selectedFile.deletingLastPathComponent()
+        fileURL = selectedFile
         scratchURL = dir.appendingPathComponent("scratch.txt")
         archiveURL = dir.appendingPathComponent("archive.txt")
-        do { documentStore = try FileSystemTaskDocumentStore(directory: dir) }
+        do { documentStore = try FileSystemTaskDocumentStore(directory: dir, tasksFilename: selectedFile.lastPathComponent) }
         catch { fatalError("Cannot initialize task document store: \(error)") }
         bootstrapIfMissing()
         load()
@@ -167,6 +323,42 @@ final class TaskStore: ObservableObject {
     }
 
     private func report(_ error: Error) { lastError = error.localizedDescription }
+
+    // MARK: task files
+
+    var pinnedTaskFiles: [URL] {
+        let paths = UserDefaults.standard.stringArray(forKey: "pinnedTaskFiles") ?? []
+        return paths.map { URL(fileURLWithPath: $0) }
+    }
+
+    func isPinned(_ url: URL) -> Bool {
+        pinnedTaskFiles.contains { $0.standardizedFileURL == url.standardizedFileURL }
+    }
+
+    func togglePinned(_ url: URL) {
+        var paths = pinnedTaskFiles.map(\.path)
+        if let index = paths.firstIndex(of: url.path) { paths.remove(at: index) }
+        else { paths.append(url.path) }
+        UserDefaults.standard.set(paths, forKey: "pinnedTaskFiles")
+        objectWillChange.send()
+    }
+
+    func openTaskFile(_ url: URL) {
+        let target = url.standardizedFileURL
+        guard FileManager.default.fileExists(atPath: target.path) else {
+            lastError = "找不到檔案：\(target.path)"; return
+        }
+        stopWatching()
+        do {
+            let next = try FileSystemTaskDocumentStore(
+                directory: target.deletingLastPathComponent(), tasksFilename: target.lastPathComponent)
+            documentStore = next
+            fileURL = next.tasksURL; scratchURL = next.scratchURL; archiveURL = next.archiveURL
+            UserDefaults.standard.set(fileURL.path, forKey: "activeTaskFile")
+            UserDefaults.standard.set(fileURL.deletingLastPathComponent().path, forKey: "dataDir")
+            load(); archiveOldDone(); cursor = listOrder().first; ensureCursor(); startWatching()
+        } catch { report(error); startWatching() }
+    }
 
     // MARK: 外部編輯即時重載（FSEvents/DispatchSource）
 
@@ -244,9 +436,35 @@ final class TaskStore: ObservableObject {
     }
 
     // 全檔出現過的標籤（給底部標籤列）。
-    func allProjects() -> [String] { Array(Set(lines.flatMap { $0.projects })).sorted() }
+    func allProjects() -> [String] {
+        Array(Set(lines.flatMap { $0.projects }).union(listDescriptions.keys)).sorted()
+    }
     func allContexts() -> [String] { Array(Set(lines.flatMap { $0.contexts })).sorted() }
-    var hasTags: Bool { lines.contains { !$0.projects.isEmpty || !$0.contexts.isEmpty } }
+    var hasTags: Bool { !listDescriptions.isEmpty || lines.contains { !$0.projects.isEmpty || !$0.contexts.isEmpty } }
+
+    func listDescription(_ name: String) -> String { listDescriptions[name] ?? "" }
+
+    /// List metadata 存在 app 設定中；重新命名時同步更新 todo.txt 內的 +List token。
+    func saveList(originalName: String?, name: String, description: String) {
+        let clean = name.split(whereSeparator: { $0 == " " || $0 == "+" || $0 == "@" }).joined()
+        guard !clean.isEmpty else { return }
+        let original = originalName?.trimmingCharacters(in: .whitespaces)
+        if let original, !original.isEmpty, original != clean {
+            for i in lines.indices where lines[i].projects.contains(original) {
+                lines[i].removeTag("+" + original)
+                lines[i].addTag("+" + clean)
+            }
+            listDescriptions.removeValue(forKey: original)
+            if tagFilter == "+" + original { tagFilter = "+" + clean }
+            save()
+        }
+        listDescriptions[clean] = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let data = try? JSONEncoder().encode(listDescriptions) {
+            UserDefaults.standard.set(data, forKey: "listDescriptions")
+        }
+        tagFilter = "+" + clean
+        ensureCursor()
+    }
 
     func toggleTagFilter(_ tag: String) {
         tagFilter = (tagFilter == tag) ? nil : tag

@@ -35,9 +35,11 @@ struct ContentView: View {
         }
         .frame(minWidth: 660, minHeight: 580)
         .font(Theme.mono).foregroundColor(Theme.fg)
+        .environment(\.locale, store.appLanguage.locale)
         .onAppear {
             installMonitor()
             store.applyAppearance()
+            store.applyAppIcon()
             FocusHUD.shared.update(store: store)
         }
         .onChange(of: store.focusIndex) { _ in FocusHUD.shared.update(store: store) }
@@ -45,6 +47,10 @@ struct ContentView: View {
         .onDisappear { if let m = monitor { NSEvent.removeMonitor(m) } }
         .sheet(isPresented: $showingAddProject, onDismiss: { projectText = "" }) { addProjectSheet }
         .sheet(isPresented: $showingEdit) { editSheet }
+        .sheet(isPresented: Binding(
+            get: { !store.hasCompletedOnboarding },
+            set: { _ in }
+        )) { WelcomeView().environmentObject(store).interactiveDismissDisabled() }
         .alert("檔案操作失敗", isPresented: Binding(
             get: { store.lastError != nil },
             set: { if !$0 { store.lastError = nil } }
@@ -80,18 +86,30 @@ struct ContentView: View {
     // MARK: 底部標籤列（全部 +project / @context，可點篩選）
 
     private var tagBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(store.allProjects(), id: \.self) { tagChip("+" + $0, Theme.mag) }
-                ForEach(store.allContexts(), id: \.self) { tagChip("@" + $0, Theme.cyan) }
+        VStack(alignment: .leading, spacing: 7) {
+            if !store.allProjects().isEmpty {
+                FlowLayout(spacing: 8) {
+                    tagGroupLabel("LIST", Theme.mag)
+                    ForEach(store.allProjects(), id: \.self) { tagChip("+" + $0, Theme.mag) }
+                }
             }
-            .padding(.horizontal, 16).padding(.vertical, 8)
+            if !store.allContexts().isEmpty {
+                FlowLayout(spacing: 8) {
+                    tagGroupLabel("TAG", Theme.cyan)
+                    ForEach(store.allContexts(), id: \.self) { tagChip("@" + $0, Theme.cyan) }
+                }
+            }
         }
+        .padding(.horizontal, 16).padding(.vertical, 8)
         .background(Theme.panel)
+    }
+    private func tagGroupLabel(_ label: String, _ color: Color) -> some View {
+        Text(label).font(Theme.monoSmall).foregroundColor(color.opacity(0.75))
+            .frame(minWidth: 38, alignment: .leading)
     }
     private func tagChip(_ tag: String, _ color: Color) -> some View {
         let active = store.tagFilter == tag
-        return Text(tag).font(Theme.monoSmall)
+        return Text(tag).font(store.tagFont)
             .foregroundColor(active ? Theme.bg : color)
             .padding(.horizontal, 8).padding(.vertical, 3)
             .background(Rectangle().fill(active ? color : color.opacity(0.13)))
@@ -125,7 +143,7 @@ struct ContentView: View {
     }
     private func tab(_ label: String, _ v: AppView) -> some View {
         let on = store.view == v
-        return Text(label).font(Theme.monoSmall)
+        return Text(LocalizedStringKey(label)).font(Theme.monoSmall)
             .foregroundColor(on ? Theme.fg : Theme.dim)
             .padding(.horizontal, 9).padding(.vertical, 3)
             .background(on ? Theme.bg : .clear)
@@ -138,9 +156,10 @@ struct ContentView: View {
     private var statusBar: some View {
         Group {
             if store.focusMode {
-                Text("● Focus 模式 — 其他變暗;z / esc 離開").foregroundColor(Theme.focus)
+                Text("● Focus 模式 — 其他變暗；z / esc 離開").foregroundColor(Theme.focus)
             } else if let f = store.tagFilter {
-                Text("篩選 \(f) — esc 清除").foregroundColor(tagColor(f))
+                Text(store.appLanguage == .english ? "Filter \(f) — esc to clear" : "篩選 \(f) — esc 清除")
+                    .foregroundColor(tagColor(f))
             } else {
                 Text(statusText).foregroundColor(Theme.dim)
             }
@@ -150,8 +169,17 @@ struct ContentView: View {
         .padding(.horizontal, 16).background(Theme.panel)
     }
     private var statusText: String {
+        if store.appLanguage == .english {
+            switch store.view {
+            case .list: return "↑↓ Move   ⌘E Edit   x Done   f Focus   n Add   / Search   ⌘K Commands"
+            case .grid: return "1–4 Assign   0 Unassign   f Focus   z Zen   ⌘K Commands   ⌘1 List"
+            case .pad: return "Plain-text scratchpad · scratch.txt   ⌘1 Back to list"
+            case .dash: return "Read-only stats · calculated from done: dates   esc / ⌘1 Back to list"
+            case .settings: return "Settings · applied instantly   esc / ⌘1 Back to list"
+            }
+        }
         switch store.view {
-        case .list: return "↑↓ 移動   ⌘E 編輯   x 完成   f Focus   n 新增   / 搜尋   ⌘K 指令   ⌘2 象限"
+        case .list: return "↑↓ 移動   ⌘E 編輯   x 完成   f Focus   n 新增   / 搜尋   ⌘K 指令"
         case .grid: return "1–4 指派   0 回池   f Focus   z 專注   ⌘K 指令   ⌘1 清單"
         case .pad:  return "純文字便箋 · scratch.txt   ⌘1 回清單"
         case .dash: return "唯讀統計 · 依 done: 日期計算   esc / ⌘1 回清單"
@@ -169,9 +197,9 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("▶ FOCUS · 現在只做這一件").font(Theme.monoSmall)
                         .foregroundColor(Theme.focus).tracking(1.5)
-                    Text(t.title).font(Theme.monoBig).foregroundColor(Theme.fg)
+                    Text(t.title).font(.system(size: max(22, store.taskTextSize + 8), weight: .bold, design: .monospaced)).foregroundColor(Theme.fg)
                     HStack(spacing: 14) {
-                        ForEach(t.projects, id: \.self) { p in Text("+\(p)").foregroundColor(Theme.mag) }
+                        ForEach(t.projects, id: \.self) { p in Text("+\(p)").font(store.tagFont).foregroundColor(Theme.mag) }
                         if let due = t.due, let r = RelativeDate.label(due) {
                             Text("\(due) · \(r.text)\(r.overdue ? " ⚠" : "")")
                                 .foregroundColor(r.overdue ? Theme.red : Theme.dim)
@@ -198,7 +226,7 @@ struct ContentView: View {
             // 行內上色：彩色 Text 墊底、透明字 TextField 疊上 — 等寬字體讓兩層逐字對齊
             ZStack(alignment: .leading) {
                 if captureText.isEmpty {
-                    Text("新任務…  due:fri  +專案  @情境")
+                    Text("新任務…  due:fri  +List  @Tag")
                         .foregroundColor(Theme.dim.opacity(0.3))
                 }
                 colorized(captureText)
@@ -354,7 +382,7 @@ struct ContentView: View {
     private var projectMenuPopover: some View {
         VStack(alignment: .leading, spacing: 0) {
             if store.allProjects().isEmpty {
-                Text("尚無專案 — 直接輸入 +名稱").font(Theme.monoSmall).foregroundColor(Theme.dim).padding(10)
+                Text("尚無 List — 直接輸入 +名稱").font(Theme.monoSmall).foregroundColor(Theme.dim).padding(10)
             }
             ForEach(store.allProjects(), id: \.self) { p in
                 HStack(spacing: 8) {
@@ -375,7 +403,7 @@ struct ContentView: View {
     private var contextMenuPopover: some View {
         VStack(alignment: .leading, spacing: 0) {
             if store.allContexts().isEmpty {
-                Text("尚無情境 — 直接輸入 @名稱").font(Theme.monoSmall).foregroundColor(Theme.dim).padding(10)
+                Text("尚無 Tag — 直接輸入 @名稱").font(Theme.monoSmall).foregroundColor(Theme.dim).padding(10)
             }
             ForEach(store.allContexts(), id: \.self) { c in
                 HStack(spacing: 8) {
@@ -482,7 +510,7 @@ struct ContentView: View {
                     })
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("專案").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                    Text("List").font(Theme.monoSmall).foregroundColor(Theme.dim)
                     HStack(spacing: 0) {
                         TextField("", text: $editProjects,
                                   prompt: Text("+work +side").foregroundColor(Theme.dim.opacity(0.4)))
@@ -498,7 +526,7 @@ struct ContentView: View {
                     })
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("情境").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                    Text("Tag").font(Theme.monoSmall).foregroundColor(Theme.dim)
                     HStack(spacing: 0) {
                         TextField("", text: $editContexts,
                                   prompt: Text("@mac @home").foregroundColor(Theme.dim.opacity(0.4)))
@@ -517,7 +545,7 @@ struct ContentView: View {
 
             // 第三行:便箋
             VStack(alignment: .leading, spacing: 4) {
-                Text("便箋").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                Text("備註").font(Theme.monoSmall).foregroundColor(Theme.dim)
                 TextEditor(text: $editNote)
                     .font(Theme.mono).foregroundColor(Theme.fg)
                     .scrollContentBackground(.hidden)
@@ -537,7 +565,7 @@ struct ContentView: View {
 
     private var addProjectSheet: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("加入 +PROJECT 到選取任務").font(Theme.monoSmall).foregroundColor(Theme.dim).tracking(1.2)
+            Text("加入 +LIST 到選取任務").font(Theme.monoSmall).foregroundColor(Theme.dim).tracking(1.2)
             HStack(spacing: 8) {
                 Text("+").foregroundColor(Theme.mag)
                 TextField("marketing", text: $projectText)
@@ -574,7 +602,7 @@ struct ContentView: View {
             .init(name: "Focus 這一件", alias: "focus", keys: "f", run: { store.toggleFocus() }),
             .init(name: "專注模式", alias: "zen focus mode", keys: "z", run: { store.toggleFocusMode() }),
             .init(name: "新增捕捉", alias: "new capture add", keys: "n", run: { openCapture() }),
-            .init(name: "加 +專案", alias: "project tag", keys: "p", run: { if store.cursor != nil { showingAddProject = true } }),
+            .init(name: "加 +List", alias: "project list", keys: "p", run: { if store.cursor != nil { showingAddProject = true } }),
             .init(name: "搜尋", alias: "search find filter", keys: "/", run: { store.searchActive = true }),
             .init(name: "逾期全改今天", alias: "reschedule overdue today", keys: "R", run: { store.rescheduleOverdue() }),
             .init(name: "行距更緊", alias: "density compact tighter", keys: "[", run: { store.cycleDensity(-1) }),
@@ -616,7 +644,7 @@ struct ContentView: View {
                 } else {
                     ForEach(Array(cmds.enumerated()), id: \.element.name) { i, cmd in
                         HStack {
-                            Text(cmd.name)
+                            Text(LocalizedStringKey(cmd.name))
                             Spacer()
                             Text(cmd.keys).foregroundColor(Theme.dim)
                         }
@@ -697,7 +725,9 @@ struct ContentView: View {
             return e
         }
         if showingCapture || showingAddProject { return e }
-        if NSApp.keyWindow?.firstResponder is NSTextView { return e }   // 便箋/捕捉輸入時放行
+        // NSTextField 的 field editor 也是 NSTextView，且切頁後可能短暫保留；只在確實
+        // 顯示文字輸入介面時放行，避免它吞掉清單的 n/e/x 等單鍵命令。
+        if store.inlineAddActive || store.view == .pad || store.view == .settings || store.searchActive { return e }
         let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)
         let chars = e.charactersIgnoringModifiers ?? ""
         if cmd {
@@ -753,6 +783,38 @@ struct ContentView: View {
         case "1", "2", "3", "4": if store.view == .grid { store.setQuadrant(Int(chars)); return nil }; return e
         case "0": if store.view == .grid { store.setQuadrant(nil); return nil }; return e
         default: return e
+        }
+    }
+}
+
+/// Variable-width chips that wrap onto additional rows instead of scrolling horizontally.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width {
+                x = 0; y += rowHeight + spacing; rowHeight = 0
+            }
+            x += size.width + (x == 0 ? 0 : spacing)
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: proposal.width ?? max(0, x), height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX; y += rowHeight + spacing; rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
         }
     }
 }

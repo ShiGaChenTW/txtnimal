@@ -27,7 +27,7 @@ struct TasksTxtApp: App {
                 Divider()
             }
             Picker("行距", selection: $store.density) {
-                ForEach(Density.allCases, id: \.self) { Text($0.label).tag($0) }
+                ForEach(Density.allCases, id: \.self) { Text(LocalizedStringKey($0.label)).tag($0) }
             }
             Picker("外觀", selection: $store.appearanceMode) {
                 Text("跟隨系統").tag(0); Text("深色").tag(1); Text("淺色").tag(2)
@@ -43,5 +43,6 @@ struct TasksTxtApp: App {
         } label: {
             Text(store.focusIndex.map { "▶ \(store.lines[$0].title)" } ?? "◉ tasks.txt")
         }
+        .environment(\.locale, store.appLanguage.locale)
     }
 }

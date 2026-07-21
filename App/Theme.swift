@@ -27,9 +27,23 @@ enum Theme {
     /// 清單游標:中性灰 — 游標是位置指示,不承載語意色
     static var cursorBg: Color { dim.opacity(0.18) }
 
-    static let mono = Font.system(size: 13.5, design: .monospaced)
-    static let monoSmall = Font.system(size: 11.5, design: .monospaced)
-    static let monoBig = Font.system(size: 22, weight: .bold, design: .monospaced)
+    static var mono: Font { appFont(size: 13.5) }
+    static var monoSmall: Font { appFont(size: 11.5) }
+    static var monoBig: Font { appFont(size: 22, weight: .bold) }
+
+    /// 由設定選擇的全 app 字型。若指定字型不存在，SwiftUI 會自動回退系統字型。
+    static func appFont(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        let latin = LatinFontChoice(rawValue: UserDefaults.standard.string(forKey: "latinFontChoice")
+                                    ?? UserDefaults.standard.string(forKey: "appFontChoice")
+                                    ?? "systemMonospaced") ?? .systemMonospaced
+        let chinese = ChineseFontChoice(rawValue: UserDefaults.standard.string(forKey: "chineseFontChoice") ?? "pingFangTC") ?? .pingFangTC
+        let base = latin.fontName.flatMap { NSFont(name: $0, size: size) }
+            ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+        let chineseDescriptor = NSFontDescriptor(fontAttributes: [.family: chinese.fontName])
+        let descriptor = base.fontDescriptor.addingAttributes([.cascadeList: [chineseDescriptor]])
+        let composed = NSFont(descriptor: descriptor, size: size) ?? base
+        return Font(composed).weight(weight)
+    }
 
     static func dyn(_ dark: UInt, _ light: UInt) -> Color {
         Color(nsColor: NSColor(name: nil) { ap in

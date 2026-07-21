@@ -51,7 +51,7 @@ struct FocusHUDView: View {
                         Text("▶").font(Theme.monoSmall)
                             .padding(.horizontal, 5).padding(.vertical, 1)
                             .overlay(Rectangle().stroke(Theme.focus))
-                        Text(t.title).font(Theme.mono).fontWeight(.semibold).lineLimit(1)
+                        Text(t.title).font(store.taskFont).fontWeight(.semibold).lineLimit(1)
                         Spacer(minLength: 4)
                         Text("✕").font(Theme.monoSmall).foregroundColor(Theme.dim)
                             .onTapGesture { store.clearFocus() }

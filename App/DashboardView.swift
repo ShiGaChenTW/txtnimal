@@ -33,43 +33,129 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            greetingHeader
-            summaryRow
-            section("完成趨勢")
-            heatmap.padding(.horizontal, 16)
-            sparkline.padding(.horizontal, 16).padding(.top, 10)
-            if !doneProjects.isEmpty {
-                section("專案 · 近 30 天完成")
-                projectBars.padding(.horizontal, 16)
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 0) {
+                greetingHeader
+                summaryRow
+                section("完成趨勢")
+                heatmap.padding(.horizontal, 16)
+                sparkline.padding(.horizontal, 16).padding(.top, 10)
+                if !doneProjects.isEmpty {
+                    section("List · 近 30 天完成")
+                    projectBars.padding(.horizontal, 16)
+                }
+                section("象限 · 未完成")
+                quadrantBars.padding(.horizontal, 16)
             }
-            section("象限 · 未完成")
-            quadrantBars.padding(.horizontal, 16)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 24)
+            .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 24)                             // 資料區填滿寬度,留邊距
-        .frame(maxWidth: .infinity, maxHeight: .infinity)     // 垂直置中
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear(perform: reload)
     }
 
     // MARK: 時段問候(早晨/中午/下午/晚上 各配線條圖案)
 
     private var greetingHeader: some View {
-        let (art, text, color) = greetingParts
-        return VStack(spacing: 20) {   // 圖案與問候文字間多一行空白
-            VStack(spacing: 3) {
-                ForEach(Array(art.enumerated()), id: \.offset) { _, line in
-                    Text(line).font(.system(size: 20, weight: .medium, design: .monospaced))
-                        .foregroundColor(color)
-                }
-            }
+        let (_, text, color) = greetingParts
+        return VStack(spacing: 32) {   // 明確保留至少一個完整文字行高的空白
+            dashboardIcon(color: color)
             Text(text).font(Theme.mono).foregroundColor(Theme.fg)
         }
         .frame(maxWidth: .infinity)
         .padding(.bottom, 44)
     }
+
+    @ViewBuilder private func dashboardIcon(color: Color) -> some View {
+        switch store.dashboardIconStyle {
+        case .chronoOrb: chronoOrb(color)
+        case .terminalPulse: terminalPulse(color)
+        case .completionCompass: completionCompass
+        case .quietHorizon: quietHorizon(color)
+        }
+    }
+
+    private func chronoOrb(_ color: Color) -> some View {
+        ZStack {
+            Circle().stroke(color.opacity(0.32), lineWidth: 1).frame(width: 126, height: 126)
+            Circle().stroke(color.opacity(0.22), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                .frame(width: 98, height: 98)
+            Circle().stroke(color.opacity(0.18), lineWidth: 1).frame(width: 64, height: 64)
+            ForEach(0..<8, id: \.self) { i in
+                Rectangle().fill(color.opacity(0.8)).frame(width: 1, height: 9)
+                    .offset(y: -68).rotationEffect(.degrees(Double(i) * 45))
+            }
+            Circle().fill(color).frame(width: 42, height: 42)
+                .shadow(color: color.opacity(0.55), radius: 15)
+            Text("\(String(format: "%02d", cal.component(.hour, from: Date()))):\(String(format: "%02d", cal.component(.minute, from: Date())))")
+                .font(.system(size: 8, design: .monospaced)).foregroundColor(Theme.bg)
+        }
+        .frame(height: 145)
+        .overlay(alignment: .bottom) {
+            Text("CHRONO · TODAY").font(.system(size: 8, design: .monospaced))
+                .tracking(2).foregroundColor(color.opacity(0.8))
+        }
+    }
+
+    private func terminalPulse(_ color: Color) -> some View {
+        VStack(spacing: 5) {
+            Text("╭──────────────╮").foregroundColor(color.opacity(0.65))
+            Text("────┤  ● \(String(format: "%02d:%02d", cal.component(.hour, from: Date()), cal.component(.minute, from: Date())))  ├────")
+                .foregroundColor(Theme.focus)
+            Text("╰──────┬───────╯").foregroundColor(color.opacity(0.65))
+            Text("▁▂▃▅▇███▇▅▃▂▁").foregroundColor(color)
+            Text("READY / FOCUS").font(.system(size: 9, design: .monospaced))
+                .tracking(2).foregroundColor(Theme.focus)
+        }
+        .font(.system(size: 16, weight: .medium, design: .monospaced))
+        .frame(height: 145)
+    }
+
+    private var completionCompass: some View {
+        ZStack {
+            VStack(spacing: 4) {
+                HStack(spacing: 4) { compassCell("Q1", Theme.red); compassCell("Q2", Theme.yellow) }
+                HStack(spacing: 4) { compassCell("Q3", Theme.cyan); compassCell("Q4", Theme.dim) }
+            }
+            .rotationEffect(.degrees(45))
+            Rectangle().fill(Theme.panel).frame(width: 48, height: 48)
+                .overlay(Rectangle().stroke(Theme.mag))
+                .overlay(Text("✓").font(.system(size: 24, weight: .bold, design: .monospaced)).foregroundColor(Theme.green))
+            Text("\(sum(from: startOfWeek, days: 7)) DONE · \(store.lines.filter { !$0.isDone }.count) OPEN")
+                .font(.system(size: 8, design: .monospaced)).tracking(1.4).foregroundColor(Theme.mag)
+                .offset(y: 70)
+        }
+        .frame(height: 145)
+    }
+
+    private func compassCell(_ label: String, _ color: Color) -> some View {
+        Rectangle().fill(color.opacity(0.10)).frame(width: 56, height: 56)
+            .overlay(Rectangle().stroke(color.opacity(0.45)))
+            .overlay(Text(label).font(.system(size: 8, design: .monospaced)).foregroundColor(color).rotationEffect(.degrees(-45)))
+    }
+
+    private func quietHorizon(_ color: Color) -> some View {
+        Canvas { context, size in
+            let horizon = size.height * 0.72
+            var line = Path(); line.move(to: CGPoint(x: 10, y: horizon)); line.addLine(to: CGPoint(x: size.width - 10, y: horizon))
+            context.stroke(line, with: .linearGradient(Gradient(colors: [.clear, color, .clear]), startPoint: .zero, endPoint: CGPoint(x: size.width, y: 0)), lineWidth: 1)
+            var mountains = Path(); mountains.move(to: CGPoint(x: 28, y: horizon)); mountains.addLine(to: CGPoint(x: 90, y: 48)); mountains.addLine(to: CGPoint(x: 132, y: horizon)); mountains.addLine(to: CGPoint(x: 188, y: 62)); mountains.addLine(to: CGPoint(x: 250, y: horizon))
+            context.stroke(mountains, with: .color(color.opacity(0.55)), lineWidth: 1)
+            let moon = CGRect(x: size.width / 2 - 25, y: 18, width: 50, height: 50)
+            context.stroke(Path(ellipseIn: moon), with: .color(color.opacity(0.9)), lineWidth: 1)
+        }
+        .frame(width: 280, height: 125)
+        .overlay(alignment: .bottom) {
+            Text("QUIET PROGRESS").font(.system(size: 8, design: .monospaced))
+                .tracking(2.4).foregroundColor(color.opacity(0.8))
+        }
+        .frame(height: 145)
+    }
     private var greetingParts: ([String], String, Color) {
         let who = store.userName.trimmingCharacters(in: .whitespaces)
         let name = who.isEmpty ? "" : " " + who      // 設定頁未填名字就用通用問候
+        let english = store.appLanguage == .english
         switch cal.component(.hour, from: Date()) {
         case 5..<11:   // 早晨:朝陽從地平線升起,放射光芒
             return (["      \\   |   /",
@@ -77,28 +163,28 @@ struct DashboardView: View {
                      "  ──  (  ☀  )  ──",
                      "   . ’  ‾◟◞‾  ‘ .",
                      "  ▁▂▃▄▅▆▇█▇▆▅▄▃▂▁"],
-                    "早安\(name) — 新的一天，從第一件事開始。", Theme.yellow)
+                    english ? "Good morning\(name) — Start the day with one clear task." : "早安\(name) — 新的一天，從第一件事開始。", Theme.yellow)
         case 11..<14:  // 中午:烈日當空,全向放射
             return (["    \\    |    /",
                      "   ‘‘  .───.  ’’",
                      "  ──  ║ ☀ ║  ──",
                      "   ,,  ‘───’  ,,",
                      "    /    |    \\"],
-                    "午安\(name) — 記得休息，下半場再來。", Theme.yellow)
+                    english ? "Good afternoon\(name) — Take a breath, then begin the next half." : "午安\(name) — 記得休息，下半場再來。", Theme.yellow)
         case 14..<18:  // 下午:斜陽西沉,長影拉地平
             return (["         \\  |  /",
                      "      ‘ .  ___  . ’",
                      "     ──   ( ◗ )   ──",
                      "  ~~~~~~~~‾‾‾‾‾~~~~~~~~",
                      "   ▂▃▄▅▆▇███▇▆▅▄▃▂"],
-                    "下午好\(name) — 保持節奏，收尾在望。", Theme.yellow)
+                    english ? "Good afternoon\(name) — Keep your rhythm; the finish is in sight." : "下午好\(name) — 保持節奏，收尾在望。", Theme.yellow)
         default:       // 晚上:弦月與星辰
             return (["    ✦        .      ˚",
                      "        .    ⋆   ___",
                      "   ˚    ✦       (   ◗",
                      "      ⋆    .     ‾‾‾",
                      "   .      ✦   ˚      ⋆"],
-                    "晚安\(name) — 回顧一下今天完成的事。", Theme.cyan)
+                    english ? "Good evening\(name) — Take a moment to review what you finished today." : "晚安\(name) — 回顧一下今天完成的事。", Theme.cyan)
         }
     }
 
@@ -132,7 +218,7 @@ struct DashboardView: View {
     private func statCard(_ label: String, _ value: String, _ color: Color) -> some View {
         VStack(spacing: 5) {
             Text(value).font(.system(size: 20, weight: .semibold, design: .monospaced)).foregroundColor(color)
-            Text(label).font(Theme.monoSmall).foregroundColor(Theme.dim)
+            Text(LocalizedStringKey(label)).font(Theme.monoSmall).foregroundColor(Theme.dim)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
@@ -140,7 +226,7 @@ struct DashboardView: View {
         .overlay(Rectangle().stroke(Theme.border))
     }
 
-    private func section(_ title: String) -> some View {
+    private func section(_ title: LocalizedStringKey) -> some View {
         HStack(spacing: 8) {
             Text(title).foregroundColor(Theme.dim)
             Rectangle().fill(Theme.border).frame(height: 1)
@@ -192,7 +278,7 @@ struct DashboardView: View {
                                                   : d > today ? Theme.dim.opacity(0.1)     // 年內未到的天:透明灰
                                                   : heatColor(count(d)))
                                             .frame(width: 13, height: 13)
-                                            .help(inYear ? "\(ymd(d)) · 完成 \(count(d))" : "")
+                                            .help(inYear ? (store.appLanguage == .english ? "\(ymd(d)) · \(count(d)) completed" : "\(ymd(d)) · 完成 \(count(d))") : "")
                                     }
                                 }.id(w)
                             }
@@ -262,7 +348,7 @@ struct DashboardView: View {
         let rows: [(String, Int, Color)] = [
             ("q1 Do", b.q1.count, Theme.red), ("q2 Schedule", b.q2.count, Theme.yellow),
             ("q3 Delegate", b.q3.count, Theme.cyan), ("q4 Delete", b.q4.count, Theme.dim),
-            ("未歸位", b.unplaced.count, Theme.dim),
+            (store.appLanguage == .english ? "Unassigned" : "未歸位", b.unplaced.count, Theme.dim),
         ]
         let maxN = max(rows.map(\.1).max() ?? 1, 1)
         return VStack(alignment: .leading, spacing: 4) {
