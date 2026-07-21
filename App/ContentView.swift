@@ -764,9 +764,8 @@ struct ContentView: View {
                            startPoint: edge == .right ? .leading : (edge == .left ? .trailing : .bottom),
                            endPoint:   edge == .right ? .trailing : (edge == .left ? .leading : .top))
                 .frame(width: horizontal ? nil : 16, height: horizontal ? 16 : nil)
-            Rectangle().fill(Theme.dim.opacity(0.55))
-                .frame(width: horizontal ? nil : 1, height: horizontal ? 1 : nil)
         }
+        .overlay(Rectangle().strokeBorder(Theme.dim.opacity(0.6), lineWidth: 1))  // 浮動面板四周外框線
         .allowsHitTesting(false)
         .ignoresSafeArea()
     }
