@@ -103,6 +103,8 @@ final class SidebarController {
         if let store, let clip = p.contentView {
             clip.wantsLayer = true
             clip.layer?.masksToBounds = true   // 關鍵:內容滑出視窗邊界即被裁切,絕不溢到隔壁螢幕
+            clip.layer?.cornerRadius = 12       // 圓角浮動卡片
+            clip.layer?.cornerCurve = .continuous
             let slider = NSView(frame: clip.bounds)
             slider.autoresizingMask = [.width, .height]
             slider.wantsLayer = true

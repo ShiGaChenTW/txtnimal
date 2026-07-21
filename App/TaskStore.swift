@@ -208,7 +208,7 @@ final class TaskStore: ObservableObject {
     }
     /// 側邊面板可變邊長(側邊=寬,頂部=高),由內緣把手拖曳調整。下限吃 ContentView 的 minWidth。
     @Published var sidebarWidth: Double = {
-        (UserDefaults.standard.object(forKey: "sidebarWidth") as? Double) ?? 700
+        (UserDefaults.standard.object(forKey: "sidebarWidth") as? Double) ?? 680
     }() {
         didSet {
             UserDefaults.standard.set(sidebarWidth, forKey: "sidebarWidth")
