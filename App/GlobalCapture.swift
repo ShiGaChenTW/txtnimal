@@ -143,11 +143,13 @@ final class SidebarController {
     }
 
     /// 面板「就位」時的視窗 frame:相對鎖定螢幕,貼在目標邊。視窗只會擺在這裡,不做滑動。
+    /// 側邊(右/左)上下各留 30px,呈浮動面板感,不貼滿螢幕高。
     private func onFrame() -> NSRect {
         let vf = (activeScreen ?? currentScreen()).visibleFrame
+        let gap: CGFloat = 30
         switch store?.sidebarEdge ?? .right {
-        case .right: let w = spanWidth(vf); return NSRect(x: vf.maxX - w, y: vf.minY, width: w, height: vf.height)
-        case .left:  let w = spanWidth(vf); return NSRect(x: vf.minX, y: vf.minY, width: w, height: vf.height)
+        case .right: let w = spanWidth(vf); return NSRect(x: vf.maxX - w, y: vf.minY + gap, width: w, height: vf.height - gap * 2)
+        case .left:  let w = spanWidth(vf); return NSRect(x: vf.minX, y: vf.minY + gap, width: w, height: vf.height - gap * 2)
         case .top:   let h = max(600, vf.height * 0.55); return NSRect(x: vf.minX, y: vf.maxY - h, width: vf.width, height: h)
         }
     }
