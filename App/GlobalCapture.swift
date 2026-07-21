@@ -146,7 +146,7 @@ final class SidebarController {
     /// 側邊(右/左)上下各留 30px,呈浮動面板感,不貼滿螢幕高。
     private func onFrame() -> NSRect {
         let vf = (activeScreen ?? currentScreen()).visibleFrame
-        let gap: CGFloat = 30
+        let gap: CGFloat = 80
         switch store?.sidebarEdge ?? .right {
         case .right: let w = spanWidth(vf); return NSRect(x: vf.maxX - w, y: vf.minY + gap, width: w, height: vf.height - gap * 2)
         case .left:  let w = spanWidth(vf); return NSRect(x: vf.minX, y: vf.minY + gap, width: w, height: vf.height - gap * 2)
