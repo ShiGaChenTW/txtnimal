@@ -15,6 +15,19 @@ final class ArchitectureTests: XCTestCase {
         XCTAssertThrowsError(try store.save(lines: changed, expectedGeneration: first.generation))
     }
 
+    func testFilesystemStoreRecoversPendingJournalBeforeLoad() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try FileSystemTaskDocumentStore(directory: dir)
+        try store.bootstrap(sample: "old")
+        let entry = TaskDocumentJournalEntry(tasksText: "new\n", archiveText: "x archived\n")
+        try JSONEncoder().encode(entry).write(to: store.journalURL)
+        let loaded = try store.load()
+        XCTAssertEqual(loaded.lines.filter { !$0.isBlank }.map(\.title), ["new"])
+        XCTAssertEqual(loaded.archiveLines.filter { !$0.isBlank }.map(\.title), ["archived"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.journalURL.path))
+    }
+
     func testFilesystemStoreCanOpenCustomTaskFilename() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }

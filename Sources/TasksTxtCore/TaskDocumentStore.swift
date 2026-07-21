@@ -34,6 +34,18 @@ public enum TaskDocumentStoreError: LocalizedError, Equatable {
     }
 }
 
+public struct TaskDocumentJournalEntry: Codable, Equatable, Sendable {
+    public let transactionID: UUID
+    public let tasksText: String
+    public let archiveText: String
+
+    public init(transactionID: UUID = UUID(), tasksText: String, archiveText: String) {
+        self.transactionID = transactionID
+        self.tasksText = tasksText
+        self.archiveText = archiveText
+    }
+}
+
 public protocol TaskDocumentStore {
     func load() throws -> TaskDocumentSnapshot
     func save(lines: [TaskLine], expectedGeneration: UInt64) throws -> TaskDocumentSnapshot
@@ -49,6 +61,7 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
     public var tasksURL: URL { directory.appendingPathComponent(tasksFilename) }
     public var scratchURL: URL { directory.appendingPathComponent("scratch.txt") }
     public var archiveURL: URL { directory.appendingPathComponent("archive.txt") }
+    public var journalURL: URL { directory.appendingPathComponent(".tasks-txt.journal") }
 
     private let fm: FileManager
     private var generation: UInt64 = 0
@@ -68,6 +81,7 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
     }
 
     public func load() throws -> TaskDocumentSnapshot {
+        try recoverPendingTransaction()
         let tasks = try readRequired(tasksURL)
         let scratch = try readOptional(scratchURL)
         let archive = try readOptional(archiveURL)
@@ -79,12 +93,12 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
 
     public func save(lines: [TaskLine], expectedGeneration: UInt64) throws -> TaskDocumentSnapshot {
         try requireGeneration(expectedGeneration)
-        try write(TasksDocument.serialize(lines), to: tasksURL)
+        let tasksText = TasksDocument.serialize(lines)
+        let archiveText = try readOptional(archiveURL)
+        try commit(tasksText: tasksText, archiveText: archiveText)
         generation &+= 1
-        let text = TasksDocument.serialize(lines)
-        return TaskDocumentSnapshot(lines: lines, scratch: try readOptional(scratchURL),
-                                    archiveLines: TasksDocument.parse(try readOptional(archiveURL)), generation: generation,
-                                    tasksText: text)
+        return TaskDocumentSnapshot(lines: lines, scratch: try readOptional(scratchURL), archiveLines: TasksDocument.parse(archiveText),
+                                    generation: generation, tasksText: tasksText)
     }
 
     public func saveScratch(_ text: String) throws { try write(text, to: scratchURL) }
@@ -99,17 +113,12 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         let previousArchive = try readOptional(archiveURL)
         let moved = old.map(\.raw).joined(separator: "\n") + "\n"
         let archiveText = previousArchive + (previousArchive.isEmpty || previousArchive.hasSuffix("\n") ? "" : "\n") + moved
-        try write(archiveText, to: archiveURL)
-        do { try write(TasksDocument.serialize(kept), to: tasksURL) }
-        catch {
-            try? write(previousArchive, to: archiveURL)
-            throw error
-        }
+        let tasksText = TasksDocument.serialize(kept)
+        try commit(tasksText: tasksText, archiveText: archiveText)
         generation &+= 1
-        let text = TasksDocument.serialize(kept)
         return TaskDocumentSnapshot(lines: kept, scratch: try readOptional(scratchURL),
                                     archiveLines: TasksDocument.parse(archiveText), generation: generation,
-                                    tasksText: text)
+                                    tasksText: tasksText)
     }
 
     private func requireGeneration(_ expected: UInt64) throws {
@@ -129,6 +138,32 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
     private func write(_ text: String, to url: URL) throws {
         do { try text.write(to: url, atomically: true, encoding: .utf8) }
         catch { throw TaskDocumentStoreError.writeFailed(url.path) }
+    }
+
+    private func commit(tasksText: String, archiveText: String) throws {
+        let entry = TaskDocumentJournalEntry(tasksText: tasksText, archiveText: archiveText)
+        do {
+            let data = try JSONEncoder().encode(entry)
+            try data.write(to: journalURL, options: .atomic)
+            try write(tasksText, to: tasksURL)
+            try write(archiveText, to: archiveURL)
+            try fm.removeItem(at: journalURL)
+        } catch {
+            throw TaskDocumentStoreError.writeFailed(directory.path)
+        }
+    }
+
+    private func recoverPendingTransaction() throws {
+        guard fm.fileExists(atPath: journalURL.path) else { return }
+        do {
+            let data = try Data(contentsOf: journalURL)
+            let entry = try JSONDecoder().decode(TaskDocumentJournalEntry.self, from: data)
+            try write(entry.tasksText, to: tasksURL)
+            try write(entry.archiveText, to: archiveURL)
+            try fm.removeItem(at: journalURL)
+        } catch {
+            throw TaskDocumentStoreError.readFailed(journalURL.path)
+        }
     }
 }
 
