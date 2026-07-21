@@ -8,7 +8,10 @@ struct txtnimalApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView().environmentObject(store)
-                .onAppear { GlobalCapture.shared.install(store: store) }
+                .onAppear {
+                    GlobalCapture.shared.install(store: store)
+                    SidebarController.shared.install(store: store)
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 740, height: 660)

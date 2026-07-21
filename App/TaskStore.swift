@@ -4,6 +4,18 @@ import txtnimalCore
 
 enum AppView { case list, grid, pad, dash, settings }
 
+/// 視窗承載模式：一般視窗 或 常駐螢幕邊緣的滑出面板。兩者共用同一個 TaskStore。
+enum WindowMode: String, CaseIterable, Hashable {
+    case window, sidebar
+    var label: String { self == .window ? "一般視窗" : "側邊滑出" }
+}
+
+/// 滑出面板從哪一邊出現。top = Ghostty 式頂部下拉(滿寬)。
+enum SidebarEdge: String, CaseIterable, Hashable {
+    case right, left, top
+    var label: String { ["right": "右側", "left": "左側", "top": "頂部下拉"][rawValue]! }
+}
+
 struct InstalledPlugin: Identifiable, Hashable {
     let id: String
     let name: String
@@ -170,6 +182,29 @@ final class TaskStore: ObservableObject {
         Density(rawValue: (UserDefaults.standard.object(forKey: "density") as? Int) ?? 1) ?? .normal
     }() {
         didSet { UserDefaults.standard.set(density.rawValue, forKey: "density") }
+    }
+    @Published var windowMode: WindowMode = {
+        WindowMode(rawValue: UserDefaults.standard.string(forKey: "windowMode") ?? "window") ?? .window
+    }() {
+        didSet {
+            UserDefaults.standard.set(windowMode.rawValue, forKey: "windowMode")
+            SidebarController.shared.apply(windowMode, store: self)
+        }
+    }
+    @Published var sidebarEdge: SidebarEdge = {
+        SidebarEdge(rawValue: UserDefaults.standard.string(forKey: "sidebarEdge") ?? "right") ?? .right
+    }() {
+        didSet {
+            UserDefaults.standard.set(sidebarEdge.rawValue, forKey: "sidebarEdge")
+            SidebarController.shared.edgeChanged(store: self)
+        }
+    }
+    /// 側邊面板背景透明度(0.3~1.0)。只作用於滑出面板的背景層,文字維持不透明。
+    /// ContentView 直接觀察此值,改動即時反映,不需另外通知。
+    @Published var sidebarOpacity: Double = {
+        (UserDefaults.standard.object(forKey: "sidebarOpacity") as? Double) ?? 0.85
+    }() {
+        didSet { UserDefaults.standard.set(sidebarOpacity, forKey: "sidebarOpacity") }
     }
     // 0 系統 / 1 深色 / 2 淺色
     @Published var appearanceMode: Int = UserDefaults.standard.integer(forKey: "appearance") {

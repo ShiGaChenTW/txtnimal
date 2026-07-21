@@ -1,16 +1,268 @@
 import SwiftUI
 import AppKit
+import QuartzCore
 import KeyboardShortcuts
 import txtnimalCore
+
+/// 標記某個 ContentView 實例正跑在側邊面板裡(用來只讓側邊的背景層透明)。
+private struct SidebarPanelKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var isSidebarPanel: Bool {
+        get { self[SidebarPanelKey.self] }
+        set { self[SidebarPanelKey.self] = newValue }
+    }
+}
 
 extension KeyboardShortcuts.Name {
     /// 全域捕捉，預設 ⌥Space;可在「設定」重綁。
     static let capture = Self("globalCapture", default: .init(.space, modifiers: [.option]))
+    /// 側邊面板滑出/收回，預設 ⌥T;可在「設定」重綁。
+    static let toggleSidebar = Self("toggleSidebar", default: .init(.t, modifiers: [.option]))
 }
 
 /// 借過鍵盤焦點的無邊框浮窗（borderless 預設不能成為 key window，要覆寫）。
 private final class KeyablePanel: NSPanel {
     override var canBecomeKey: Bool { true }
+}
+
+/// 常駐螢幕邊緣的滑出面板：把整個 ContentView 掛進一個貼邊的無邊框 panel。
+/// 邊緣可選右/左/頂(top = Ghostty 式下拉)。與 WindowGroup 共用同一個 TaskStore。
+/// ponytail: 主視窗切換用 orderOut/orderFront（Route A）。若 WindowGroup 生命週期在
+/// 全螢幕/重開窗邊角出問題，升級成把主 UI 也移出 WindowGroup（Route B）。
+final class SidebarController {
+    static let shared = SidebarController()
+    private var panel: KeyablePanel?
+    private var slider: NSView?           // 視窗內會滑動的內容容器(被視窗邊界裁切)
+    private var handle: NSPanel?
+    private weak var store: TaskStore?
+    /// 側邊寬度須 ≥ ContentView 的 minWidth(660),否則內容被裁。
+    private let sideWidth: CGFloat = 700
+    /// reveal 當下鎖定的螢幕;收回前都用它,避免焦點切螢幕導致座標飛掉(雙螢幕 bug)。
+    private var activeScreen: NSScreen?
+
+    func install(store: TaskStore) {
+        self.store = store
+        KeyboardShortcuts.onKeyUp(for: .toggleSidebar) { [weak self] in self?.toggle() }
+        ensurePanel()                 // 預熱：首次滑出不卡頓
+        apply(store.windowMode, store: store)
+    }
+
+    /// 滑鼠所在的螢幕優先(使用者正在看的那個);退回 key window 螢幕、再退回 main。
+    private func currentScreen() -> NSScreen {
+        let mouse = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
+            ?? NSApp.keyWindow?.screen ?? NSScreen.main ?? NSScreen.screens.first!
+    }
+
+    func apply(_ mode: WindowMode, store: TaskStore) {
+        self.store = store
+        switch mode {
+        case .sidebar:
+            setMainWindowVisible(false)
+            reveal(animated: false)
+        case .window:
+            hide(animated: false, orderOut: true)
+            hideHandle()
+            setMainWindowVisible(true)
+        }
+    }
+
+    func toggle() {
+        guard store?.windowMode == .sidebar else { return }
+        (panel?.isVisible == true) ? hide(animated: true, orderOut: true) : reveal(animated: true)
+    }
+
+    /// 使用者在設定改了邊緣：面板/指示條都重新擺位(同尺寸只換幾何,不重繪內容樹)。
+    func edgeChanged(store: TaskStore) {
+        self.store = store
+        guard store.windowMode == .sidebar else { return }
+        if panel?.isVisible == true {
+            panel?.setFrame(onFrame(), display: true, animate: true)  // 同螢幕重定位,不跨螢幕
+            slider?.setFrameOrigin(.zero)
+        } else {
+            positionHandle()
+        }
+    }
+
+    @discardableResult
+    private func ensurePanel() -> KeyablePanel {
+        if let panel { return panel }
+        let p = KeyablePanel(contentRect: onFrame(),
+                             styleMask: [.borderless, .nonactivatingPanel],
+                             backing: .buffered, defer: false)
+        p.isFloatingPanel = true
+        p.level = .floating
+        p.hidesOnDeactivate = false
+        p.backgroundColor = .clear
+        p.hasShadow = false           // 視窗固定不動、內容在內部滑動,關陰影避免出現靜止外框
+        p.animationBehavior = .none
+        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        p.isOpaque = false            // 讓 behind-window 毛玻璃透得出去
+        if let store, let clip = p.contentView {
+            clip.wantsLayer = true
+            clip.layer?.masksToBounds = true   // 關鍵:內容滑出視窗邊界即被裁切,絕不溢到隔壁螢幕
+            let slider = NSView(frame: clip.bounds)
+            slider.autoresizingMask = [.width, .height]
+            slider.wantsLayer = true
+            // 毛玻璃背板:模糊面板後方(桌面/其他 app),文字層鋪在上面維持清楚。
+            let fx = NSVisualEffectView(frame: slider.bounds)
+            fx.autoresizingMask = [.width, .height]
+            fx.material = .hudWindow
+            fx.blendingMode = .behindWindow
+            fx.state = .active
+            slider.addSubview(fx)
+            let host = NSHostingView(rootView:
+                ContentView().environmentObject(store).environment(\.isSidebarPanel, true))
+            host.frame = slider.bounds
+            host.autoresizingMask = [.width, .height]
+            slider.addSubview(host)
+            clip.addSubview(slider)
+            self.slider = slider
+        }
+        panel = p
+        return p
+    }
+
+    /// 面板「就位」時的視窗 frame:相對鎖定螢幕,貼在目標邊。視窗只會擺在這裡,不做滑動。
+    private func onFrame() -> NSRect {
+        let vf = (activeScreen ?? currentScreen()).visibleFrame
+        switch store?.sidebarEdge ?? .right {
+        case .right: let w = min(sideWidth, vf.width); return NSRect(x: vf.maxX - w, y: vf.minY, width: w, height: vf.height)
+        case .left:  let w = min(sideWidth, vf.width); return NSRect(x: vf.minX, y: vf.minY, width: w, height: vf.height)
+        case .top:   let h = max(600, vf.height * 0.55); return NSRect(x: vf.minX, y: vf.maxY - h, width: vf.width, height: h)
+        }
+    }
+
+    /// 內容「藏起」時在視窗內的位移(推出視窗邊界外,被 clip 裁掉)。
+    private func hiddenOrigin(_ f: NSRect) -> CGPoint {
+        switch store?.sidebarEdge ?? .right {
+        case .right: return CGPoint(x: f.width, y: 0)     // 往右推出
+        case .left:  return CGPoint(x: -f.width, y: 0)    // 往左推出
+        case .top:   return CGPoint(x: 0, y: f.height)    // 往上推出 → 下滑進場
+        }
+    }
+
+    private func reveal(animated: Bool) {
+        let p = ensurePanel()
+        let firstShow = !p.isVisible
+        if firstShow { activeScreen = currentScreen() }    // reveal 當下鎖定螢幕
+        hideHandle()
+        let on = onFrame()
+        p.setFrame(on, display: true)                       // 視窗固定在正確螢幕,永不跨螢幕
+        guard let slider else { p.makeKeyAndOrderFront(nil); return }
+        if firstShow {
+            slider.setFrameOrigin(hiddenOrigin(on))         // 內容先藏在視窗外
+            p.makeKeyAndOrderFront(nil)
+            if animated {
+                DispatchQueue.main.async { [weak self] in self?.animateSlider(to: .zero, animated: true) }
+                return
+            }
+        }
+        animateSlider(to: .zero, animated: animated)
+    }
+
+    private func hide(animated: Bool, orderOut: Bool) {
+        guard let p = panel, p.isVisible else { return }
+        animateSlider(to: hiddenOrigin(p.frame), animated: animated) { [weak self] in
+            if orderOut { p.orderOut(nil) }
+            if self?.store?.windowMode == .sidebar { self?.showHandle() }
+        }
+    }
+
+    /// 只滑「視窗內的內容容器」,視窗本身不動 → 動畫再快也不會跨進另一個螢幕。
+    private func animateSlider(to origin: CGPoint, animated: Bool, then: (() -> Void)? = nil) {
+        guard let slider else { then?(); return }
+        guard animated else { slider.setFrameOrigin(origin); then?(); return }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.22
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            slider.animator().setFrameOrigin(origin)
+        }, completionHandler: then)
+    }
+
+    /// 找出 WindowGroup 主視窗（非 panel 的標準視窗）並顯示/隱藏。
+    private func setMainWindowVisible(_ visible: Bool) {
+        for w in NSApp.windows where !(w is NSPanel) && w.contentView != nil {
+            visible ? w.makeKeyAndOrderFront(nil) : w.orderOut(nil)
+        }
+    }
+
+    // MARK: - 貼邊指示條(面板收起時顯示,點一下滑出)
+
+    /// 指示條幾何:貼在鎖定螢幕的目標邊,置中的一小段。
+    private func handleFrame() -> NSRect {
+        let vf = (activeScreen ?? currentScreen()).visibleFrame
+        let t: CGFloat = 6, len: CGFloat = 132
+        switch store?.sidebarEdge ?? .right {
+        case .right: return NSRect(x: vf.maxX - t, y: vf.midY - len / 2, width: t, height: len)
+        case .left:  return NSRect(x: vf.minX,     y: vf.midY - len / 2, width: t, height: len)
+        case .top:   return NSRect(x: vf.midX - len / 2, y: vf.maxY - t, width: len, height: t)
+        }
+    }
+
+    private func showHandle() {
+        if activeScreen == nil { activeScreen = currentScreen() }
+        let h = ensureHandle()
+        positionHandle()
+        h.orderFrontRegardless()
+    }
+
+    private func hideHandle() { handle?.orderOut(nil) }
+
+    private func positionHandle() {
+        guard let h = handle else { return }
+        h.setFrame(handleFrame(), display: true)
+        (h.contentView?.subviews.first as? NSHostingView<SidebarHandleView>)?
+            .rootView = SidebarHandleView(edge: store?.sidebarEdge ?? .right,
+                                          color: store?.accent ?? Theme.focus) { [weak self] in
+                self?.reveal(animated: true)
+            }
+    }
+
+    private func ensureHandle() -> NSPanel {
+        if let handle { return handle }
+        let p = NSPanel(contentRect: handleFrame(),
+                        styleMask: [.borderless, .nonactivatingPanel],
+                        backing: .buffered, defer: false)
+        p.isFloatingPanel = true
+        p.level = .floating
+        p.hidesOnDeactivate = false
+        p.backgroundColor = .clear
+        p.hasShadow = false
+        p.animationBehavior = .none
+        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        p.isOpaque = false
+        let host = NSHostingView(rootView: SidebarHandleView(edge: store?.sidebarEdge ?? .right,
+                                                             color: store?.accent ?? Theme.focus) { [weak self] in
+            self?.reveal(animated: true)
+        })
+        host.frame = p.contentView?.bounds ?? .zero
+        host.autoresizingMask = [.width, .height]
+        p.contentView?.addSubview(host)
+        handle = p
+        return p
+    }
+}
+
+/// 貼邊的小指示條:平時半透明,滑鼠移上去變亮並加寬提示,點一下把面板滑出。
+private struct SidebarHandleView: View {
+    let edge: SidebarEdge
+    var color: Color = Theme.focus
+    let onActivate: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        let horizontal = edge == .top
+        Capsule()
+            .fill(color.opacity(hovering ? 0.95 : 0.5))
+            .frame(width: horizontal ? nil : (hovering ? 5 : 3),
+                   height: horizontal ? (hovering ? 5 : 3) : nil)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
+            .onTapGesture { onActivate() }
+            .help("點一下滑出 tasks.txt")
+    }
 }
 
 /// 全域熱鍵 → 螢幕上方浮出一行捕捉框。任何 app 裡都能叫出來。
@@ -193,6 +445,34 @@ struct SettingsView: View {
             }
             hint("在任何 app 按此熱鍵即可快速記一筆")
             hint("app 內快速鍵固定：⌘1 清單 · ⌘2 象限 · ⌘3 便箋 · ⌘4 統計 · ⌘E 編輯 · ⌘K 指令")
+
+            section("視窗")
+            HStack(spacing: 8) {
+                Text("視窗模式").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Picker("", selection: $store.windowMode) {
+                    ForEach(WindowMode.allCases, id: \.self) { Text($0.label).tag($0) }
+                }.labelsHidden().frame(width: 150)
+            }
+            HStack(spacing: 8) {
+                Text("出現位置").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Picker("", selection: $store.sidebarEdge) {
+                    ForEach(SidebarEdge.allCases, id: \.self) { Text($0.label).tag($0) }
+                }.labelsHidden().frame(width: 150)
+                    .disabled(store.windowMode != .sidebar)
+            }
+            HStack(spacing: 8) {
+                Text("滑出熱鍵").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                KeyboardShortcuts.Recorder("", name: .toggleSidebar)
+            }
+            HStack(spacing: 8) {
+                Text("背景透明").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Slider(value: $store.sidebarOpacity, in: 0.3...1.0)
+                    .frame(width: 150)
+                    .disabled(store.windowMode != .sidebar)
+                Text("\(Int(store.sidebarOpacity * 100))%").foregroundColor(Theme.dim)
+                    .font(Theme.monoSmall).frame(width: 40, alignment: .leading)
+            }
+            hint("側邊模式：面板貼邊常駐，按熱鍵滑出/收回;「頂部下拉」為 Ghostty 式滿寬下拉")
 
             section("外觀")
             HStack(alignment: .top, spacing: 8) {
