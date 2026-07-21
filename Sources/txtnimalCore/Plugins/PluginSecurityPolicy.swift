@@ -1,4 +1,11 @@
 import Foundation
+import CryptoKit
+
+public struct PluginSignature: Codable, Equatable, Sendable {
+    public let teamID: String
+    public let entrySHA256: String
+    public init(teamID: String, entrySHA256: String) { self.teamID = teamID; self.entrySHA256 = entrySHA256 }
+}
 
 public struct PluginSecurityPolicy: Equatable, Sendable {
     public let revokedPluginIDs: Set<String>
@@ -17,5 +24,13 @@ public struct PluginSecurityPolicy: Equatable, Sendable {
               requiredSignerTeamID == nil || requiredSignerTeamID == signerTeamID else {
             throw PluginValidationError.invalidIdentifier
         }
+    }
+
+    public func validateSignature(_ signature: PluginSignature, entryData: Data) throws {
+        guard requiredSignerTeamID == nil || requiredSignerTeamID == signature.teamID else {
+            throw PluginValidationError.invalidIdentifier
+        }
+        let digest = SHA256.hash(data: entryData).map { String(format: "%02x", $0) }.joined()
+        guard digest == signature.entrySHA256 else { throw PluginValidationError.invalidEntryPath }
     }
 }

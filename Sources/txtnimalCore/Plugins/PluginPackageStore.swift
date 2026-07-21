@@ -52,6 +52,7 @@ public final class PluginPackageStore {
         }
         let manifest = try loadManifest(at: source)
         try securityPolicy.validate(manifest)
+        try validateSignatureIfRequired(manifest, packageURL: source)
         _ = try PluginValidator.resolveEntry(manifest.entry, in: source, fileManager: fileManager)
         let destination = directory.appendingPathComponent(manifest.id, isDirectory: true)
         guard !fileManager.fileExists(atPath: destination.path) else { throw PluginPackageStoreError.packageExists }
@@ -70,8 +71,19 @@ public final class PluginPackageStore {
     private func load(at url: URL) throws -> InstalledPluginPackage {
         let manifest = try loadManifest(at: url)
         try securityPolicy.validate(manifest)
+        try validateSignatureIfRequired(manifest, packageURL: url)
         _ = try PluginValidator.resolveEntry(manifest.entry, in: url, fileManager: fileManager)
         return InstalledPluginPackage(manifest: manifest, url: url)
+    }
+
+    private func validateSignatureIfRequired(_ manifest: PluginManifest, packageURL: URL) throws {
+        guard securityPolicy.requiredSignerTeamID != nil else { return }
+        let signatureURL = packageURL.appendingPathComponent("signature.json")
+        let entryURL = try PluginValidator.resolveEntry(manifest.entry, in: packageURL, fileManager: fileManager)
+        do {
+            let signature = try JSONDecoder().decode(PluginSignature.self, from: Data(contentsOf: signatureURL))
+            try securityPolicy.validateSignature(signature, entryData: Data(contentsOf: entryURL))
+        } catch { throw PluginPackageStoreError.invalidPackage }
     }
 
     private func loadManifest(at url: URL) throws -> PluginManifest {
