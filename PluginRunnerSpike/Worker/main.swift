@@ -74,6 +74,8 @@ case "execute-js":
         break
     }
     respond("ok", payload: resultJSON)
+case "broker-data":
+    respond("ok", payload: request.inputJSON ?? "null")
 default:
     respond("ok", payload: "ok:\(request.request)")
 }

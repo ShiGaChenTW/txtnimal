@@ -26,6 +26,8 @@ targets:
         product: txtnimalCore
       - package: KeyboardShortcuts
         product: KeyboardShortcuts
+      - target: PluginRunnerSpikeService
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.txtnimal.txtnimal
