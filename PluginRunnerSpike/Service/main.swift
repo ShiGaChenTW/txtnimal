@@ -151,7 +151,15 @@ private enum BrokerCallerIdentity {
         guard SecCodeCopySigningInformation(staticCode, SecCSFlags(), &information) == errSecSuccess,
               let values = information as? [String: Any],
               let identifier = values[kSecCodeInfoIdentifier as String] as? String else { return false }
-        return allowedIdentifiers.contains(identifier)
+        guard allowedIdentifiers.contains(identifier) else { return false }
+        // Require an Apple-generic signed code object with the expected bundle identifier;
+        // ad-hoc identities expose no valid designated requirement and are rejected.
+        var requirement: SecRequirement?
+        let expression = "anchor apple generic and identifier \"\(identifier)\""
+        guard SecRequirementCreateWithString(expression as CFString, SecCSFlags(), &requirement) == errSecSuccess,
+              let requirement,
+              SecCodeCheckValidity(staticCode, SecCSFlags(), requirement) == errSecSuccess else { return false }
+        return true
     }
 }
 
