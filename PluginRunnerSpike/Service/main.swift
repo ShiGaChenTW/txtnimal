@@ -158,7 +158,7 @@ private enum BrokerCallerIdentity {
         let expression = "anchor apple generic and identifier \"\(identifier)\""
         guard SecRequirementCreateWithString(expression as CFString, SecCSFlags(), &requirement) == errSecSuccess,
               let requirement,
-              SecCodeCheckValidity(staticCode, SecCSFlags(), requirement) == errSecSuccess else { return false }
+              SecStaticCodeCheckValidity(staticCode, SecCSFlags(), requirement) == errSecSuccess else { return false }
         return true
     }
 }

@@ -139,17 +139,19 @@ struct ContentView: View {
                 .frame(width: 28, height: 28)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .accessibilityHidden(true)
-            if Theme.isTerminal {
-                Text("txtnimal@local").foregroundColor(Theme.green)
-                Text(":" + (store.fileURL.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath + "/")
-                    .foregroundColor(Theme.dim)
-                Text(store.fileURL.lastPathComponent).foregroundColor(Theme.fg)
-                Text("$").foregroundColor(Theme.green)
-            } else {
-                Text((store.fileURL.path as NSString).abbreviatingWithTildeInPath)
-                    .foregroundColor(Theme.dim)
+            Group {
+                if Theme.isTerminal {
+                    Text("txtnimal@local").foregroundColor(Theme.green)
+                    Text(":" + (store.fileURL.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath + "/")
+                        .foregroundColor(Theme.dim)
+                    Text(store.fileURL.lastPathComponent).foregroundColor(Theme.fg)
+                    Text("$").foregroundColor(Theme.green)
+                } else {
+                    Text((store.fileURL.path as NSString).abbreviatingWithTildeInPath)
+                        .foregroundColor(Theme.dim)
+                }
             }
-                .font(Theme.monoSmall).foregroundColor(Theme.dim)
+                .font(Theme.monoSmall)
                 .lineLimit(1).truncationMode(.middle)
             Spacer()
             tab("⌘1 清單", .list); tab("⌘2 象限", .grid); tab("⌘3 便箋", .pad); tab("⌘4 統計", .dash)
