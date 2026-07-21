@@ -259,19 +259,32 @@ struct ContentView: View {
     @FocusState private var captureFocused: Bool
     private var captureBar: some View {
         HStack(spacing: 8) {
-            Text(Theme.isTerminal ? "\(store.fileURL.lastPathComponent) >" : ">").foregroundColor(Theme.green)
-            // 行內上色：彩色 Text 墊底、透明字 TextField 疊上 — 等寬字體讓兩層逐字對齊
-            ZStack(alignment: .leading) {
-                if captureText.isEmpty {
-                    Text("新任務…  due:fri  +List  @Tag")
-                        .foregroundColor(Theme.dim.opacity(0.3))
+            if Theme.isTerminal {
+                Text(store.fileURL.lastPathComponent).font(Theme.monoSmall).foregroundColor(Theme.dim)
+                Text("$").foregroundColor(Theme.cyan)
+                Text("❯").foregroundColor(Theme.green).fontWeight(.bold)
+                ZStack(alignment: .leading) {
+                    if captureText.isEmpty {
+                        Text("new task  due:fri  +List  @Tag").foregroundColor(Theme.dim.opacity(0.45))
+                    }
+                    TerminalInputField(text: $captureText, onSubmit: commitCapture, onCancel: closeCapture)
+                        .frame(height: 20)
                 }
-                colorized(captureText)
-                TextField("", text: $captureText)
-                    .textFieldStyle(.plain).foregroundColor(.clear).tint(Theme.green)
-                    .focused($captureFocused)
-                    .onSubmit { commitCapture() }
-                    .onExitCommand { closeCapture() }
+            } else {
+                Text(">").foregroundColor(Theme.green)
+                // 行內上色：彩色 Text 墊底、透明字 TextField 疊上 — 等寬字體讓兩層逐字對齊
+                ZStack(alignment: .leading) {
+                    if captureText.isEmpty {
+                        Text("新任務…  due:fri  +List  @Tag")
+                            .foregroundColor(Theme.dim.opacity(0.3))
+                    }
+                    colorized(captureText)
+                    TextField("", text: $captureText)
+                        .textFieldStyle(.plain).foregroundColor(.clear).tint(Theme.green)
+                        .focused($captureFocused)
+                        .onSubmit { commitCapture() }
+                        .onExitCommand { closeCapture() }
+                }
             }
             Text("⏎ 新增 · esc 取消").font(Theme.monoSmall).foregroundColor(Theme.dim)
         }
