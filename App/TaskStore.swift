@@ -365,26 +365,40 @@ final class TaskStore: ObservableObject {
             lastError = "目前 task 沒有穩定 ID，無法由插件安全操作。"
             return
         }
-        let manifest = PluginManifest(id: "app.txtnimal.reschedule-tomorrow", name: "Reschedule Tomorrow",
-                                      version: "1.0.0", apiVersion: 1, entry: "main.js", capabilities: [.tasksUpdate],
-                                      commands: [.init(id: "tasks.reschedule", title: "Reschedule")])
-        let action = PluginAction(type: .hostCommand, command: "tasks.reschedule", taskIDs: [taskID],
-                                  due: RelativeDate.todayYMD(Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()), expectedRevision: DocumentRevision.make(for: lines[index].raw),
-                                  documentRevision: documentStoreSnapshot().documentRevision)
-        do {
-            let intent = try PluginValidator.validate(action: action, manifest: manifest,
-                                                      taskRevisions: [taskID: action.expectedRevision!],
-                                                      documentRevision: action.documentRevision)
-            let snapshot = documentStoreSnapshot()
-            let changed = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: RelativeDate.todayYMD())
-            apply(try documentStore.save(lines: changed, expectedGeneration: generation))
-            try pluginExecutionLogStore?.append(PluginExecutionRecord(pluginID: manifest.id, command: intent.command.rawValue, succeeded: true))
-            refreshPluginExecutionRecords()
-        } catch {
-            try? pluginExecutionLogStore?.append(PluginExecutionRecord(pluginID: manifest.id, command: "tasks.reschedule", succeeded: false, error: String(describing: error)))
-            refreshPluginExecutionRecords(); report(error)
+        guard let package = installedPluginPackages.first(where: { $0.manifest.id == "app.txtnimal.reschedule-tomorrow" }) else {
+            lastError = "請先安裝 Reschedule Tomorrow plugin package。"
+            return
+        }
+        let snapshot = documentStoreSnapshot()
+        let taskRevision = DocumentRevision.make(for: lines[index].raw)
+        let input: [String: Any] = ["taskIDs": [taskID],
+                                    "tomorrow": RelativeDate.todayYMD(Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()),
+                                    "revision": taskRevision,
+                                    "documentRevision": snapshot.documentRevision]
+        guard let inputData = try? JSONSerialization.data(withJSONObject: input),
+              let inputJSON = String(data: inputData, encoding: .utf8),
+              let source = try? String(contentsOf: package.url.appendingPathComponent(package.manifest.entry), encoding: .utf8),
+              let request = try? JSONEncoder().encode(PluginRequestEnvelope(source: source, inputJSON: inputJSON)) else {
+            lastError = "無法載入 plugin entry。"; return
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let coordinator = PluginExecutionCoordinator(transport: PluginBrokerXPCTransport())
+                let intent = try await coordinator.execute(manifest: package.manifest, request: request,
+                                                           taskRevisions: [taskID: taskRevision], documentRevision: snapshot.documentRevision)
+                let changed = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: RelativeDate.todayYMD())
+                await MainActor.run {
+                    do {
+                        self.apply(try self.documentStore.save(lines: changed, expectedGeneration: self.generation))
+                        self.refreshPluginExecutionRecords()
+                    } catch { self.report(error) }
+                }
+            } catch { await MainActor.run { self.refreshPluginExecutionRecords(); self.report(error) } }
         }
     }
+
+    private struct PluginRequestEnvelope: Codable { let source: String; let inputJSON: String }
 
     private func documentStoreSnapshot() -> TaskDocumentSnapshot {
         TaskDocumentSnapshot(lines: lines, scratch: scratch, archiveLines: archiveLines, generation: generation,

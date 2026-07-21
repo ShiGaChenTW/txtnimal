@@ -10,7 +10,10 @@ final class PluginBrokerXPCTransport: PluginExecutionTransport, @unchecked Senda
     private let serviceName = "app.taskstxt.PluginRunnerSpikeService"
 
     func execute(pluginID: String, request: Data) async throws -> Data {
-        guard let requestJSON = String(data: request, encoding: .utf8) else {
+        struct Envelope: Codable { let source: String; let inputJSON: String }
+        guard let envelope = try? JSONDecoder().decode(Envelope.self, from: request),
+              let requestJSON = envelope.inputJSON.data(using: .utf8),
+              let input = String(data: requestJSON, encoding: .utf8) else {
             throw PluginExecutionError.invalidResponse
         }
         return try await withCheckedThrowingContinuation { continuation in
@@ -24,13 +27,15 @@ final class PluginBrokerXPCTransport: PluginExecutionTransport, @unchecked Senda
             guard let proxy else {
                 connection.invalidate(); continuation.resume(throwing: PluginExecutionError.transport("invalid broker proxy")); return
             }
-            proxy.execute(request: "broker-data", source: nil, inputJSON: requestJSON, probePath: nil) { response in
+            proxy.execute(request: "execute-js", source: envelope.source, inputJSON: input, probePath: nil) { response in
                 connection.invalidate()
-                guard let data = response.data(using: .utf8), (try? PluginJSON.rejectDuplicateKeys(data)) == nil else {
+                guard let data = response.data(using: .utf8),
+                      (try? PluginJSON.rejectDuplicateKeys(data)) == nil else {
                     continuation.resume(throwing: PluginExecutionError.invalidResponse); return
                 }
                 continuation.resume(returning: data)
             }
         }
     }
+
 }
