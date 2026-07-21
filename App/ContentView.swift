@@ -1,5 +1,5 @@
 import SwiftUI
-import TasksTxtCore
+import txtnimalCore
 
 struct ContentView: View {
     @EnvironmentObject var store: TaskStore

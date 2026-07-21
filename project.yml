@@ -7,7 +7,7 @@ options:
   createIntermediateGroups: true
 
 packages:
-  TasksTxtCore:
+  txtnimalCore:
     path: .
   KeyboardShortcuts:
     url: https://github.com/sindresorhus/KeyboardShortcuts
@@ -22,8 +22,8 @@ targets:
     resources:
       - path: App/Resources
     dependencies:
-      - package: TasksTxtCore
-        product: TasksTxtCore
+      - package: txtnimalCore
+        product: txtnimalCore
       - package: KeyboardShortcuts
         product: KeyboardShortcuts
     settings:
@@ -100,8 +100,8 @@ targets:
     dependencies:
       - target: PluginRunnerSpikeService
         embed: true
-      - package: TasksTxtCore
-        product: TasksTxtCore
+      - package: txtnimalCore
+        product: txtnimalCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.taskstxt.PluginRunnerSpikeHost

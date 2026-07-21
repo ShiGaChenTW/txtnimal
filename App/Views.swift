@@ -1,5 +1,5 @@
 import SwiftUI
-import TasksTxtCore
+import txtnimalCore
 import UniformTypeIdentifiers
 
 // MARK: - ⌘1 主清單

@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import TasksTxtCore
+import txtnimalCore
 
 /// 一個常駐置頂的迷你浮窗，只顯示目前 Focus 那一件。可拖到螢幕任意角落。
 /// 有 Focus 且不在 Focus 模式時顯示（Focus 模式已是全頁專注，不需要再疊浮窗）。

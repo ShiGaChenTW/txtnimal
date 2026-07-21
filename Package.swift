@@ -2,13 +2,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "TasksTxtCore",
+    name: "txtnimalCore",
     platforms: [.macOS(.v13)],
     products: [
-        .library(name: "TasksTxtCore", targets: ["TasksTxtCore"]),
+        .library(name: "txtnimalCore", targets: ["txtnimalCore"]),
     ],
     targets: [
-        .target(name: "TasksTxtCore"),
-        .testTarget(name: "TasksTxtCoreTests", dependencies: ["TasksTxtCore"]),
+        .target(name: "txtnimalCore"),
+        .testTarget(name: "txtnimalCoreTests", dependencies: ["txtnimalCore"]),
     ]
 )

@@ -1,6 +1,6 @@
 import SwiftUI
 import ServiceManagement
-import TasksTxtCore
+import txtnimalCore
 
 enum AppView { case list, grid, pad, dash, settings }
 

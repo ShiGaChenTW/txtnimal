@@ -16,7 +16,7 @@
 - [x] Step 1 — 與 Scott 確認 11 項設計決策（確認單 artifact）
 - [x] Step 2 — 寫 `SPEC.md` 設計契約（格式 / 三視圖 / Focus / 捕捉 / 里程碑）
 - [ ] Step 3 — 等 Scott 的自訂日曆設計（due 日期挑選 UI，留白）
-- [x] Step 4 — Swift Package `TasksTxtCore` 骨架建立（Package.swift + swift test 可跑）
+- [x] Step 4 — Swift Package `txtnimalCore` 骨架建立（Package.swift + swift test 可跑）
 - [x] Step 5 — 核心：todo.txt 無損 parser（round-trip，保留未知 token）— 12 測試全綠
 - [x] Step 6 — 檔案層：原子寫入（write atomically:true）+ 外部編輯監看（DispatchSource，00:50 完成）
 - [x] Step 6.5 — 純邏輯全數完成並測試：NL 日期解析 / 清單分組 / 象限分桶 / 捕捉解析（共 20 測試綠）

@@ -128,7 +128,7 @@ Review landing page due:2026-07-25 +website @mac note:"check mobile spacing"
 
 ## 開發與測試
 
-核心解析與檔案邏輯位於 Swift Package `TasksTxtCore`：
+核心解析與檔案邏輯位於 Swift Package `txtnimalCore`：
 
 ```bash
 swift test
@@ -148,7 +148,7 @@ xcodebuild \
 
 ```text
 App/                  SwiftUI App 與 macOS 整合
-Sources/TasksTxtCore/ 純文字解析、工作區與檔案儲存
+Sources/txtnimalCore/ 純文字解析、工作區與檔案儲存
 Tests/                核心單元測試
 docs/                 格式與專案文件
 project.yml           XcodeGen 專案定義
@@ -277,7 +277,7 @@ The global quick-capture shortcut can be changed in Settings.
 
 ## Development and testing
 
-The parser and file-management logic live in the `TasksTxtCore` Swift package:
+The parser and file-management logic live in the `txtnimalCore` Swift package:
 
 ```bash
 swift test
@@ -297,7 +297,7 @@ Repository layout:
 
 ```text
 App/                  SwiftUI app and macOS integrations
-Sources/TasksTxtCore/ Plain-text parsing, workspace, and file storage
+Sources/txtnimalCore/ Plain-text parsing, workspace, and file storage
 Tests/                Core unit tests
 docs/                 Format and project documentation
 project.yml           XcodeGen project definition

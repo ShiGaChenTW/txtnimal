@@ -9,7 +9,7 @@ status: final
 created: '2026-07-21'
 updated: '2026-07-21'
 binds: ['command-plugins', 'controlled-page-plugins']
-sources: ['docs/two-layer-plugin-evaluation.md', 'docs/plugin-architecture-evaluation.md', 'SPEC.md', 'Sources/TasksTxtCore']
+sources: ['docs/two-layer-plugin-evaluation.md', 'docs/plugin-architecture-evaluation.md', 'SPEC.md', 'Sources/txtnimalCore']
 companions: ['docs/two-layer-plugin-evaluation.md']
 ---
 
@@ -17,13 +17,13 @@ companions: ['docs/two-layer-plugin-evaluation.md']
 
 ## Design Paradigm
 
-Hexagonal host with declarative UI interpreter: plugin packages and runners are adapters; the versioned Plugin Host API is the port; `TasksTxtCore` owns domain mutation; the host renderer interprets validated page documents into host-owned SwiftUI views.
+Hexagonal host with declarative UI interpreter: plugin packages and runners are adapters; the versioned Plugin Host API is the port; `txtnimalCore` owns domain mutation; the host renderer interprets validated page documents into host-owned SwiftUI views.
 
 ```mermaid
 flowchart LR
     Plugin[Plugin Adapter] --> Port[Plugin Host Port]
     Port --> Gate[Capability Gate]
-    Gate --> Domain[TasksTxtCore]
+    Gate --> Domain[txtnimalCore]
     Gate --> Renderer[Host UI Interpreter]
     Renderer --> Gate
     Domain --> Store[TaskDocumentStore]
@@ -41,7 +41,7 @@ flowchart LR
 
 - **Binds:** all task and scratch mutations
 - **Prevents:** plugins bypassing todo.txt validation or overwriting external edits
-- **Rule:** Plugins emit versioned command intents; only `TasksTxtCore` applies them after capability, payload, task-ID, and file-revision validation. Plugins receive no store or file URL.
+- **Rule:** Plugins emit versioned command intents; only `txtnimalCore` applies them after capability, payload, task-ID, and file-revision validation. Plugins receive no store or file URL.
 
 ### AD-3 — Plugin UI is data, never executable native UI
 
@@ -118,7 +118,7 @@ flowchart LR
 ## Structural Seed
 
 ```text
-Sources/TasksTxtCore/
+Sources/txtnimalCore/
   PluginContracts/       # stable IDs, snapshots, commands, revisions
 App/Plugins/
   Registry/              # discovery, manifest, grants, compatibility

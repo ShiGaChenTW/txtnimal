@@ -1,5 +1,5 @@
 import SwiftUI
-import TasksTxtCore
+import txtnimalCore
 
 @main
 struct txtnimalApp: App {

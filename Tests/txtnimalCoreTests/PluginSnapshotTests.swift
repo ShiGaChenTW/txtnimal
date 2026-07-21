@@ -1,5 +1,5 @@
 import XCTest
-@testable import TasksTxtCore
+@testable import txtnimalCore
 
 final class PluginSnapshotTests: XCTestCase {
     func testPersistedIDSurvivesSnapshotAndEncoding() throws {

@@ -1,5 +1,5 @@
 import XCTest
-@testable import TasksTxtCore
+@testable import txtnimalCore
 
 private struct TestTransport: PluginExecutionTransport {
     let response: Data

@@ -7,8 +7,8 @@ review_loop_iteration: 0
 baseline_commit: '05c60e8'
 context:
   - 'docs/plugin-phase-0-report.md'
-  - 'Sources/TasksTxtCore/TaskDocumentStore.swift'
-  - 'Sources/TasksTxtCore/TaskLine.swift'
+  - 'Sources/txtnimalCore/TaskDocumentStore.swift'
+  - 'Sources/txtnimalCore/TaskLine.swift'
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
@@ -17,7 +17,7 @@ context:
 
 **Problem:** Phase 0 插件契約中的 task snapshot 仍依賴外部傳入 revision，正式 Core 也只有短生命週期的 generation／index handle。插件若保存資料後再回傳操作，無法穩定辨識同一筆 task，也無法可靠判斷文件是否在外部變更。
 
-**Approach:** 在 TasksTxtCore 建立可序列化的穩定 task identity、文件 revision 與插件 snapshot builder；保留既有 tasks.txt 無損 round-trip，並讓 snapshot 以明確版本與 deterministic revision 提供給插件驗證層使用。
+**Approach:** 在 txtnimalCore 建立可序列化的穩定 task identity、文件 revision 與插件 snapshot builder；保留既有 tasks.txt 無損 round-trip，並讓 snapshot 以明確版本與 deterministic revision 提供給插件驗證層使用。
 
 ## Boundaries & Constraints
 
@@ -41,21 +41,21 @@ context:
 
 ## Code Map
 
-- `Sources/TasksTxtCore/TaskLine.swift` -- lossless task line model and metadata token handling.
-- `Sources/TasksTxtCore/TaskDocumentStore.swift` -- document load/save generation boundary.
-- `Sources/TasksTxtCore/Plugins/PluginContracts.swift` -- versioned plugin task snapshot contract.
-- `Sources/TasksTxtCore/Plugins/PluginSnapshotBuilder.swift` -- stable IDs, deterministic revision, and snapshot projection.
-- `Tests/TasksTxtCoreTests/PluginSnapshotTests.swift` -- legacy, duplicate, encoding, and stale revision coverage.
+- `Sources/txtnimalCore/TaskLine.swift` -- lossless task line model and metadata token handling.
+- `Sources/txtnimalCore/TaskDocumentStore.swift` -- document load/save generation boundary.
+- `Sources/txtnimalCore/Plugins/PluginContracts.swift` -- versioned plugin task snapshot contract.
+- `Sources/txtnimalCore/Plugins/PluginSnapshotBuilder.swift` -- stable IDs, deterministic revision, and snapshot projection.
+- `Tests/txtnimalCoreTests/PluginSnapshotTests.swift` -- legacy, duplicate, encoding, and stale revision coverage.
 
 ## Tasks & Acceptance
 
 **Execution:**
 
-- [x] `Sources/TasksTxtCore/TaskLine.swift` -- add lossless stable-ID metadata accessors and targeted mutation -- preserve existing tasks.txt round-trip behavior.
-- [x] `Sources/TasksTxtCore/TaskDocumentStore.swift` -- expose document bytes/revision inputs without breaking generation-based callers -- let snapshot creation detect external changes.
-- [x] `Sources/TasksTxtCore/Plugins/PluginContracts.swift` -- version the task/document snapshot fields -- make plugin input Codable and explicit.
-- [x] `Sources/TasksTxtCore/Plugins/PluginSnapshotBuilder.swift` -- build stable IDs, deterministic revision, and bounded plugin snapshots -- centralize projection rules.
-- [x] `Tests/TasksTxtCoreTests/PluginSnapshotTests.swift` -- cover all matrix scenarios -- prevent identity collisions and stale writes.
+- [x] `Sources/txtnimalCore/TaskLine.swift` -- add lossless stable-ID metadata accessors and targeted mutation -- preserve existing tasks.txt round-trip behavior.
+- [x] `Sources/txtnimalCore/TaskDocumentStore.swift` -- expose document bytes/revision inputs without breaking generation-based callers -- let snapshot creation detect external changes.
+- [x] `Sources/txtnimalCore/Plugins/PluginContracts.swift` -- version the task/document snapshot fields -- make plugin input Codable and explicit.
+- [x] `Sources/txtnimalCore/Plugins/PluginSnapshotBuilder.swift` -- build stable IDs, deterministic revision, and bounded plugin snapshots -- centralize projection rules.
+- [x] `Tests/txtnimalCoreTests/PluginSnapshotTests.swift` -- cover all matrix scenarios -- prevent identity collisions and stale writes.
 
 **Acceptance Criteria:**
 
@@ -78,23 +78,23 @@ context:
 **Snapshot identity and revision**
 
 - Centralize projection from Core documents into versioned plugin data.
-  [`PluginSnapshotBuilder.swift:15`](../../Sources/TasksTxtCore/Plugins/PluginSnapshotBuilder.swift#L15)
+  [`PluginSnapshotBuilder.swift:15`](../../Sources/txtnimalCore/Plugins/PluginSnapshotBuilder.swift#L15)
 
 - Compute document revisions from exact task-file bytes, preventing caller-supplied hashes.
-  [`TaskDocumentStore.swift:4`](../../Sources/TasksTxtCore/TaskDocumentStore.swift#L4)
+  [`TaskDocumentStore.swift:4`](../../Sources/txtnimalCore/TaskDocumentStore.swift#L4)
 
 - Persist stable identity without changing existing task line structure beyond metadata.
-  [`TaskLine.swift:20`](../../Sources/TasksTxtCore/TaskLine.swift#L20)
+  [`TaskLine.swift:20`](../../Sources/txtnimalCore/TaskLine.swift#L20)
 
 **Stale action protection**
 
 - Reject missing or mismatched current document revisions before host mutations.
-  [`PluginValidation.swift:103`](../../Sources/TasksTxtCore/Plugins/PluginValidation.swift#L103)
+  [`PluginValidation.swift:103`](../../Sources/txtnimalCore/Plugins/PluginValidation.swift#L103)
 
 - Keep snapshot payload explicitly versioned and Codable for future plugin transport.
-  [`PluginContracts.swift:65`](../../Sources/TasksTxtCore/Plugins/PluginContracts.swift#L65)
+  [`PluginContracts.swift:65`](../../Sources/txtnimalCore/Plugins/PluginContracts.swift#L65)
 
 **Regression evidence**
 
 - Exercise legacy IDs, duplicate identities, deterministic revisions, encoding, and stale actions.
-  [`PluginSnapshotTests.swift:4`](../../Tests/TasksTxtCoreTests/PluginSnapshotTests.swift#L4)
+  [`PluginSnapshotTests.swift:4`](../../Tests/txtnimalCoreTests/PluginSnapshotTests.swift#L4)

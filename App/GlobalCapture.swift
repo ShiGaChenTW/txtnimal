@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 import KeyboardShortcuts
-import TasksTxtCore
+import txtnimalCore
 
 extension KeyboardShortcuts.Name {
     /// 全域捕捉，預設 ⌥Space;可在「設定」重綁。

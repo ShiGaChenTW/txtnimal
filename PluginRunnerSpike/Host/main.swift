@@ -1,5 +1,5 @@
 import Foundation
-import TasksTxtCore
+import txtnimalCore
 
 struct ScenarioResult: Codable {
     let scenario: String

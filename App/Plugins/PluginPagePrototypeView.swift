@@ -1,5 +1,5 @@
 import SwiftUI
-import TasksTxtCore
+import txtnimalCore
 
 /// Phase 0 renderer spike. It is intentionally not connected to App navigation.
 /// Production code must call `PluginValidator.validate` before constructing this view.

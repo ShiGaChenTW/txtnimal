@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import TasksTxtCore
+@testable import txtnimalCore
 
 final class PluginArchitectureSpikeTests: XCTestCase {
     func testApprovedFixturesShareManifestAndActionGate() throws {

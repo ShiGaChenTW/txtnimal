@@ -41,11 +41,11 @@ context:
 ## Code Map
 
 - `Package.swift` -- 加入純 Swift 插件契約／驗證測試可編譯的 Core 來源，不引入第三方 dependency。
-- `Sources/TasksTxtCore/Plugins/` -- manifest、capability、snapshot、action、page schema、limits 與 fail-closed validator。
+- `Sources/txtnimalCore/Plugins/` -- manifest、capability、snapshot、action、page schema、limits 與 fail-closed validator。
 - `App/Plugins/PluginPagePrototypeView.swift` -- 僅供 Phase 0 preview/harness 使用的 allowlist SwiftUI renderer，不接正式導覽。
 - `PluginRunnerSpike/` -- 最小 XPC protocol/service/host harness 與 sandbox 實驗設定；與正式 App target 隔離。
 - `PluginFixtures/` -- 「延到明天」與「每週回顧」兩個固定 package/schema 案例，以及惡意／錯誤 fixtures。
-- `Tests/TasksTxtCoreTests/PluginArchitectureSpikeTests.swift` -- 契約、limit、capability、路徑與 schema edge cases。
+- `Tests/txtnimalCoreTests/PluginArchitectureSpikeTests.swift` -- 契約、limit、capability、路徑與 schema edge cases。
 - `scripts/measure-plugin-phase0.sh` -- 執行測試、XPC harness、Release size 與時間量測。
 - `docs/plugin-phase-0-report.md` -- 記錄證據、成功／失敗、容量、效能、限制與 Phase 1 go/no-go 建議。
 
@@ -53,8 +53,8 @@ context:
 
 **Execution:**
 
-- [x] `Sources/TasksTxtCore/Plugins/`、`PluginFixtures/` -- 建立兩層共用 Codable 契約、限制與 fixtures，保持 domain mutation 由 Host 擁有。
-- [x] `Tests/TasksTxtCoreTests/PluginArchitectureSpikeTests.swift` -- 覆蓋矩陣中的合法及拒絕案例，確認未知內容 fail closed。
+- [x] `Sources/txtnimalCore/Plugins/`、`PluginFixtures/` -- 建立兩層共用 Codable 契約、限制與 fixtures，保持 domain mutation 由 Host 擁有。
+- [x] `Tests/txtnimalCoreTests/PluginArchitectureSpikeTests.swift` -- 覆蓋矩陣中的合法及拒絕案例，確認未知內容 fail closed。
 - [x] `App/Plugins/PluginPagePrototypeView.swift` -- 實作有限元件 renderer prototype，以 Preview/harness 證明頁面可渲染及 action 可回到 gate。
 - [x] `PluginRunnerSpike/`、`project.yml` -- 建立隔離 runner 實驗；驗證正常回應、逾時、crash 與 Host 存活，不接觸任務檔案。
 - [x] `scripts/measure-plugin-phase0.sh`、`docs/plugin-phase-0-report.md` -- 自動蒐集測試、大小與延遲結果，對每個架構假設給出 go/no-go。
@@ -85,10 +85,10 @@ Phase 0 的 production-shaped 部分僅限可重用的 value contracts 與 valid
 **安全邊界與契約**
 
 - 從單一 fail-closed gate 理解 manifest、頁面與 action 的信任邊界。
-  [`PluginValidation.swift:34`](../../Sources/TasksTxtCore/Plugins/PluginValidation.swift#L34)
+  [`PluginValidation.swift:34`](../../Sources/txtnimalCore/Plugins/PluginValidation.swift#L34)
 
 - 版本化純值契約隔開插件程式與正式資料模型。
-  [`PluginContracts.swift:32`](../../Sources/TasksTxtCore/Plugins/PluginContracts.swift#L32)
+  [`PluginContracts.swift:32`](../../Sources/txtnimalCore/Plugins/PluginContracts.swift#L32)
 
 **隔離執行拓撲**
 
@@ -112,7 +112,7 @@ Phase 0 的 production-shaped 部分僅限可重用的 value contracts 與 valid
 **證據與維運**
 
 - 契約測試涵蓋限制、逃逸、未知輸入與 revision 衝突。
-  [`PluginArchitectureSpikeTests.swift:5`](../../Tests/TasksTxtCoreTests/PluginArchitectureSpikeTests.swift#L5)
+  [`PluginArchitectureSpikeTests.swift:5`](../../Tests/txtnimalCoreTests/PluginArchitectureSpikeTests.swift#L5)
 
 - 可重現腳本比較固定基準，並驗證沙盒與故障復原。
   [`measure-plugin-phase0.sh:7`](../../scripts/measure-plugin-phase0.sh#L7)

@@ -1,5 +1,5 @@
 import SwiftUI
-import TasksTxtCore
+import txtnimalCore
 
 // MARK: - ⌘4 統計 Dashboard
 // 設計:描述性 TUI 圖表(Taskwarrior / todo.txt-graph 路線)+ GitHub 熱力圖。唯讀、一鍵進出。
