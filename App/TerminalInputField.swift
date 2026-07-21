@@ -18,6 +18,7 @@ struct TerminalInputField: NSViewRepresentable {
         scroll.hasHorizontalScroller = false
 
         let input = BlockCursorTextView()
+        input.installSolidCaret()
         input.delegate = context.coordinator
         input.onSubmit = onSubmit
         input.onCancel = onCancel
@@ -88,25 +89,14 @@ private final class BlockCursorTextView: NSTextView {
     var onSubmit: (() -> Void)?
     var onCancel: (() -> Void)?
     private let solidCaret = NSView()
+    private var solidCaretInstalled = false
     var blockColor = NSColor.systemGreen {
         didSet { solidCaret.layer?.backgroundColor = blockColor.cgColor }
     }
 
-    convenience init() {
-        self.init(frame: .zero, textContainer: nil)
-    }
-
-    override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
-        super.init(frame: frameRect, textContainer: container)
-        configureSolidCaret()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        configureSolidCaret()
-    }
-
-    private func configureSolidCaret() {
+    func installSolidCaret() {
+        guard !solidCaretInstalled else { return }
+        solidCaretInstalled = true
         solidCaret.wantsLayer = true
         solidCaret.layer?.backgroundColor = blockColor.cgColor
         solidCaret.layer?.cornerRadius = 0
