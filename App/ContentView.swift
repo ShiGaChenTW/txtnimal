@@ -32,6 +32,7 @@ struct ContentView: View {
             }
             if store.focusMode { focusOverlay }   // 技法 B：純變暗
             if showingPalette { paletteOverlay }  // ⌘K:條件掛載,不常駐樹中(焦點教訓)
+            TerminalScanlines()
         }
         .frame(minWidth: 660, minHeight: 580)
         .font(Theme.mono).foregroundColor(Theme.fg)
@@ -138,7 +139,16 @@ struct ContentView: View {
                 .frame(width: 28, height: 28)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .accessibilityHidden(true)
-            Text((store.fileURL.path as NSString).abbreviatingWithTildeInPath)
+            if Theme.isTerminal {
+                Text("txtnimal@local").foregroundColor(Theme.green)
+                Text(":" + (store.fileURL.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath + "/")
+                    .foregroundColor(Theme.dim)
+                Text(store.fileURL.lastPathComponent).foregroundColor(Theme.fg)
+                Text("$").foregroundColor(Theme.green)
+            } else {
+                Text((store.fileURL.path as NSString).abbreviatingWithTildeInPath)
+                    .foregroundColor(Theme.dim)
+            }
                 .font(Theme.monoSmall).foregroundColor(Theme.dim)
                 .lineLimit(1).truncationMode(.middle)
             Spacer()
@@ -152,7 +162,9 @@ struct ContentView: View {
     }
     private func tab(_ label: String, _ v: AppView) -> some View {
         let on = store.view == v
-        return Text(LocalizedStringKey(label)).font(Theme.monoSmall)
+        let localized = Text(LocalizedStringKey(label))
+        let rendered = Theme.isTerminal ? Text("[") + localized + Text("]") : localized
+        return rendered.font(Theme.monoSmall)
             .foregroundColor(on ? Theme.fg : Theme.dim)
             .padding(.horizontal, 9).padding(.vertical, 3)
             .background(on ? Theme.bg : .clear)
@@ -163,7 +175,9 @@ struct ContentView: View {
     // MARK: status bar
 
     private var statusBar: some View {
-        Group {
+        HStack(spacing: 8) {
+            if Theme.isTerminal { Text("-- NORMAL --").foregroundColor(Theme.green) }
+            Group {
             if store.focusMode {
                 Text("● Focus 模式 — 其他變暗；z / esc 離開").foregroundColor(Theme.focus)
             } else if let f = store.tagFilter {
@@ -171,6 +185,7 @@ struct ContentView: View {
                     .foregroundColor(tagColor(f))
             } else {
                 Text(statusText).foregroundColor(Theme.dim)
+            }
             }
         }
         .font(Theme.monoSmall)

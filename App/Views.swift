@@ -23,8 +23,8 @@ struct ListView: View {
             overdueSection(g.overdue)                                          // 逾期=紅(獨佔)
             section("Upcoming", g.upcoming, group: "up", color: Theme.yellow) // 未來=黃(呼應 q2 Schedule)
             // No date 區塊 + 尾端新增列;帶 due: 的新任務由重新分組自動跳到對應區塊
-            if !g.noDate.isEmpty { sectionHeader("No date", g.noDate.count, color: Theme.dim) }
-            else { sectionHeader("No date", 0, color: Theme.dim) }
+            if !g.noDate.isEmpty { sectionHeader("No date", g.noDate.count, color: Theme.dim, neutral: true) }
+            else { sectionHeader("No date", 0, color: Theme.dim, neutral: true) }
             ForEach(g.noDate, id: \.self) { rowOrEdit($0, "nd") }
             if addVisible { addRow }   // 預設隱藏,按 n 才出現
             section("Done", g.done, group: "done", color: Theme.green)        // 完成=綠(色彩契約)
@@ -185,12 +185,12 @@ struct ListView: View {
         }
     }
 
-    private func sectionHeader(_ title: String, _ count: Int, color: Color) -> some View {
+    private func sectionHeader(_ title: String, _ count: Int, color: Color, neutral: Bool = false) -> some View {
         HStack(spacing: 8) {
             Text(title).foregroundColor(color)
             Text("\(count)").foregroundColor(color)   // 計數與標題同色
             // 灰組維持既有邊框線,彩色組用同色低透明度 — 標題與線條成一組分類訊號
-            Rectangle().fill(color == Theme.dim ? Theme.border : color.opacity(0.35)).frame(height: 1)
+            Rectangle().fill(neutral ? Theme.border : color.opacity(0.35)).frame(height: 1)
         }
         .font(Theme.monoSmall).tracking(1)
         .padding(.horizontal, 16).padding(.top, store.density.sectionTop).padding(.bottom, 6)
