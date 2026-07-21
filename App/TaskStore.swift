@@ -281,7 +281,7 @@ final class TaskStore: ObservableObject {
     private var generation: UInt64 = 0
 
     static let defaultDataDir = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Documents/tasks-txt", isDirectory: true)
+        .appendingPathComponent("Documents/txtnimal", isDirectory: true)
     private static func storedTaskFile() -> URL {
         if let path = UserDefaults.standard.string(forKey: "activeTaskFile") {
             return URL(fileURLWithPath: path)

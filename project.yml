@@ -1,4 +1,4 @@
-name: TasksTxt
+name: txtnimal
 options:
   bundleIdPrefix: app.taskstxt
   developmentLanguage: zh-Hant
@@ -14,7 +14,7 @@ packages:
     from: 2.0.0
 
 targets:
-  TasksTxt:
+  txtnimal:
     type: application
     platform: macOS
     sources:
@@ -28,13 +28,13 @@ targets:
         product: KeyboardShortcuts
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: app.taskstxt.TasksTxt
+        PRODUCT_BUNDLE_IDENTIFIER: app.txtnimal.txtnimal
         PRODUCT_NAME: txtnimal
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: "5.0"
-        # 自用 + 作品集：不進 sandbox，才能讀 ~/Documents/tasks-txt；本機 ad-hoc 簽章即可跑
+        # 自用 + 作品集：不進 sandbox，才能讀 ~/Documents/txtnimal；本機 ad-hoc 簽章即可跑
         ENABLE_APP_SANDBOX: NO
         ENABLE_HARDENED_RUNTIME: NO
         CODE_SIGN_STYLE: Manual

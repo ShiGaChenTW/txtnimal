@@ -2,7 +2,7 @@ import SwiftUI
 import TasksTxtCore
 
 @main
-struct TasksTxtApp: App {
+struct txtnimalApp: App {
     @StateObject private var store = TaskStore()
 
     var body: some Scene {

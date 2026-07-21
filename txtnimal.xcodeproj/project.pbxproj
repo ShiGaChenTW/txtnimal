@@ -1,0 +1,821 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		3056FF3F9130FA9B9559A9AD /* PluginPagePrototypeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93729848FDFF0B9D971D71A /* PluginPagePrototypeView.swift */; };
+		32ABA209D555F28048792F42 /* txtnimalApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 988AB3CF23CF783135207520 /* txtnimalApp.swift */; };
+		35465FF88456848FDA088208 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7D96B82095534EFEDA16F614 /* Assets.xcassets */; };
+		3A6317FD9374298D43624E13 /* TaskStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14FC886CBBD039FF8370D324 /* TaskStore.swift */; };
+		3AD6F3F8DA29D965702C96C2 /* GlobalCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C63036A2C8D51ED40F089374 /* GlobalCapture.swift */; };
+		3BDB9F5B82CC0878ADF078D7 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = CDE9B1B97C37D6CDD724846B /* KeyboardShortcuts */; };
+		3EE1907F9AF4A7DE8DCAEE6A /* FocusHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AAF2DDFF26B26E6D0E3F2C9 /* FocusHUD.swift */; };
+		492397DEC9247231AD080C30 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCFA51202F6B343EE91F550A /* main.swift */; };
+		49F073F33178B3BC136B59B0 /* txtnimal-icon-crt.png in Resources */ = {isa = PBXBuildFile; fileRef = 8163C377B5331E6AD154137D /* txtnimal-icon-crt.png */; };
+		4CB3B67D54590C55F44EC731 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D7BE821495251F903C1400A /* Views.swift */; };
+		4EBF63D5D904F5D33E31F5F8 /* TasksTxtCore in Frameworks */ = {isa = PBXBuildFile; productRef = 76B9D2666142CF6F51B1E11E /* TasksTxtCore */; };
+		5283FA99D0C057CE9B18E112 /* txtnimal-icon-glass.png in Resources */ = {isa = PBXBuildFile; fileRef = D7857CC7C1C3E723CFB29839 /* txtnimal-icon-glass.png */; };
+		6203FCE7F6196AE01291FE1D /* PluginRunnerXPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5EBADA571FE27D464BEEB5D /* PluginRunnerXPCProtocol.swift */; };
+		65DC76F3C171743FFB3E0FA0 /* TasksTxtCore in Frameworks */ = {isa = PBXBuildFile; productRef = 879084CF36DFFFB553E6A734 /* TasksTxtCore */; };
+		896504E5394E7BFE84DA5182 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 222BB1F05B96A3C8737A37FD /* Theme.swift */; };
+		9C9D007F6EC87E3290D8100A /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D906BBCB857918EC5EC581F8 /* WelcomeView.swift */; };
+		A2F38F194E2266B2ADBBC28E /* TaskFileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A2F40506DB1D415F559833 /* TaskFileBrowserView.swift */; };
+		AF44C1BB72B56D1C72476069 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42BF4B8D51ECE4F88443711C /* main.swift */; };
+		D002B7EC05F0F888006ABDDE /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C38AA616E57879F425E8BE9 /* ContentView.swift */; };
+		D58AA272829FAD809D0BDE5A /* PluginRunnerSpikeService.xpc in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8D49C77D1CB3BE1779A38541 /* PluginRunnerSpikeService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E7ABA4F87FB25A123F48CD28 /* PluginRunnerSpikeWorker.app in Resources */ = {isa = PBXBuildFile; fileRef = 310423B225950866ED6D3305 /* PluginRunnerSpikeWorker.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E96CD3F7F570B0698D4C0241 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 872010864B3BC1540FB2F3C2 /* Localizable.strings */; };
+		E9DB8B6082F4A85569443779 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C4BECBC7F1E608EE42DE9D /* main.swift */; };
+		F81B9535EEF400CF668A74D8 /* PluginRunnerXPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5EBADA571FE27D464BEEB5D /* PluginRunnerXPCProtocol.swift */; };
+		FA5A8A504275457049E426D8 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 434D01CD265E5A2ED23A2AC6 /* DashboardView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		13008AD9C61A013496AEA2FC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5FE5E63F21B1106C38726448 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6A0538E84E44413357B93B23;
+			remoteInfo = PluginRunnerSpikeService;
+		};
+		DE78336ABD44199B103BE4BE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5FE5E63F21B1106C38726448 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5E09C57AD02A25B951FF5401;
+			remoteInfo = PluginRunnerSpikeWorker;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		796DF45B0A0BAB06F36F5F3F /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
+			dstSubfolderSpec = 16;
+			files = (
+				D58AA272829FAD809D0BDE5A /* PluginRunnerSpikeService.xpc in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		14FC886CBBD039FF8370D324 /* TaskStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskStore.swift; sourceTree = "<group>"; };
+		222BB1F05B96A3C8737A37FD /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		2EDD46564191FB0212C311B8 /* PluginRunnerSpikeHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PluginRunnerSpikeHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		310423B225950866ED6D3305 /* PluginRunnerSpikeWorker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PluginRunnerSpikeWorker.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3D7BE821495251F903C1400A /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
+		42BF4B8D51ECE4F88443711C /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		434D01CD265E5A2ED23A2AC6 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		4C20172B68E42C976D77992E /* tasktxt_gui_bmad */ = {isa = PBXFileReference; lastKnownFileType = folder; name = tasktxt_gui_bmad; path = .; sourceTree = SOURCE_ROOT; };
+		7AAF2DDFF26B26E6D0E3F2C9 /* FocusHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusHUD.swift; sourceTree = "<group>"; };
+		7C38AA616E57879F425E8BE9 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		7D96B82095534EFEDA16F614 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		8163C377B5331E6AD154137D /* txtnimal-icon-crt.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "txtnimal-icon-crt.png"; sourceTree = "<group>"; };
+		872010864B3BC1540FB2F3C2 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		8D49C77D1CB3BE1779A38541 /* PluginRunnerSpikeService.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = PluginRunnerSpikeService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
+		93A2F40506DB1D415F559833 /* TaskFileBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskFileBrowserView.swift; sourceTree = "<group>"; };
+		97A0FE3DECEF2406BCDD875E /* txtnimal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = txtnimal.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		988AB3CF23CF783135207520 /* txtnimalApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = txtnimalApp.swift; sourceTree = "<group>"; };
+		A93729848FDFF0B9D971D71A /* PluginPagePrototypeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginPagePrototypeView.swift; sourceTree = "<group>"; };
+		C0C4BECBC7F1E608EE42DE9D /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		C63036A2C8D51ED40F089374 /* GlobalCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalCapture.swift; sourceTree = "<group>"; };
+		CCFA51202F6B343EE91F550A /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		D5EBADA571FE27D464BEEB5D /* PluginRunnerXPCProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginRunnerXPCProtocol.swift; sourceTree = "<group>"; };
+		D7857CC7C1C3E723CFB29839 /* txtnimal-icon-glass.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "txtnimal-icon-glass.png"; sourceTree = "<group>"; };
+		D906BBCB857918EC5EC581F8 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1F6BF078EB559E5F97549176 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4EBF63D5D904F5D33E31F5F8 /* TasksTxtCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E091A171BE65C11541A56DBB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				65DC76F3C171743FFB3E0FA0 /* TasksTxtCore in Frameworks */,
+				3BDB9F5B82CC0878ADF078D7 /* KeyboardShortcuts in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0A688E0B48FB8E0C627B3365 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				7D96B82095534EFEDA16F614 /* Assets.xcassets */,
+				7C38AA616E57879F425E8BE9 /* ContentView.swift */,
+				434D01CD265E5A2ED23A2AC6 /* DashboardView.swift */,
+				7AAF2DDFF26B26E6D0E3F2C9 /* FocusHUD.swift */,
+				C63036A2C8D51ED40F089374 /* GlobalCapture.swift */,
+				872010864B3BC1540FB2F3C2 /* Localizable.strings */,
+				93A2F40506DB1D415F559833 /* TaskFileBrowserView.swift */,
+				14FC886CBBD039FF8370D324 /* TaskStore.swift */,
+				222BB1F05B96A3C8737A37FD /* Theme.swift */,
+				988AB3CF23CF783135207520 /* txtnimalApp.swift */,
+				3D7BE821495251F903C1400A /* Views.swift */,
+				D906BBCB857918EC5EC581F8 /* WelcomeView.swift */,
+				98A7569EB495DD5E1986FCB9 /* Plugins */,
+				5F180FA91B9CC41FB0FD689A /* Resources */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		0E4429D0DBF8301A790CE935 /* PluginRunnerSpike */ = {
+			isa = PBXGroup;
+			children = (
+				3C9A5A9F2D2F94D450F79739 /* Host */,
+				8E8A4E5A669EABCBFC393005 /* Service */,
+				BB760D001D4CDC3344BF6E52 /* Shared */,
+				A3067747915A2274482086E9 /* Worker */,
+			);
+			path = PluginRunnerSpike;
+			sourceTree = "<group>";
+		};
+		3C9A5A9F2D2F94D450F79739 /* Host */ = {
+			isa = PBXGroup;
+			children = (
+				C0C4BECBC7F1E608EE42DE9D /* main.swift */,
+			);
+			path = Host;
+			sourceTree = "<group>";
+		};
+		3D997C92112A149F71446EC9 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				4C20172B68E42C976D77992E /* tasktxt_gui_bmad */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		5EC1DEDF8D29020AEFCBCE1D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2EDD46564191FB0212C311B8 /* PluginRunnerSpikeHost.app */,
+				8D49C77D1CB3BE1779A38541 /* PluginRunnerSpikeService.xpc */,
+				310423B225950866ED6D3305 /* PluginRunnerSpikeWorker.app */,
+				97A0FE3DECEF2406BCDD875E /* txtnimal.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		5F180FA91B9CC41FB0FD689A /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				8163C377B5331E6AD154137D /* txtnimal-icon-crt.png */,
+				D7857CC7C1C3E723CFB29839 /* txtnimal-icon-glass.png */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		6D873C831327EA1E17668503 = {
+			isa = PBXGroup;
+			children = (
+				0A688E0B48FB8E0C627B3365 /* App */,
+				3D997C92112A149F71446EC9 /* Packages */,
+				0E4429D0DBF8301A790CE935 /* PluginRunnerSpike */,
+				5EC1DEDF8D29020AEFCBCE1D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8E8A4E5A669EABCBFC393005 /* Service */ = {
+			isa = PBXGroup;
+			children = (
+				CCFA51202F6B343EE91F550A /* main.swift */,
+			);
+			path = Service;
+			sourceTree = "<group>";
+		};
+		98A7569EB495DD5E1986FCB9 /* Plugins */ = {
+			isa = PBXGroup;
+			children = (
+				A93729848FDFF0B9D971D71A /* PluginPagePrototypeView.swift */,
+			);
+			path = Plugins;
+			sourceTree = "<group>";
+		};
+		A3067747915A2274482086E9 /* Worker */ = {
+			isa = PBXGroup;
+			children = (
+				42BF4B8D51ECE4F88443711C /* main.swift */,
+			);
+			path = Worker;
+			sourceTree = "<group>";
+		};
+		BB760D001D4CDC3344BF6E52 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				D5EBADA571FE27D464BEEB5D /* PluginRunnerXPCProtocol.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		417B9E089E4279ACD51BE6D0 /* txtnimal */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 05E1B396FA4382F63129FFD7 /* Build configuration list for PBXNativeTarget "txtnimal" */;
+			buildPhases = (
+				350BC3163927BB15C27BC346 /* Sources */,
+				AB3E4B42AF54AE85442B1E74 /* Resources */,
+				E091A171BE65C11541A56DBB /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = txtnimal;
+			packageProductDependencies = (
+				879084CF36DFFFB553E6A734 /* TasksTxtCore */,
+				CDE9B1B97C37D6CDD724846B /* KeyboardShortcuts */,
+			);
+			productName = txtnimal;
+			productReference = 97A0FE3DECEF2406BCDD875E /* txtnimal.app */;
+			productType = "com.apple.product-type.application";
+		};
+		5E09C57AD02A25B951FF5401 /* PluginRunnerSpikeWorker */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E3810F862D513A3D6DE65D08 /* Build configuration list for PBXNativeTarget "PluginRunnerSpikeWorker" */;
+			buildPhases = (
+				9E512D69E3B46662BCB36AFA /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PluginRunnerSpikeWorker;
+			packageProductDependencies = (
+			);
+			productName = PluginRunnerSpikeWorker;
+			productReference = 310423B225950866ED6D3305 /* PluginRunnerSpikeWorker.app */;
+			productType = "com.apple.product-type.application";
+		};
+		6A0538E84E44413357B93B23 /* PluginRunnerSpikeService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D07FA22EFD35813288E954D4 /* Build configuration list for PBXNativeTarget "PluginRunnerSpikeService" */;
+			buildPhases = (
+				DA3EB26ADF00D81F98A3F595 /* Sources */,
+				46EF5A4EE32E40EC8F8D24A0 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A694DF9A5F5765382328AC8F /* PBXTargetDependency */,
+			);
+			name = PluginRunnerSpikeService;
+			packageProductDependencies = (
+			);
+			productName = PluginRunnerSpikeService;
+			productReference = 8D49C77D1CB3BE1779A38541 /* PluginRunnerSpikeService.xpc */;
+			productType = "com.apple.product-type.xpc-service";
+		};
+		BBF3BAC83D369301ED11C274 /* PluginRunnerSpikeHost */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AB2E4C51280C51F6CEF0DE91 /* Build configuration list for PBXNativeTarget "PluginRunnerSpikeHost" */;
+			buildPhases = (
+				5E954DBC2E6F5C80C369A965 /* Sources */,
+				796DF45B0A0BAB06F36F5F3F /* CopyFiles */,
+				1F6BF078EB559E5F97549176 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				951138CFA051CC384204DCA6 /* PBXTargetDependency */,
+			);
+			name = PluginRunnerSpikeHost;
+			packageProductDependencies = (
+				76B9D2666142CF6F51B1E11E /* TasksTxtCore */,
+			);
+			productName = PluginRunnerSpikeHost;
+			productReference = 2EDD46564191FB0212C311B8 /* PluginRunnerSpikeHost.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5FE5E63F21B1106C38726448 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					417B9E089E4279ACD51BE6D0 = {
+						ProvisioningStyle = Manual;
+					};
+					5E09C57AD02A25B951FF5401 = {
+						ProvisioningStyle = Manual;
+					};
+					6A0538E84E44413357B93B23 = {
+						ProvisioningStyle = Manual;
+					};
+					BBF3BAC83D369301ED11C274 = {
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = C48C361B96171F675C0518D8 /* Build configuration list for PBXProject "txtnimal" */;
+			developmentRegion = "zh-Hant";
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+				"zh-Hant",
+			);
+			mainGroup = 6D873C831327EA1E17668503;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				34C404425FF6BD8BD3BB318D /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
+				98C1137F4492F62FB7B24256 /* XCLocalSwiftPackageReference "." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 5EC1DEDF8D29020AEFCBCE1D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BBF3BAC83D369301ED11C274 /* PluginRunnerSpikeHost */,
+				6A0538E84E44413357B93B23 /* PluginRunnerSpikeService */,
+				5E09C57AD02A25B951FF5401 /* PluginRunnerSpikeWorker */,
+				417B9E089E4279ACD51BE6D0 /* txtnimal */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		46EF5A4EE32E40EC8F8D24A0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E7ABA4F87FB25A123F48CD28 /* PluginRunnerSpikeWorker.app in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AB3E4B42AF54AE85442B1E74 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				35465FF88456848FDA088208 /* Assets.xcassets in Resources */,
+				E96CD3F7F570B0698D4C0241 /* Localizable.strings in Resources */,
+				49F073F33178B3BC136B59B0 /* txtnimal-icon-crt.png in Resources */,
+				5283FA99D0C057CE9B18E112 /* txtnimal-icon-glass.png in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		350BC3163927BB15C27BC346 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D002B7EC05F0F888006ABDDE /* ContentView.swift in Sources */,
+				FA5A8A504275457049E426D8 /* DashboardView.swift in Sources */,
+				3EE1907F9AF4A7DE8DCAEE6A /* FocusHUD.swift in Sources */,
+				3AD6F3F8DA29D965702C96C2 /* GlobalCapture.swift in Sources */,
+				3056FF3F9130FA9B9559A9AD /* PluginPagePrototypeView.swift in Sources */,
+				A2F38F194E2266B2ADBBC28E /* TaskFileBrowserView.swift in Sources */,
+				3A6317FD9374298D43624E13 /* TaskStore.swift in Sources */,
+				896504E5394E7BFE84DA5182 /* Theme.swift in Sources */,
+				4CB3B67D54590C55F44EC731 /* Views.swift in Sources */,
+				9C9D007F6EC87E3290D8100A /* WelcomeView.swift in Sources */,
+				32ABA209D555F28048792F42 /* txtnimalApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5E954DBC2E6F5C80C369A965 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6203FCE7F6196AE01291FE1D /* PluginRunnerXPCProtocol.swift in Sources */,
+				E9DB8B6082F4A85569443779 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9E512D69E3B46662BCB36AFA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AF44C1BB72B56D1C72476069 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DA3EB26ADF00D81F98A3F595 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F81B9535EEF400CF668A74D8 /* PluginRunnerXPCProtocol.swift in Sources */,
+				492397DEC9247231AD080C30 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		951138CFA051CC384204DCA6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6A0538E84E44413357B93B23 /* PluginRunnerSpikeService */;
+			targetProxy = 13008AD9C61A013496AEA2FC /* PBXContainerItemProxy */;
+		};
+		A694DF9A5F5765382328AC8F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5E09C57AD02A25B951FF5401 /* PluginRunnerSpikeWorker */;
+			targetProxy = DE78336ABD44199B103BE4BE /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		5D2EEAD78AD4629CB3C9767B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "PluginRunnerSpike/Service-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.taskstxt.PluginRunnerSpikeService;
+				PRODUCT_NAME = PluginRunnerSpikeService;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		613B558B4699D0281B9EF765 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "PluginRunnerSpike/Service-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.taskstxt.PluginRunnerSpikeService;
+				PRODUCT_NAME = PluginRunnerSpikeService;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		62B6796C36C9CAF27F7C2E00 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.taskstxt.PluginRunnerSpikeHost;
+				PRODUCT_NAME = PluginRunnerSpikeHost;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		64A07A65ADEE7E9265D5269C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = PluginRunnerSpike/Worker.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_APP_SANDBOX = YES;
+				INFOPLIST_FILE = "PluginRunnerSpike/Worker-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.taskstxt.PluginRunnerSpikeWorker;
+				PRODUCT_NAME = PluginRunnerSpikeWorker;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		810F4394B0F7E7F82159758B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = app.txtnimal.txtnimal;
+				PRODUCT_NAME = txtnimal;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C7AF6FD5A9F799ECB1A96B0D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = PluginRunnerSpike/Worker.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_APP_SANDBOX = YES;
+				INFOPLIST_FILE = "PluginRunnerSpike/Worker-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.taskstxt.PluginRunnerSpikeWorker;
+				PRODUCT_NAME = PluginRunnerSpikeWorker;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		CCA5DAE4C0FF419B1BFAE6D6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		D59FDBD32593E5E37A6C92C5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		DBFDB3F9DF3517AF73D61255 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				COPY_PHASE_STRIP = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = app.txtnimal.txtnimal;
+				PRODUCT_NAME = txtnimal;
+				SDKROOT = macosx;
+				STRIP_INSTALLED_PRODUCT = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Osize";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		F6816354A0E6E9A09FDDCBCF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.taskstxt.PluginRunnerSpikeHost;
+				PRODUCT_NAME = PluginRunnerSpikeHost;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		05E1B396FA4382F63129FFD7 /* Build configuration list for PBXNativeTarget "txtnimal" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				810F4394B0F7E7F82159758B /* Debug */,
+				DBFDB3F9DF3517AF73D61255 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AB2E4C51280C51F6CEF0DE91 /* Build configuration list for PBXNativeTarget "PluginRunnerSpikeHost" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				62B6796C36C9CAF27F7C2E00 /* Debug */,
+				F6816354A0E6E9A09FDDCBCF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C48C361B96171F675C0518D8 /* Build configuration list for PBXProject "txtnimal" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CCA5DAE4C0FF419B1BFAE6D6 /* Debug */,
+				D59FDBD32593E5E37A6C92C5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D07FA22EFD35813288E954D4 /* Build configuration list for PBXNativeTarget "PluginRunnerSpikeService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5D2EEAD78AD4629CB3C9767B /* Debug */,
+				613B558B4699D0281B9EF765 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E3810F862D513A3D6DE65D08 /* Build configuration list for PBXNativeTarget "PluginRunnerSpikeWorker" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				64A07A65ADEE7E9265D5269C /* Debug */,
+				C7AF6FD5A9F799ECB1A96B0D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		98C1137F4492F62FB7B24256 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		34C404425FF6BD8BD3BB318D /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		76B9D2666142CF6F51B1E11E /* TasksTxtCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TasksTxtCore;
+		};
+		879084CF36DFFFB553E6A734 /* TasksTxtCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TasksTxtCore;
+		};
+		CDE9B1B97C37D6CDD724846B /* KeyboardShortcuts */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 34C404425FF6BD8BD3BB318D /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
+			productName = KeyboardShortcuts;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 5FE5E63F21B1106C38726448 /* Project object */;
+}

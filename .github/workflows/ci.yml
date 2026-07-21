@@ -12,9 +12,9 @@ jobs:
       - name: Core tests
         run: swift test
       - name: App build
-        run: xcodebuild -project TasksTxt.xcodeproj -scheme TasksTxt -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
+        run: xcodebuild -project txtnimal.xcodeproj -scheme txtnimal -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
       - name: Verify generated project
         run: |
           brew install xcodegen
           xcodegen generate
-          git diff --exit-code -- TasksTxt.xcodeproj/project.pbxproj
+          git diff --exit-code -- txtnimal.xcodeproj/project.pbxproj

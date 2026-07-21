@@ -61,7 +61,7 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
     public var tasksURL: URL { directory.appendingPathComponent(tasksFilename) }
     public var scratchURL: URL { directory.appendingPathComponent("scratch.txt") }
     public var archiveURL: URL { directory.appendingPathComponent("archive.txt") }
-    public var journalURL: URL { directory.appendingPathComponent(".tasks-txt.journal") }
+    public var journalURL: URL { directory.appendingPathComponent(".txtnimal.journal") }
 
     private let fm: FileManager
     private var generation: UInt64 = 0

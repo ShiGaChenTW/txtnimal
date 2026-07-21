@@ -20,7 +20,7 @@
 - [x] Step 5 — 核心：todo.txt 無損 parser（round-trip，保留未知 token）— 12 測試全綠
 - [x] Step 6 — 檔案層：原子寫入（write atomically:true）+ 外部編輯監看（DispatchSource，00:50 完成）
 - [x] Step 6.5 — 純邏輯全數完成並測試：NL 日期解析 / 清單分組 / 象限分桶 / 捕捉解析（共 20 測試綠）
-- [x] Step 6.7 — 外殼改用 XcodeGen(避開本地 package GUI bug):project.yml → TasksTxt.xcodeproj,非 sandbox、ad-hoc 簽章
+- [x] Step 6.7 — 外殼改用 XcodeGen(避開本地 package GUI bug):project.yml → txtnimal.xcodeproj,非 sandbox、ad-hoc 簽章
 - [x] Step 6.8 — **xcodebuild 一次過 BUILD SUCCEEDED,app 啟動、建立並解析真實 tasks.txt**(v1 跑通)
 - [x] Step 7 — ⌘1 主清單 UI(v1):接上 ListGrouping、相對日期、逾期可折疊、Focus 條
 - [x] Step 8 — ⌘4 四象限:鍵盤 1–4 + **拖拉放置**(onDrag/onDrop)+ 四格底色
@@ -43,9 +43,9 @@
 - 20:40 — 四路市場研究完成(視覺/流程/鍵盤終端/到期象限),產出比較報告 artifact
 - 20:40 — UI 定稿:TUI 風、逾期紅獨佔、Focus 改 teal、Focus 模式=終端變暗(技法 B)、相對日期、逾期可折疊+R一鍵、象限動詞標籤、⌘K 面板、完成動畫;優先級 shorthand 刻意跳過(與去 priority 決定衝突)
 - 20:40 — 互動原型 v2 完成並經 Scott 選定 B;SPEC 已回寫定稿
-- 21:10 — 外殼決定 B(Scott 開 Xcode、我填碼);app v1 原始碼寫好於 App/(Theme/TaskStore/TasksTxtApp/ContentView/Views),含 list/quadrant/scratch/Focus模式(技法B)/選單列/捕捉/鍵盤(NSEvent monitor,macOS13 無 onKeyPress)。**尚未編譯**,待 Scott 建 Xcode 專案驗證
+- 21:10 — 外殼決定 B(Scott 開 Xcode、我填碼);app v1 原始碼寫好於 App/(Theme/TaskStore/txtnimalApp/ContentView/Views),含 list/quadrant/scratch/Focus模式(技法B)/選單列/捕捉/鍵盤(NSEvent monitor,macOS13 無 onKeyPress)。**尚未編譯**,待 Scott 建 Xcode 專案驗證
 - 21:10 — v1 刻意延後:FSEvents 外部監看 · 行內編輯 · 全域熱鍵 · 置頂 HUD · ⌘K · 完成動畫 · 象限拖拉 · 每日歸檔 · 淺色主題 · 日曆
-- 23:07 — Scott 授權接手建置;裝 xcodegen、生成 TasksTxt.xcodeproj、xcodebuild 一次過編譯成功並啟動;app 建立/解析真實 tasks.txt。待 Scott 視覺確認
+- 23:07 — Scott 授權接手建置;裝 xcodegen、生成 txtnimal.xcodeproj、xcodebuild 一次過編譯成功並啟動;app 建立/解析真實 tasks.txt。待 Scott 視覺確認
 - 00:10 — 間距優化(minimalist-ui 原則):行距三段可調 + 分組留白 sectionTop + 加大內距/視窗;狀態符號改 [ ]/[✓]
 - 00:30 — project+context 兩軸:@context 升一等(修 title 漏字)、點擊篩選、底部標籤列、p 快速加 project
 - 00:50 — Pass 1:行內編輯(setTitle 保留 metadata)、外部檔案即時重載(DispatchSource)、完成 spring 動畫
