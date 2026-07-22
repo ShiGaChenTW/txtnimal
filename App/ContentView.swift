@@ -891,6 +891,7 @@ struct ContentView: View {
         }
         // 統計視圖唯讀:單鍵動詞不得作用在看不見的游標上;esc 回清單
         if store.view == .dash || store.view == .settings {
+            if chars == "?" { openPalette(); return nil }   // 查看完整指令
             if e.keyCode == 53 { store.view = .list; store.ensureCursor() }
             return nil
         }
@@ -906,6 +907,7 @@ struct ContentView: View {
         default: break
         }
         switch chars {
+        case "?": openPalette(); return nil          // 查看完整指令
         case "k": store.move(-1); return nil
         case "j": store.move(1); return nil
         case "e": store.startEditing(); return nil
