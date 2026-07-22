@@ -1,8 +1,5 @@
 <div align="center">
-  <img src="App/Assets.xcassets/AppIcon.appiconset/icon_512x512.png" width="112" alt="txtnimal app icon">
-  <h1>txtnimal</h1>
-  <p>A minimal, keyboard-first todo.txt app for macOS.</p>
-  <p>極簡、鍵盤優先的 macOS 純文字任務管理工具。</p>
+  <img src="web/banner.png" alt="txtnimal: 極簡、鍵盤優先的 macOS 純文字任務管理工具 / A minimal, keyboard-first todo.txt app for macOS">
 </div>
 
 <p align="center">
