@@ -50,6 +50,27 @@ public enum PluginIntentApplier {
             for index in lines.indices where !lines[index].isDone && (lines[index].due ?? todayYMD) < todayYMD {
                 lines[index].setDue(todayYMD)
             }
+        case .completeTask:
+            let identityMap = PluginSnapshotBuilder.identityMap(for: lines)
+            for id in intent.taskIDs {
+                guard let index = identityMap[id] else { throw PluginIntentApplyError.taskNotFound(id) }
+                lines[index].setDone(true, date: todayYMD)
+            }
+        case .deleteTask:
+            let identityMap = PluginSnapshotBuilder.identityMap(for: lines)
+            var indices: [Int] = []
+            for id in intent.taskIDs {
+                guard let index = identityMap[id] else { throw PluginIntentApplyError.taskNotFound(id) }
+                indices.append(index)
+            }
+            // Remove high indices first so earlier removals don't shift later ones.
+            for index in indices.sorted(by: >) { lines.remove(at: index) }
+        case .retitleTask:
+            guard let newTitle = intent.title,
+                  let id = intent.taskIDs.first else { throw PluginIntentApplyError.unsupportedCommand }
+            let identityMap = PluginSnapshotBuilder.identityMap(for: lines)
+            guard let index = identityMap[id] else { throw PluginIntentApplyError.taskNotFound(id) }
+            lines[index].setTitle(newTitle)
         }
         return lines
     }

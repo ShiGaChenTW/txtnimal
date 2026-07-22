@@ -52,6 +52,36 @@ final class PluginIntentApplierTests: XCTestCase {
         XCTAssertEqual(result.last?.created, "2026-07-23")
     }
 
+    func testCompleteTaskMarksTargetsDoneOnly() throws {
+        let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("One id:task-one\nTwo id:task-two"))
+        let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .completeTask,
+                                           taskIDs: ["task-one"], title: nil, due: nil,
+                                           expectedRevision: nil, documentRevision: snapshot.documentRevision)
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+        XCTAssertTrue(result[0].isDone)
+        XCTAssertFalse(result[1].isDone)
+    }
+
+    func testDeleteTaskRemovesTargetedRows() throws {
+        let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("One id:task-one\nTwo id:task-two\nThree id:task-three"))
+        let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .deleteTask,
+                                           taskIDs: ["task-one", "task-three"], title: nil, due: nil,
+                                           expectedRevision: nil, documentRevision: snapshot.documentRevision)
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+        XCTAssertEqual(result.map(\.title), ["Two"])
+    }
+
+    func testRetitleTaskChangesTitleKeepingMetadata() throws {
+        let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("Old id:task-one due:2026-07-20"))
+        let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .retitleTask,
+                                           taskIDs: ["task-one"], title: "New title", due: nil,
+                                           expectedRevision: nil, documentRevision: snapshot.documentRevision)
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+        XCTAssertEqual(result[0].title, "New title")
+        XCTAssertEqual(result[0].due, "2026-07-20")
+        XCTAssertEqual(result[0].stableID, "task-one")
+    }
+
     func testCreateTaskSanitizesLineBreaksAndOverridesEmbeddedDates() throws {
         let snapshot = TaskDocumentSnapshot(lines: [])
         let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .createTask,

@@ -141,6 +141,32 @@ public enum PluginValidator {
             }
             guard taskIDs.isEmpty, action.due == nil, let expected = action.expectedRevision,
                   documentRevision.map({ expected == $0 }) ?? true else { throw PluginValidationError.invalidAction }
+        case .completeTask:
+            guard Set(manifest.capabilities).contains(.tasksComplete) else {
+                throw PluginValidationError.missingCapability
+            }
+            guard !taskIDs.isEmpty, taskIDs.count <= limits.maximumQueryResults,
+                  Set(taskIDs).count == taskIDs.count, taskIDs.allSatisfy(isScopedIdentifier),
+                  action.due == nil else {
+                throw PluginValidationError.invalidAction
+            }
+        case .deleteTask:
+            guard Set(manifest.capabilities).contains(.tasksDelete) else {
+                throw PluginValidationError.missingCapability
+            }
+            guard !taskIDs.isEmpty, taskIDs.count <= limits.maximumQueryResults,
+                  Set(taskIDs).count == taskIDs.count, taskIDs.allSatisfy(isScopedIdentifier),
+                  action.due == nil else {
+                throw PluginValidationError.invalidAction
+            }
+        case .retitleTask:
+            guard Set(manifest.capabilities).contains(.tasksUpdate) else {
+                throw PluginValidationError.missingCapability
+            }
+            guard taskIDs.count == 1, taskIDs.allSatisfy(isScopedIdentifier),
+                  let title, !title.isEmpty, action.due == nil else {
+                throw PluginValidationError.invalidAction
+            }
         }
         return ValidatedPluginIntent(pluginID: manifest.id, command: command, taskIDs: taskIDs,
                                      title: title, due: action.due, expectedRevision: action.expectedRevision,

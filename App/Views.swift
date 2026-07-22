@@ -909,10 +909,13 @@ private final class AgentChatViewModel: ObservableObject {
                 case .actions(let actions, let assistantNote):
                     let allowedTaskIDs = Set(context.tasks.map(\.id))
                     let filtered = actions.filter { action in
-                        if case .reschedule(let taskID, _) = action {
+                        switch action {
+                        case .reschedule(let taskID, _), .complete(let taskID),
+                             .delete(let taskID), .retitle(let taskID, _):
                             return allowedTaskIDs.contains(taskID)
+                        case .create:
+                            return true
                         }
-                        return true
                     }
                     if filtered.isEmpty {
                         let prefix = assistantNote.map { $0 + "\n\n" } ?? ""
@@ -1001,6 +1004,12 @@ private final class AgentChatViewModel: ObservableObject {
                 return "- \(task?.title ?? taskID)：\(task?.due ?? "無期限") → \(newDue)"
             case .create(let title, let due):
                 return "- ＋新增：\(title)（\(due ?? "無期限")）"
+            case .complete(let taskID):
+                return "- ✓ 完成：\(tasksByID[taskID]?.title ?? taskID)"
+            case .delete(let taskID):
+                return "- ✗ 刪除：\(tasksByID[taskID]?.title ?? taskID)"
+            case .retitle(let taskID, let newTitle):
+                return "- 改標題：\(tasksByID[taskID]?.title ?? taskID) → \(newTitle)"
             }
         }.joined(separator: "\n")
         let note = review.assistantNote.map { $0 + "\n\n" } ?? ""
@@ -1209,6 +1218,16 @@ private struct AgentChatView: View {
                             Text(due ?? "無期限")
                                 .font(Theme.monoSmall)
                                 .foregroundColor(due == nil ? Theme.dim : Theme.green)
+                        case .complete(let taskID):
+                            Text("✓ 完成：\(tasksByID[taskID]?.title ?? taskID)").foregroundColor(Theme.fg)
+                        case .delete(let taskID):
+                            Text("✗ 刪除：\(tasksByID[taskID]?.title ?? taskID)").foregroundColor(Theme.red)
+                        case .retitle(let taskID, let newTitle):
+                            Text(tasksByID[taskID]?.title ?? taskID).foregroundColor(Theme.dim)
+                            HStack(spacing: 8) {
+                                Text("→").foregroundColor(Theme.yellow)
+                                Text(newTitle).foregroundColor(Theme.green)
+                            }
                         }
                     }
                     .padding(.horizontal, 12).padding(.vertical, 10)

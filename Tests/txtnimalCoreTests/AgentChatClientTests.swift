@@ -53,11 +53,11 @@ final class AgentChatClientTests: XCTestCase {
             XCTAssertEqual(encodedMessages.map { $0["role"] }, ["system", "user", "assistant", "user"])
             XCTAssertEqual(encodedMessages.map { $0["content"] }, messages.map(\.content))
             let tools = try XCTUnwrap(object["tools"] as? [[String: Any]])
-            XCTAssertEqual(tools.count, 2)
+            XCTAssertEqual(tools.count, 5)
             let names = try tools.map {
                 try XCTUnwrap(($0["function"] as? [String: Any])?["name"] as? String)
             }
-            XCTAssertEqual(names, ["reschedule_tasks", "add_tasks"])
+            XCTAssertEqual(names, ["reschedule_tasks", "add_tasks", "complete_tasks", "delete_tasks", "retitle_tasks"])
 
             return (try self.response(for: request, statusCode: 200),
                     Data(#"{"choices":[{"message":{"content":"Because it is due today."}}]}"#.utf8))
@@ -89,6 +89,30 @@ final class AgentChatClientTests: XCTestCase {
             .reschedule(taskID: "task-1", newDue: "2026-07-25"),
             .reschedule(taskID: "task-2", newDue: "2026-07-26"),
         ], assistantNote: "I suggest moving these."))
+    }
+
+    func testParsesCompleteDeleteRetitleToolCalls() async throws {
+        ChatMockURLProtocol.handler = { request in
+            (try self.response(for: request, statusCode: 200), Data(#"""
+            {
+              "choices":[{"message":{"content":null,"tool_calls":[
+                {"id":"c1","type":"function","function":{"name":"complete_tasks","arguments":"{\"taskIDs\":[\"task-1\"]}"}},
+                {"id":"c2","type":"function","function":{"name":"delete_tasks","arguments":"{\"taskIDs\":[\"task-2\"]}"}},
+                {"id":"c3","type":"function","function":{"name":"retitle_tasks","arguments":"{\"updates\":[{\"taskID\":\"task-3\",\"newTitle\":\"Renamed\"}]}"}}
+              ]}}]
+            }
+            """#.utf8))
+        }
+        let (client, session) = makeClient()
+        defer { session.invalidateAndCancel() }
+
+        let reply = try await client.send(messages: [.init(role: .user, content: "Tidy up")])
+
+        XCTAssertEqual(reply, .actions([
+            .complete(taskID: "task-1"),
+            .delete(taskID: "task-2"),
+            .retitle(taskID: "task-3", newTitle: "Renamed"),
+        ], assistantNote: nil))
     }
 
     func testParsesAddAndMixedToolCalls() async throws {

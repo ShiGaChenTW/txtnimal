@@ -19,6 +19,9 @@ public struct AgentChatMessage: Codable, Equatable, Sendable {
 public enum AgentChatAction: Equatable, Sendable {
     case reschedule(taskID: String, newDue: String)
     case create(title: String, due: String?)
+    case complete(taskID: String)
+    case delete(taskID: String)
+    case retitle(taskID: String, newTitle: String)
 }
 
 public enum AgentChatReply: Equatable, Sendable {
@@ -119,6 +122,18 @@ public struct AgentChatClient: Sendable {
             let decoded = try JSONDecoder().decode(AddArguments.self, from: arguments)
             guard !decoded.tasks.isEmpty else { throw ToolCallParseError.invalidArguments }
             return decoded.tasks.map { .create(title: $0.title, due: $0.due) }
+        case "complete_tasks":
+            let decoded = try JSONDecoder().decode(TaskIDArguments.self, from: arguments)
+            guard !decoded.taskIDs.isEmpty else { throw ToolCallParseError.invalidArguments }
+            return decoded.taskIDs.map { .complete(taskID: $0) }
+        case "delete_tasks":
+            let decoded = try JSONDecoder().decode(TaskIDArguments.self, from: arguments)
+            guard !decoded.taskIDs.isEmpty else { throw ToolCallParseError.invalidArguments }
+            return decoded.taskIDs.map { .delete(taskID: $0) }
+        case "retitle_tasks":
+            let decoded = try JSONDecoder().decode(RetitleArguments.self, from: arguments)
+            guard !decoded.updates.isEmpty else { throw ToolCallParseError.invalidArguments }
+            return decoded.updates.map { .retitle(taskID: $0.taskID, newTitle: $0.newTitle) }
         default:
             throw ToolCallParseError.unknownTool
         }
@@ -181,6 +196,63 @@ public struct AgentChatClient: Sendable {
                 ],
             ],
         ],
+        [
+            "type": "function",
+            "function": [
+                "name": "complete_tasks",
+                "description": "Propose marking existing tasks as done. The user reviews before it is applied.",
+                "parameters": [
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": [
+                        "taskIDs": ["type": "array", "minItems": 1, "items": ["type": "string"]],
+                    ],
+                    "required": ["taskIDs"],
+                ],
+            ],
+        ],
+        [
+            "type": "function",
+            "function": [
+                "name": "delete_tasks",
+                "description": "Propose deleting existing tasks. The user reviews before it is applied.",
+                "parameters": [
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": [
+                        "taskIDs": ["type": "array", "minItems": 1, "items": ["type": "string"]],
+                    ],
+                    "required": ["taskIDs"],
+                ],
+            ],
+        ],
+        [
+            "type": "function",
+            "function": [
+                "name": "retitle_tasks",
+                "description": "Propose new titles for existing tasks. The user reviews before it is applied.",
+                "parameters": [
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": [
+                        "updates": [
+                            "type": "array",
+                            "minItems": 1,
+                            "items": [
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": [
+                                    "taskID": ["type": "string"],
+                                    "newTitle": ["type": "string"],
+                                ],
+                                "required": ["taskID", "newTitle"],
+                            ],
+                        ],
+                    ],
+                    "required": ["updates"],
+                ],
+            ],
+        ],
     ]
 }
 
@@ -204,6 +276,19 @@ private struct AddArguments: Decodable {
     struct Task: Decodable {
         let title: String
         let due: String?
+    }
+}
+
+private struct TaskIDArguments: Decodable {
+    let taskIDs: [String]
+}
+
+private struct RetitleArguments: Decodable {
+    let updates: [Update]
+
+    struct Update: Decodable {
+        let taskID: String
+        let newTitle: String
     }
 }
 

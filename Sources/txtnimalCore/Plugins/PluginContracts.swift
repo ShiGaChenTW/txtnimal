@@ -6,6 +6,7 @@ public enum PluginCapability: String, Codable, CaseIterable, Sendable {
     case tasksCreate = "tasks.create"
     case tasksUpdate = "tasks.update"
     case tasksComplete = "tasks.complete"
+    case tasksDelete = "tasks.delete"
     case scratchReadWrite = "scratch.read/write"
     case importRead = "import.read"
     case exportWrite = "export.write"
@@ -80,6 +81,9 @@ public enum PluginHostCommand: String, Codable, Equatable, Sendable {
     case createTask = "tasks.create"
     case rescheduleTask = "tasks.reschedule"
     case rescheduleOverdue = "tasks.rescheduleOverdue"
+    case completeTask = "tasks.complete"
+    case deleteTask = "tasks.delete"
+    case retitleTask = "tasks.retitle"
 }
 
 public struct PluginAction: Codable, Equatable, Sendable {

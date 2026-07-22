@@ -8,7 +8,11 @@ final class PluginSnapshotTests: XCTestCase {
         let document = TaskDocumentSnapshot(lines: [line])
         let snapshot = try PluginSnapshotBuilder.build(from: document)
         XCTAssertEqual(snapshot.tasks.first?.id, "task-123")
-        XCTAssertEqual(try JSONEncoder().encode(snapshot), try JSONEncoder().encode(snapshot))
+        // Use sortedKeys so the comparison tests content stability, not incidental key ordering
+        // (default JSONEncoder key order is not guaranteed stable between calls).
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        XCTAssertEqual(try encoder.encode(snapshot), try encoder.encode(snapshot))
     }
 
     func testLegacySnapshotDoesNotMutateSourceAndDuplicateLinesGetDistinctIDs() throws {
