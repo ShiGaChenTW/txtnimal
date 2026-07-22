@@ -12,6 +12,14 @@ xcuserdata/
 _bmad/
 _bmad-output/
 plans/
+openspec/
+
+# Internal design/process docs (kept out of the public repo)
+docs/
+SPEC.md
+CONTEXT.md
+scripts/measure-app-size.sh
+scripts/measure-plugin-phase0.sh
 
 # Local design explorations and obsolete generated project shells
 AppIconConcepts/

@@ -109,7 +109,7 @@ Review landing page due:2026-07-25 +website @mac note:"check mobile spacing"
 
 快速輸入支援 `due:today`、`due:tomorrow`、`due:fri`、`due:3d` 與 ISO 日期，儲存時會正規化為 `YYYY-MM-DD`。
 
-完整格式與 Project／Context 的原始語意請參閱 [todo.txt 格式規格](docs/todo-txt-format-spec.md)。
+完整格式與 Project／Context 的原始語意請參閱 [todo.txt 格式規格](https://github.com/todotxt/todo.txt)。
 
 ## 常用快捷鍵
 
@@ -202,7 +202,6 @@ gh release upload "v$version" \
 App/                  SwiftUI App 與 macOS 整合
 Sources/txtnimalCore/ 純文字解析、工作區與檔案儲存
 Tests/                核心單元測試
-docs/                 格式與專案文件
 project.yml           XcodeGen 專案定義
 ```
 
@@ -310,7 +309,7 @@ Review landing page due:2026-07-25 +website @mac note:"check mobile spacing"
 
 Quick capture accepts `due:today`, `due:tomorrow`, `due:fri`, `due:3d`, and ISO dates, then normalizes them to `YYYY-MM-DD` on disk.
 
-See the [todo.txt format specification](docs/todo-txt-format-spec.md) for the full syntax and the original meaning of Project and Context.
+See the [todo.txt format specification](https://github.com/todotxt/todo.txt) for the full syntax and the original meaning of Project and Context.
 
 ## Keyboard shortcuts
 
@@ -403,7 +402,6 @@ Repository layout:
 App/                  SwiftUI app and macOS integrations
 Sources/txtnimalCore/ Plain-text parsing, workspace, and file storage
 Tests/                Core unit tests
-docs/                 Format and project documentation
 project.yml           XcodeGen project definition
 ```
 
