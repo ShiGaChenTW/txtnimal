@@ -11,6 +11,7 @@ public enum AgentRunnerError: LocalizedError, Equatable, Sendable {
     case cancelled
     case payloadTooLarge
     case invalidResponse
+    case unsupportedResultSchema
 
     public var errorDescription: String? {
         switch self {
@@ -19,6 +20,7 @@ public enum AgentRunnerError: LocalizedError, Equatable, Sendable {
         case .cancelled: return "agent query was cancelled"
         case .payloadTooLarge: return "agent response exceeded the payload limit"
         case .invalidResponse: return "agent returned an invalid structured response"
+        case .unsupportedResultSchema: return "agent result schema is unsupported"
         }
     }
 }
@@ -27,11 +29,6 @@ private struct AgentTransportRequest: Codable, Sendable {
     let prompt: String
     let taskIDs: [String]
     let resultSchema: String
-}
-
-private struct AgentTaskUpdate: Codable, Sendable {
-    let taskID: String
-    let newDue: String
 }
 
 public actor AgentRunner {
@@ -65,25 +62,9 @@ public actor AgentRunner {
             try Task.checkCancellation()
             guard response.count <= limits.maximumPayloadBytes else { throw AgentRunnerError.payloadTooLarge }
 
-            let updates: [AgentTaskUpdate]
-            do {
-                try PluginJSON.rejectDuplicateKeys(response)
-                updates = try JSONDecoder().decode([AgentTaskUpdate].self, from: response)
-            } catch {
-                throw AgentRunnerError.invalidResponse
-            }
-            let selectedTaskIDs = Set(query.taskIDs ?? [])
-            guard updates.count <= limits.maximumQueryResults,
-                  Set(updates.map(\.taskID)).count == updates.count,
-                  updates.allSatisfy({ selectedTaskIDs.contains($0.taskID) }) else {
-                throw AgentRunnerError.invalidResponse
-            }
-
-            let intents = try updates.map { update in
-                let action = PluginAction(type: .hostCommand, command: PluginHostCommand.rescheduleTask.rawValue,
-                                          taskIDs: [update.taskID], due: update.newDue,
-                                          expectedRevision: query.expectedRevision,
-                                          documentRevision: query.documentRevision)
+            let actions = try AgentResultDispatcher.actions(resultSchema: query.resultSchema ?? "",
+                                                            response: response, query: query, limits: limits)
+            let intents = try actions.map { action in
                 return try PluginValidator.validate(action: action, manifest: manifest,
                                                     taskRevisions: taskRevisions,
                                                     documentRevision: documentRevision,

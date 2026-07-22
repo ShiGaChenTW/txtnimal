@@ -72,6 +72,57 @@ final class AgentRunnerTests: XCTestCase {
         XCTAssertEqual(appliedRecords.map(\.status), [.applied])
     }
 
+    func testUnknownResultSchemaIsRejectedAndRecordsFailure() async {
+        let response = Data(#"[{"taskID":"task-1","newDue":"2026-07-23"}]"#.utf8)
+
+        for schema in ["tag.v1", "reschedule.v2"] {
+            let runner = AgentRunner(transport: ImmediateAgentTransport(response: response))
+
+            await assertAgentError(.unsupportedResultSchema) {
+                try await runner.execute(query: query(resultSchema: schema), manifest: manifest(),
+                                         taskRevisions: ["task-1": "task-rev"],
+                                         documentRevision: "doc-rev")
+            }
+            let failedRecords = await runner.executionRecords()
+            XCTAssertEqual(failedRecords.map(\.status), [.failed])
+        }
+    }
+
+    func testEmptyResultSchemaIsRejectedDuringQueryValidation() async {
+        let runner = AgentRunner(transport: ImmediateAgentTransport(response: Data()))
+
+        do {
+            _ = try await runner.execute(query: query(resultSchema: ""), manifest: manifest(),
+                                         taskRevisions: ["task-1": "task-rev"],
+                                         documentRevision: "doc-rev")
+            XCTFail("expected empty result schema to be rejected")
+        } catch {
+            XCTAssertEqual(error as? PluginValidationError, .invalidAction)
+        }
+        let failedRecords = await runner.executionRecords()
+        XCTAssertEqual(failedRecords.map(\.status), [.failed])
+    }
+
+    func testRescheduleDispatcherMapsStructuredResultToHostActions() throws {
+        let response = Data(#"[{"taskID":"task-1","newDue":"2026-07-23"}]"#.utf8)
+
+        let actions = try AgentResultDispatcher.actions(resultSchema: "reschedule.v1", response: response,
+                                                        query: query(), limits: .init())
+
+        XCTAssertEqual(actions, [
+            PluginAction(type: .hostCommand, command: PluginHostCommand.rescheduleTask.rawValue,
+                         taskIDs: ["task-1"], due: "2026-07-23", expectedRevision: "task-rev",
+                         documentRevision: "doc-rev")
+        ])
+    }
+
+    func testDispatcherRejectsUnknownResultSchema() {
+        XCTAssertThrowsError(try AgentResultDispatcher.actions(resultSchema: "tag.v1", response: Data(),
+                                                               query: query(), limits: .init())) { error in
+            XCTAssertEqual(error as? AgentRunnerError, .unsupportedResultSchema)
+        }
+    }
+
     func testTimeoutIsDistinctAndRecordsFailure() async {
         let transport = ControlledAgentTransport(response: Data())
         let runner = AgentRunner(transport: transport, timeoutNanoseconds: 1_000_000)
@@ -155,10 +206,10 @@ final class AgentRunnerTests: XCTestCase {
                        entry: "main.js", capabilities: [.agentQuery, .tasksUpdate])
     }
 
-    private func query() -> PluginAction {
+    private func query(resultSchema: String = "reschedule.v1") -> PluginAction {
         PluginAction(type: .agentQuery, command: "agent.query", taskIDs: ["task-1"],
                      expectedRevision: "task-rev", documentRevision: "doc-rev",
-                     prompt: "Schedule the selected tasks", resultSchema: #"[{"taskID":"String","newDue":"yyyy-MM-dd"}]"#)
+                     prompt: "Schedule the selected tasks", resultSchema: resultSchema)
     }
 
     private func assertAgentError<T>(_ expected: AgentRunnerError, file: StaticString = #filePath,
