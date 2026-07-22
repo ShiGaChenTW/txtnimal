@@ -570,6 +570,7 @@ private struct SidebarHandleView: View {
 /// 全域熱鍵 → 螢幕上方浮出一行捕捉框。任何 app 裡都能叫出來。
 final class GlobalCapture {
     static let shared = GlobalCapture()
+    private let panelWidth: CGFloat = 520
     private var panel: NSPanel?
     private weak var store: TaskStore?
 
@@ -580,13 +581,19 @@ final class GlobalCapture {
 
     func toggle() {
         if panel?.isVisible == true { hide(); return }
-        show()
+        // MenuBarExtra actions run while the menu is still tracking. Ordering a
+        // floating panel in that same cycle lets AppKit dismiss it with the menu.
+        // Defer one run-loop turn so the capture panel owns its own window cycle.
+        DispatchQueue.main.async { [weak self] in
+            guard self?.panel?.isVisible != true else { return }
+            self?.show()
+        }
     }
 
     private func show() {
         guard let store else { return }
         if panel == nil {
-            let p = KeyablePanel(contentRect: NSRect(x: 0, y: 0, width: 520, height: 92),
+            let p = KeyablePanel(contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: 92),
                                  styleMask: [.borderless, .nonactivatingPanel],
                                  backing: .buffered, defer: false)
             p.isFloatingPanel = true
@@ -600,7 +607,8 @@ final class GlobalCapture {
                     store.addFromCapture(text)
                     self?.hide()
                 },
-                onCancel: { [weak self] in self?.hide() }
+                onCancel: { [weak self] in self?.hide() },
+                onHeightChange: { [weak self] height in self?.resizePanel(to: height) }
             ).environmentObject(store))
             host.frame = p.contentView?.bounds ?? .zero
             host.autoresizingMask = [.width, .height]
@@ -608,9 +616,22 @@ final class GlobalCapture {
             panel = p
         }
         if let f = NSScreen.main?.visibleFrame, let p = panel {
+            p.setContentSize(NSSize(width: panelWidth, height: 92))
             p.setFrameOrigin(NSPoint(x: f.midX - p.frame.width / 2, y: f.maxY - f.height * 0.22))
         }
         panel?.makeKeyAndOrderFront(nil)
+    }
+
+    private func resizePanel(to height: CGFloat) {
+        // SwiftUI may request a size while AppKit is still ordering the panel.
+        // Resize on the next cycle and only while visible to avoid moving a hidden
+        // panel whose origin has not been placed on the active screen yet.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let p = self.panel, p.isVisible,
+                  abs(p.frame.height - height) > 0.5 else { return }
+            let top = p.frame.maxY
+            p.setFrame(NSRect(x: p.frame.minX, y: top - height, width: self.panelWidth, height: height), display: true)
+        }
     }
 
     private func hide() { panel?.orderOut(nil) }
@@ -620,50 +641,352 @@ private struct GlobalCaptureView: View {
     @EnvironmentObject var store: TaskStore
     let onCommit: (String) -> Void
     let onCancel: () -> Void
+    let onHeightChange: (CGFloat) -> Void
     @State private var text = ""
-    @FocusState private var focused: Bool
+    @State private var cursorUTF16Offset = 0
+    @State private var completionSelection = 0
+
+    private enum CaptureCommand: CaseIterable {
+        case due, project, context, note
+
+        var key: String {
+            switch self { case .due: return "due:"; case .project: return "+"; case .context: return "@"; case .note: return "note:\"\"" }
+        }
+        var title: LocalizedStringKey {
+            switch self { case .due: return "/due"; case .project: return "/project"; case .context: return "/context"; case .note: return "/note" }
+        }
+        var detail: LocalizedStringKey {
+            switch self { case .due: return "設定到期日"; case .project: return "加入專案"; case .context: return "加入情境"; case .note: return "加入備註" }
+        }
+    }
+
+    private struct CompletionItem: Identifiable {
+        let value: String
+        let label: String
+        let detail: String
+        var id: String { value }
+    }
+
+    private var tokens: [CaptureAssist.Token] { CaptureAssist.tokens(from: text, today: Date()) }
+    private var suggestion: CaptureAssist.DueSuggestion? { CaptureAssist.dueSuggestion(from: text) }
+    private var commandMode: Bool {
+        text.split(whereSeparator: { $0.isWhitespace }).last == "/"
+    }
+    private var completionQuery: CaptureAssist.CompletionQuery? {
+        CaptureAssist.completionQuery(from: text, cursorUTF16Offset: cursorUTF16Offset)
+    }
+    private var completionItems: [CompletionItem] {
+        guard let query = completionQuery else { return [] }
+        return completionItems(for: query)
+    }
+    private func completionItems(for query: CaptureAssist.CompletionQuery) -> [CompletionItem] {
+        let source: [CompletionItem]
+        switch query.kind {
+        case .project:
+            source = store.allProjects().map { CompletionItem(value: $0, label: "+\($0)", detail: "專案") }
+        case .context:
+            source = store.allContexts().map { CompletionItem(value: $0, label: "@\($0)", detail: "情境") }
+        case .due:
+            source = [
+                .init(value: "today", label: "due:today", detail: "今天"),
+                .init(value: "tomorrow", label: "due:tomorrow", detail: "明天"),
+                .init(value: "2d", label: "due:2d", detail: "後天"),
+                .init(value: "mon", label: "due:mon", detail: "星期一"),
+                .init(value: "tue", label: "due:tue", detail: "星期二"),
+                .init(value: "wed", label: "due:wed", detail: "星期三"),
+                .init(value: "thu", label: "due:thu", detail: "星期四"),
+                .init(value: "fri", label: "due:fri", detail: "星期五"),
+                .init(value: "sat", label: "due:sat", detail: "星期六"),
+                .init(value: "sun", label: "due:sun", detail: "星期日"),
+            ]
+        }
+        let fragment = query.fragment.lowercased()
+        return Array(source.filter {
+            fragment.isEmpty || $0.value.lowercased().hasPrefix(fragment) || $0.detail.lowercased().contains(fragment)
+        }.prefix(5))
+    }
+    private var autocompleteOpen: Bool { completionQuery != nil }
+    private var desiredHeight: CGFloat {
+        if commandMode { return 226 }
+        if autocompleteOpen { return CGFloat(92 + max(1, completionItems.count) * 34) }
+        if !tokens.isEmpty || suggestion != nil { return 126 }
+        return 92
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Text(">").foregroundColor(Theme.green)
-                TextField("Call bank due:fri +personal", text: $text)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 15, design: .monospaced))
-                    .foregroundColor(Theme.fg)
-                    .focused($focused)
-                    .onSubmit { commit() }
-                    .onExitCommand { text = ""; onCancel() }
+                CaptureInputField(
+                    text: $text,
+                    cursorUTF16Offset: $cursorUTF16Offset,
+                    placeholder: "新增任務…  due:fri  +List  @Tag",
+                    onSubmit: submitFromKeyboard,
+                    onCancel: cancelFromKeyboard,
+                    onMoveSelection: moveCompletion,
+                    onAcceptCompletion: acceptSelectedCompletion
+                )
+                .frame(height: 22)
+                Text("⏎ 加入 · esc 取消").font(Theme.monoSmall).foregroundColor(Theme.dim)
             }
-            preview
-            CaptureHelp()
+            .padding(.horizontal, 16)
+            .frame(height: 58)
+
+            if commandMode {
+                commandComposer
+            } else if autocompleteOpen {
+                autocompleteList
+            } else if let suggestion, tokens.isEmpty {
+                suggestionRow(suggestion)
+            } else if !tokens.isEmpty {
+                tokenRow
+            }
         }
-        .padding(16)
         .background(Theme.bg)
         .overlay(Rectangle().stroke(Theme.border))
         .clipShape(Rectangle())
-        .onAppear { text = ""; focused = true }
+        .onAppear { text = ""; cursorUTF16Offset = 0; onHeightChange(desiredHeight) }
+        .onChange(of: text) { _ in completionSelection = 0; onHeightChange(desiredHeight) }
+        .onChange(of: cursorUTF16Offset) { _ in completionSelection = 0; onHeightChange(desiredHeight) }
     }
 
-    @ViewBuilder private var preview: some View {
-        let parts = text.split(separator: " ").map(String.init)
-        let dueTok = parts.first { $0.hasPrefix("due:") }?.dropFirst(4)
-        HStack(spacing: 12) {
-            if let d = dueTok, let norm = DueDateParser.parse(String(d), today: Date()) {
-                Text("due:\(norm)").foregroundColor(Theme.blue)
+    private var autocompleteList: some View {
+        VStack(spacing: 0) {
+            if completionItems.isEmpty {
+                HStack {
+                    Text(emptyCompletionMessage).foregroundColor(Theme.dim)
+                    Spacer()
+                    Text("繼續輸入可建立新項目").foregroundColor(Theme.dim)
+                }
+                .font(Theme.monoSmall).padding(.horizontal, 16).frame(height: 34)
+            } else {
+                ForEach(Array(completionItems.enumerated()), id: \.element.id) { index, item in
+                    Button { applyCompletion(item) } label: {
+                        HStack {
+                            Text(item.label).foregroundColor(completionColor)
+                            Spacer()
+                            Text(item.detail).foregroundColor(Theme.dim)
+                            if index == completionSelection { Text("↵").foregroundColor(Theme.dim) }
+                        }
+                        .font(Theme.monoSmall).padding(.horizontal, 16).frame(height: 34)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .background(index == completionSelection ? Theme.focusBg : Color.clear)
+                }
             }
-            ForEach(parts.filter { $0.hasPrefix("+") && $0.count > 1 }, id: \.self) { Text($0).foregroundColor(Theme.mag) }
-            ForEach(parts.filter { $0.hasPrefix("@") && $0.count > 1 }, id: \.self) { Text($0).foregroundColor(Theme.cyan) }
-            Spacer()
-            Text("⏎ 加入 · esc 取消").foregroundColor(Theme.dim)
         }
-        .font(Theme.monoSmall).frame(height: 15)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
+    }
+
+    private var emptyCompletionMessage: LocalizedStringKey {
+        switch completionQuery?.kind { case .project: return "沒有符合的專案"; case .context: return "沒有符合的情境"; default: return "沒有符合的日期快捷" }
+    }
+
+    private var completionColor: Color {
+        switch completionQuery?.kind { case .project: return Theme.mag; case .context: return Theme.cyan; default: return Theme.blue }
+    }
+
+    private var tokenRow: some View {
+        HStack(spacing: 7) {
+            ForEach(tokens) { token in
+                Button { text = CaptureAssist.removingToken(token.raw, from: text); cursorUTF16Offset = text.utf16.count } label: {
+                    Text("\(tokenLabel(token)): \(token.displayValue) ×")
+                        .font(Theme.monoSmall).foregroundColor(tokenColor(token))
+                        .padding(.horizontal, 7).padding(.vertical, 4)
+                        .overlay(Rectangle().stroke(Theme.border))
+                }
+                .buttonStyle(.plain)
+                .help("移除 \(token.raw)")
+            }
+            Spacer()
+            Text(store.fileURL.lastPathComponent).font(Theme.monoSmall).foregroundColor(Theme.dim)
+        }
+        .padding(.horizontal, 16).frame(height: 42)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
+    }
+
+    private func suggestionRow(_ suggestion: CaptureAssist.DueSuggestion) -> some View {
+        HStack(spacing: 8) {
+            Text("偵測到").foregroundColor(Theme.dim)
+            Button("到期：\(suggestion.label)") { apply(suggestion) }
+                .buttonStyle(.plain).foregroundColor(Theme.blue)
+                .padding(.horizontal, 7).padding(.vertical, 4)
+                .overlay(Rectangle().stroke(Theme.border))
+            Spacer()
+            Button("Tab 套用") { apply(suggestion) }
+                .buttonStyle(.plain).foregroundColor(Theme.green)
+            Button("") { apply(suggestion) }
+                .keyboardShortcut(.tab, modifiers: [])
+                .buttonStyle(.plain).frame(width: 0, height: 0).opacity(0)
+        }
+        .font(Theme.monoSmall).padding(.horizontal, 16).frame(height: 42)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
+    }
+
+    private var commandComposer: some View {
+        VStack(spacing: 0) {
+            ForEach(CaptureCommand.allCases, id: \.key) { command in
+                Button { applyCommand(command) } label: {
+                    HStack {
+                        Text(command.title).foregroundColor(Theme.green).frame(width: 76, alignment: .leading)
+                        Text(command.detail).foregroundColor(Theme.fg)
+                        Spacer()
+                        if command == .due { Text("↵").foregroundColor(Theme.dim) }
+                    }
+                    .font(Theme.monoSmall).padding(.horizontal, 16).frame(height: 41)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .background(command == .due ? Theme.focusBg : Color.clear)
+            }
+        }
+        .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
+    }
+
+    private func tokenLabel(_ token: CaptureAssist.Token) -> String {
+        switch token.kind { case .due: return "日期"; case .project: return "專案"; case .context: return "情境" }
+    }
+
+    private func tokenColor(_ token: CaptureAssist.Token) -> Color {
+        switch token.kind { case .due: return Theme.blue; case .project: return Theme.mag; case .context: return Theme.cyan }
+    }
+
+    private func apply(_ suggestion: CaptureAssist.DueSuggestion) {
+        text = CaptureAssist.applying(suggestion, to: text)
+        cursorUTF16Offset = text.utf16.count
+    }
+
+    private func applyCommand(_ command: CaptureCommand) {
+        var parts = text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        if parts.last == "/" { parts.removeLast() }
+        text = (parts + [command.key]).joined(separator: " ")
+        if command == .note { text = text.replacingOccurrences(of: "note:\"\"", with: "note:\"") }
+        cursorUTF16Offset = text.utf16.count
+    }
+
+    private func moveCompletion(_ delta: Int, _ fieldText: String, _ cursor: Int) -> Bool {
+        guard let query = CaptureAssist.completionQuery(from: fieldText, cursorUTF16Offset: cursor) else { return false }
+        let items = completionItems(for: query)
+        guard !items.isEmpty else { return false }
+        let current = min(completionSelection, items.count - 1)
+        completionSelection = (current + delta + items.count) % items.count
+        return true
+    }
+
+    private func acceptSelectedCompletion(_ fieldText: String, _ cursor: Int) -> Bool {
+        guard let query = CaptureAssist.completionQuery(from: fieldText, cursorUTF16Offset: cursor) else { return false }
+        let items = completionItems(for: query)
+        guard !items.isEmpty else { return false }
+        let selected = min(completionSelection, items.count - 1)
+        let result = CaptureAssist.applyingCompletion(items[selected].value, query: query, to: fieldText)
+        text = result.text
+        cursorUTF16Offset = result.cursorUTF16Offset
+        return true
+    }
+
+    private func applyCompletion(_ item: CompletionItem) {
+        guard let query = completionQuery else { return }
+        let result = CaptureAssist.applyingCompletion(item.value, query: query, to: text)
+        text = result.text
+        cursorUTF16Offset = result.cursorUTF16Offset
+    }
+
+    private func submitFromKeyboard(_ fieldText: String, _ cursor: Int) {
+        if fieldText.split(whereSeparator: { $0.isWhitespace }).last == "/" { text = fieldText; applyCommand(.due); return }
+        if acceptSelectedCompletion(fieldText, cursor) { return }
+        text = fieldText
+        commit()
+    }
+
+    private func cancelFromKeyboard() {
+        text = ""
+        onCancel()
     }
 
     private func commit() {
         let t = text.trimmingCharacters(in: .whitespaces)
         text = ""
         if t.isEmpty { onCancel() } else { onCommit(t) }
+    }
+}
+
+/// AppKit-backed field editor used by global capture so autocomplete can own
+/// Up/Down/Return/Tab without stealing ordinary typing or IME composition.
+private struct CaptureInputField: NSViewRepresentable {
+    @Binding var text: String
+    @Binding var cursorUTF16Offset: Int
+    let placeholder: String
+    let onSubmit: (String, Int) -> Void
+    let onCancel: () -> Void
+    let onMoveSelection: (Int, String, Int) -> Bool
+    let onAcceptCompletion: (String, Int) -> Bool
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField()
+        field.delegate = context.coordinator
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.lineBreakMode = .byClipping
+        field.cell?.isScrollable = true
+        field.placeholderString = placeholder
+        field.setAccessibilityLabel("新增任務")
+        return field
+    }
+
+    func updateNSView(_ field: NSTextField, context: Context) {
+        context.coordinator.parent = self
+        field.font = NSFont.monospacedSystemFont(ofSize: 15, weight: .regular)
+        field.textColor = NSColor(Theme.fg)
+        field.placeholderString = placeholder
+        if field.stringValue != text { field.stringValue = text }
+        DispatchQueue.main.async {
+            guard let editor = field.currentEditor() else {
+                field.window?.makeFirstResponder(field)
+                return
+            }
+            let location = min(cursorUTF16Offset, (field.stringValue as NSString).length)
+            if editor.selectedRange.location != location || editor.selectedRange.length != 0 {
+                editor.selectedRange = NSRange(location: location, length: 0)
+            }
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: CaptureInputField
+        init(_ parent: CaptureInputField) { self.parent = parent }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSTextField else { return }
+            parent.text = field.stringValue
+            if let editor = field.currentEditor() { parent.cursorUTF16Offset = editor.selectedRange.location }
+        }
+
+        func controlTextDidChangeSelection(_ notification: Notification) {
+            guard let field = notification.object as? NSTextField,
+                  let editor = field.currentEditor() else { return }
+            parent.cursorUTF16Offset = editor.selectedRange.location
+        }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            if textView.hasMarkedText() { return false }
+            let currentText = textView.string.replacingOccurrences(of: "\n", with: "")
+            let cursor = textView.selectedRange.location
+            switch selector {
+            case #selector(NSResponder.moveUp(_:)): return parent.onMoveSelection(-1, currentText, cursor)
+            case #selector(NSResponder.moveDown(_:)): return parent.onMoveSelection(1, currentText, cursor)
+            case #selector(NSResponder.insertNewline(_:)):
+                parent.onSubmit(currentText, cursor); return true
+            case #selector(NSResponder.insertTab(_:)):
+                return parent.onAcceptCompletion(currentText, cursor)
+            case #selector(NSResponder.cancelOperation(_:)):
+                parent.onCancel(); return true
+            default: return false
+            }
+        }
     }
 }
 

@@ -40,7 +40,12 @@ struct txtnimalApp: App {
                 ForEach(AppTheme.allCases, id: \.self) { theme in Text(LocalizedStringKey(theme.label)).tag(theme) }
             }
             Divider()
-            Button("快速捕捉") { GlobalCapture.shared.toggle() }
+            Button("快速捕捉") {
+                // Menu-bar-only launches may not have created ContentView yet.
+                // Install here as a defensive guarantee before presenting.
+                GlobalCapture.shared.install(store: store)
+                GlobalCapture.shared.toggle()
+            }
             Toggle("開機自啟", isOn: Binding(
                 get: { store.launchAtLogin },
                 set: { store.setLaunchAtLogin($0) }))
@@ -49,6 +54,11 @@ struct txtnimalApp: App {
             Button("結束") { NSApp.terminate(nil) }
         } label: {
             Text(store.focusIndex.map { "▶ \(store.lines[$0].title)" } ?? "◉ tasks.txt")
+                .onAppear {
+                    // The menu extra outlives every WindowGroup window, so it owns
+                    // installation of the truly global capture shortcut/panel.
+                    GlobalCapture.shared.install(store: store)
+                }
         }
         .environment(\.locale, store.appLanguage.locale)
     }

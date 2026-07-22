@@ -105,4 +105,75 @@ final class LogicTests: XCTestCase {
             "Do it due:someday created:2026-07-09")
         XCTAssertNil(Capture.makeTaskLine(from: "   ", today: today, createdYMD: "2026-07-09", calendar: cal))
     }
+
+    func testCaptureAssistExtractsOnlyRecognizedTokens() {
+        let tokens = CaptureAssist.tokens(
+            from: "寄報價單 due:fri +business @mac due:someday +",
+            today: today,
+            calendar: cal
+        )
+
+        XCTAssertEqual(tokens, [
+            CaptureAssist.Token(kind: .due, raw: "due:fri", displayValue: "2026-07-10"),
+            CaptureAssist.Token(kind: .project, raw: "+business", displayValue: "business"),
+            CaptureAssist.Token(kind: .context, raw: "@mac", displayValue: "mac"),
+        ])
+    }
+
+    func testCaptureAssistSuggestsOnlyHighConfidenceChineseDates() {
+        XCTAssertEqual(
+            CaptureAssist.dueSuggestion(from: "明天下午打電話給銀行"),
+            CaptureAssist.DueSuggestion(matchedText: "明天", dueValue: "tomorrow", label: "明天")
+        )
+        XCTAssertEqual(
+            CaptureAssist.dueSuggestion(from: "後天寄出發票"),
+            CaptureAssist.DueSuggestion(matchedText: "後天", dueValue: "2d", label: "後天")
+        )
+        XCTAssertEqual(
+            CaptureAssist.dueSuggestion(from: "星期五寄報價單"),
+            CaptureAssist.DueSuggestion(matchedText: "星期五", dueValue: "fri", label: "星期五")
+        )
+        XCTAssertNil(CaptureAssist.dueSuggestion(from: "下週處理這件事"))
+        XCTAssertNil(CaptureAssist.dueSuggestion(from: "明天處理 due:fri"))
+    }
+
+    func testCaptureAssistAppliesAndRemovesSuggestionsAndTokens() {
+        let suggestion = CaptureAssist.DueSuggestion(matchedText: "明天", dueValue: "tomorrow", label: "明天")
+        XCTAssertEqual(
+            CaptureAssist.applying(suggestion, to: "明天下午 打電話給銀行"),
+            "下午 打電話給銀行 due:tomorrow"
+        )
+        XCTAssertEqual(
+            CaptureAssist.removingToken("+business", from: "寄報價單 +business @mac"),
+            "寄報價單 @mac"
+        )
+    }
+
+    func testCaptureAssistFindsCompletionAtCursor() {
+        XCTAssertEqual(
+            CaptureAssist.completionQuery(from: "寄報價單 +bus", cursorUTF16Offset: 9),
+            CaptureAssist.CompletionQuery(kind: .project, fragment: "bus", tokenRange: NSRange(location: 5, length: 4))
+        )
+        XCTAssertEqual(
+            CaptureAssist.completionQuery(from: "call @ma later", cursorUTF16Offset: 8),
+            CaptureAssist.CompletionQuery(kind: .context, fragment: "ma", tokenRange: NSRange(location: 5, length: 3))
+        )
+        XCTAssertEqual(
+            CaptureAssist.completionQuery(from: "安排 due:tom", cursorUTF16Offset: 10),
+            CaptureAssist.CompletionQuery(kind: .due, fragment: "tom", tokenRange: NSRange(location: 3, length: 7))
+        )
+        XCTAssertNil(CaptureAssist.completionQuery(from: "email+a", cursorUTF16Offset: 7))
+    }
+
+    func testCaptureAssistAppliesCompletionWithoutDroppingSuffix() {
+        let query = CaptureAssist.CompletionQuery(
+            kind: .context,
+            fragment: "ma",
+            tokenRange: NSRange(location: 5, length: 3)
+        )
+        XCTAssertEqual(
+            CaptureAssist.applyingCompletion("mac", query: query, to: "call @ma later"),
+            CaptureAssist.CompletionResult(text: "call @mac later", cursorUTF16Offset: 9)
+        )
+    }
 }
