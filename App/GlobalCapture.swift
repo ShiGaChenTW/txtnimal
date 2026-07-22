@@ -49,7 +49,12 @@ final class SidebarController {
         // 也就是點在面板之外;面板內的點擊走 local、不會誤收。
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             guard let self, self.panel?.isVisible == true, self.store?.windowMode == .sidebar else { return }
-            self.hide(animated: true, orderOut: true)
+            // 延一個 runloop:讓切換焦點的事件先結束,滑動收起動畫才不會被吞掉(否則直接消失)。
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.panel?.isVisible == true else { return }
+                self.panel?.orderFrontRegardless()      // 收起過程維持在畫面上
+                self.hide(animated: true, orderOut: true)
+            }
         }
         ensurePanel()                 // 預熱：首次滑出不卡頓
         apply(store.windowMode, store: store)
