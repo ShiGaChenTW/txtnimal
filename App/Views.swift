@@ -194,8 +194,10 @@ struct ListView: View {
     }
 
     @ViewBuilder private func rowOrEdit(_ i: Int, _ group: String) -> some View {
-        if store.editingIndex == i { EditRow(index: i, initial: store.lines[i].title) }
-        else { RowView(index: i, group: group) }
+        if store.lines.indices.contains(i) {   // 防過期 index 越界(側邊雙實例共享 store)
+            if store.editingIndex == i { EditRow(index: i, initial: store.lines[i].title) }
+            else { RowView(index: i, group: group) }
+        }
     }
 
     @ViewBuilder private func overdueSection(_ idx: [Int]) -> some View {
@@ -232,7 +234,14 @@ struct RowView: View {
     @State private var flash = false   // 完成瞬間綠光一閃(SPEC 7.5 招牌時刻)
 
     var body: some View {
-        let t = store.lines[index]
+        // 側邊模式下有兩個 ContentView 共享同一 store；清單變短時，另一個實例的
+        // RowView 可能仍持有過期 index。渲染前先 guard，避免越界 fatal crash。
+        if store.lines.indices.contains(index) {
+            row(store.lines[index])
+        }
+    }
+
+    @ViewBuilder private func row(_ t: TaskLine) -> some View {
         let isCursor = store.cursor == index
         VStack(alignment: .leading, spacing: 2) {
         HStack(spacing: 10) {
@@ -269,7 +278,7 @@ struct RowView: View {
         .padding(.horizontal, 16).padding(.vertical, store.density.rowPad)
         .background(isCursor ? Theme.cursorBg : (t.isFocused ? Theme.focusBg : .clear))
         .background(Theme.green.opacity(flash ? 0.22 : 0))
-        .onChange(of: store.lines[index].isDone) { done in
+        .onChange(of: t.isDone) { done in
             guard done else { return }
             flash = true
             withAnimation(.easeOut(duration: 0.45)) { flash = false }
@@ -400,22 +409,24 @@ struct QuadrantView: View {
         return true
     }
 
-    private func qRow(_ i: Int) -> some View {
-        let t = store.lines[i]
-        return HStack(spacing: 7) {
-            Text("[ ]").foregroundColor(Theme.dim)
-            Text(t.title).foregroundColor(t.isFocused ? Theme.focus : Theme.fg).lineLimit(1)
-                .font(store.taskFont)
+    @ViewBuilder private func qRow(_ i: Int) -> some View {
+        if store.lines.indices.contains(i) {   // 防過期 index 越界
+            let t = store.lines[i]
+            HStack(spacing: 7) {
+                Text("[ ]").foregroundColor(Theme.dim)
+                Text(t.title).foregroundColor(t.isFocused ? Theme.focus : Theme.fg).lineLimit(1)
+                    .font(store.taskFont)
+            }
+            .font(Theme.mono).padding(.horizontal, 4).padding(.vertical, 2)
+            .background(store.cursor == i ? Theme.selBg : .clear)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                store.cursor = i
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { store.toggleDone() }
+            }
+            .onTapGesture { store.cursor = i }
+            .onDrag { NSItemProvider(object: store.dragPayload(for: i) as NSString) }
         }
-        .font(Theme.mono).padding(.horizontal, 4).padding(.vertical, 2)
-        .background(store.cursor == i ? Theme.selBg : .clear)
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-            store.cursor = i
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { store.toggleDone() }
-        }
-        .onTapGesture { store.cursor = i }
-        .onDrag { NSItemProvider(object: store.dragPayload(for: i) as NSString) }
     }
 
     private func poolView(_ idx: [Int]) -> some View {
