@@ -1041,6 +1041,11 @@ struct CaptureHelp: View {
 struct SettingsView: View {
     @EnvironmentObject var store: TaskStore
     @State private var showingTaskFiles = false
+    @State private var agentBaseURL = ""
+    @State private var agentAPIKey = ""
+    @State private var agentModel = ""
+    @State private var agentEndpointStatus = ""
+    @State private var agentEndpointConfigured = false
 
     var body: some View {
         ScrollView {
@@ -1069,7 +1074,7 @@ struct SettingsView: View {
                 KeyboardShortcuts.Recorder("", name: .capture)
             }
             hint("在任何 app 按此熱鍵即可快速記一筆")
-            hint("app 內快速鍵固定：⌘1 清單 · ⌘2 象限 · ⌘3 便箋 · ⌘4 統計 · ⌘E 編輯 · ⌘K 指令")
+            hint("app 內快速鍵固定：⌘1 清單 · ⌘2 象限 · ⌘3 Agent · ⌘4 統計 · ⌘E 編輯 · ⌘K 指令")
 
             section("視窗")
             HStack(spacing: 8) {
@@ -1205,6 +1210,36 @@ struct SettingsView: View {
                 Button("選擇／釘選…") { showingTaskFiles = true }
             }
             hint("開啟其他 .txt 文件，或管理已釘選的常用文件")
+
+            section("Agent Endpoint")
+            HStack(spacing: 8) {
+                Text("Base URL").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                TextField("https://api.openai.com/v1", text: $agentBaseURL)
+                    .textFieldStyle(.plain).foregroundColor(Theme.fg)
+                    .padding(8).background(Theme.panel).overlay(Rectangle().stroke(Theme.border))
+            }
+            HStack(spacing: 8) {
+                Text("API Key").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                SecureField(agentEndpointConfigured ? "留空以保留現有 API Key" : "sk-…", text: $agentAPIKey)
+                    .textFieldStyle(.plain).foregroundColor(Theme.fg)
+                    .padding(8).background(Theme.panel).overlay(Rectangle().stroke(Theme.border))
+            }
+            HStack(spacing: 8) {
+                Text("Model").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                TextField("gpt-4o-mini", text: $agentModel)
+                    .textFieldStyle(.plain).foregroundColor(Theme.fg)
+                    .padding(8).background(Theme.panel).overlay(Rectangle().stroke(Theme.border))
+            }
+            HStack(spacing: 8) {
+                Text(LocalizedStringKey(agentEndpointStatus))
+                    .font(Theme.monoSmall)
+                    .foregroundColor(agentEndpointConfigured ? Theme.green : Theme.dim)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("儲存 Endpoint") { saveAgentEndpoint() }
+            }
+            .padding(.leading, 104)
+            hint("API Key 不會回顯，只會儲存在 macOS Keychain。")
+
             section("插件")
             ForEach(TaskStore.bundledPlugins) { plugin in
                 HStack(spacing: 8) {
@@ -1251,6 +1286,8 @@ struct SettingsView: View {
             .padding(.horizontal, 28).padding(.vertical, 24).frame(maxWidth: 600, alignment: .leading)
         }
         .sheet(isPresented: $showingTaskFiles) { TaskFileBrowserView().environmentObject(store) }
+        .onAppear { loadAgentEndpoint() }
+        .onChange(of: store.appLanguage) { _ in loadAgentEndpoint() }
     }
 
     private func section(_ title: LocalizedStringKey) -> some View {
@@ -1278,6 +1315,68 @@ struct SettingsView: View {
 
     private func appIconPreview(_ style: AppIconStyle) -> NSImage {
         style.image() ?? AppIconStyle.flatGeometric.image() ?? NSApp.applicationIconImage
+    }
+
+    private func loadAgentEndpoint() {
+        do {
+            let config = try KeychainAgentCredentialStore().endpointConfig()
+            agentBaseURL = config.baseURL.absoluteString
+            agentModel = config.model
+            agentAPIKey = ""
+            agentEndpointConfigured = true
+            agentEndpointStatus = store.appLanguage == .english
+                ? "Configured · \(config.baseURL.host ?? config.baseURL.absoluteString) · \(config.model)"
+                : "已設定 · \(config.baseURL.host ?? config.baseURL.absoluteString) · \(config.model)"
+        } catch AgentCredentialStoreError.missingConfiguration {
+            agentBaseURL = ""
+            agentModel = ""
+            agentAPIKey = ""
+            agentEndpointConfigured = false
+            agentEndpointStatus = store.appLanguage == .english ? "Not configured" : "尚未設定"
+        } catch {
+            agentEndpointConfigured = false
+            agentEndpointStatus = error.localizedDescription
+        }
+    }
+
+    private func saveAgentEndpoint() {
+        let baseURLText = agentBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let model = agentModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let baseURL = URL(string: baseURLText), baseURL.scheme != nil, baseURL.host != nil else {
+            agentEndpointConfigured = false
+            agentEndpointStatus = store.appLanguage == .english ? "Enter a valid Base URL" : "請輸入有效的 Base URL"
+            return
+        }
+        guard !model.isEmpty else {
+            agentEndpointConfigured = false
+            agentEndpointStatus = store.appLanguage == .english ? "Model is required" : "請填寫 Model"
+            return
+        }
+
+        do {
+            let credentialStore = KeychainAgentCredentialStore()
+            let existing: AgentEndpointConfig?
+            do {
+                existing = try credentialStore.endpointConfig()
+            } catch AgentCredentialStoreError.missingConfiguration {
+                existing = nil
+            }
+            let apiKey = agentAPIKey.isEmpty ? (existing?.apiKey ?? "") : agentAPIKey
+            guard !apiKey.isEmpty else {
+                agentEndpointConfigured = false
+                agentEndpointStatus = store.appLanguage == .english ? "API Key is required" : "請填寫 API Key"
+                return
+            }
+            try credentialStore.save(AgentEndpointConfig(baseURL: baseURL, apiKey: apiKey, model: model))
+            agentAPIKey = ""
+            agentEndpointConfigured = true
+            agentEndpointStatus = store.appLanguage == .english
+                ? "Saved · \(baseURL.host ?? baseURL.absoluteString) · \(model)"
+                : "已儲存 · \(baseURL.host ?? baseURL.absoluteString) · \(model)"
+        } catch {
+            agentEndpointConfigured = false
+            agentEndpointStatus = error.localizedDescription
+        }
     }
 
     private func pickFolder() {

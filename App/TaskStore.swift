@@ -2,7 +2,34 @@ import SwiftUI
 import ServiceManagement
 import txtnimalCore
 
-enum AppView { case list, grid, pad, dash, settings }
+enum AppView { case list, grid, agent, dash, settings }
+
+struct AgentTaskDisclosure: Identifiable {
+    let id: String
+    let title: String
+    let due: String?
+}
+
+struct AgentDisclosure {
+    let endpointHost: String
+    let tasks: [AgentTaskDisclosure]
+}
+
+struct AgentReviewChange: Identifiable {
+    let taskID: String
+    let title: String
+    let oldDue: String?
+    let newDue: String
+
+    var id: String { taskID }
+}
+
+enum AgentState {
+    case idle
+    case running
+    case review(changes: [AgentReviewChange], intents: [ValidatedPluginIntent])
+    case error(String)
+}
 
 /// 視窗承載模式：一般視窗 或 常駐螢幕邊緣的滑出面板。兩者共用同一個 TaskStore。
 enum WindowMode: String, CaseIterable, Hashable {
@@ -180,6 +207,7 @@ final class TaskStore: ObservableObject {
         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
     }
     @Published var view: AppView = .list
+    @Published private(set) var agentState: AgentState = .idle
     @Published var cursor: Int? = nil          // index into `lines`
     @Published var focusMode = false
     @Published var scratch = ""
@@ -368,6 +396,8 @@ final class TaskStore: ObservableObject {
     private var pluginPackageStore: PluginPackageStore?
     private var pluginExecutionLogStore: PluginExecutionLogStore?
     private var generation: UInt64 = 0
+    private var agentQueryTask: Task<Void, Never>?
+    private var agentRunID: UUID?
 
     static let defaultDataDir = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Documents/txtnimal", isDirectory: true)
@@ -482,6 +512,157 @@ final class TaskStore: ObservableObject {
                     } catch { self.report(error) }
                 }
             } catch { await MainActor.run { self.refreshPluginExecutionRecords(); self.report(error) } }
+        }
+    }
+
+    func agentDisclosure() throws -> AgentDisclosure {
+        let config = try KeychainAgentCredentialStore().endpointConfig()
+        let pluginDoc = try PluginSnapshotBuilder.build(from: documentStoreSnapshot())
+        let sending = pluginDoc.tasks.filter { !$0.completed }.prefix(100)
+        return AgentDisclosure(
+            endpointHost: config.baseURL.host ?? config.baseURL.absoluteString,
+            tasks: sending.map { AgentTaskDisclosure(id: $0.id, title: $0.title, due: $0.due) }
+        )
+    }
+
+    func runAgentQuery(prompt userPrompt: String) {
+        let prompt = userPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+
+        do {
+            _ = try KeychainAgentCredentialStore().endpointConfig()
+            let doc = documentStoreSnapshot()
+            let pluginDoc = try PluginSnapshotBuilder.build(from: doc)
+            let sending = Array(pluginDoc.tasks.filter { !$0.completed }.prefix(100))
+            guard !sending.isEmpty else {
+                agentState = .error("沒有可傳送的未完成任務。")
+                return
+            }
+            let query = PluginAction(
+                type: .agentQuery,
+                command: "agent.query",
+                taskIDs: sending.map(\.id),
+                due: nil,
+                expectedRevision: pluginDoc.documentRevision,
+                documentRevision: pluginDoc.documentRevision,
+                prompt: prompt,
+                resultSchema: "reschedule.v1"
+            )
+            let manifest = PluginManifest(
+                id: "app.txtnimal.agent",
+                name: "Agent",
+                version: "1.0.0",
+                apiVersion: 1,
+                entry: "builtin",
+                capabilities: [.agentQuery, .tasksUpdate]
+            )
+            let runner = AgentRunner(
+                transport: HTTPAgentTransport(credentialStore: KeychainAgentCredentialStore())
+            )
+            let runID = UUID()
+            agentQueryTask?.cancel()
+            agentRunID = runID
+            agentState = .running
+            agentQueryTask = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let intents = try await runner.execute(
+                        query: query,
+                        manifest: manifest,
+                        tasks: sending,
+                        taskRevisions: nil,
+                        documentRevision: pluginDoc.documentRevision
+                    )
+                    await MainActor.run {
+                        guard self.agentRunID == runID else { return }
+                        self.agentQueryTask = nil
+                        self.agentRunID = nil
+                        self.prepareAgentReview(intents)
+                    }
+                } catch {
+                    await MainActor.run {
+                        guard self.agentRunID == runID else { return }
+                        self.agentQueryTask = nil
+                        self.agentRunID = nil
+                        self.agentState = .error(error.localizedDescription)
+                    }
+                }
+            }
+        } catch {
+            agentState = .error(error.localizedDescription)
+        }
+    }
+
+    func cancelAgentQuery() {
+        agentQueryTask?.cancel()
+        agentQueryTask = nil
+        agentRunID = nil
+        agentState = .idle
+    }
+
+    func discardAgentReview() { agentState = .idle }
+
+    func resetAgentState() { agentState = .idle }
+
+    func applyAgentReview() {
+        guard case .review(_, let intents) = agentState else { return }
+        do {
+            let original = documentStoreSnapshot()
+            let pluginDoc = try PluginSnapshotBuilder.build(from: original)
+            let intendedTaskIDs = Set(intents.flatMap(\.taskIDs))
+            var lines = self.lines
+            let lineIndices = lines.indices.filter { !lines[$0].isBlank }
+
+            // PluginSnapshotBuilder gives legacy rows deterministic IDs. Persist only the
+            // accepted rows' IDs as part of the same reviewed write so the Core applier can
+            // address older tasks without creating a pre-review side effect.
+            for (index, task) in zip(lineIndices, pluginDoc.tasks)
+                where lines[index].stableID == nil && intendedTaskIDs.contains(task.id) {
+                lines[index].setStableID(task.id)
+            }
+
+            // Every batch intent was validated against the same pre-apply revision. Keep
+            // that revision stable while merging the in-memory results, then save once.
+            for intent in intents {
+                let snapshot = TaskDocumentSnapshot(
+                    lines: lines,
+                    scratch: scratch,
+                    archiveLines: archiveLines,
+                    generation: generation,
+                    tasksText: original.tasksText
+                )
+                lines = try PluginIntentApplier.apply(
+                    intent,
+                    to: snapshot,
+                    todayYMD: RelativeDate.todayYMD()
+                )
+            }
+            self.apply(try documentStore.save(lines: lines, expectedGeneration: generation))
+            refreshPluginExecutionRecords()
+            agentState = .idle
+        } catch {
+            agentState = .error(error.localizedDescription)
+        }
+    }
+
+    private func prepareAgentReview(_ intents: [ValidatedPluginIntent]) {
+        do {
+            let current = try PluginSnapshotBuilder.build(from: documentStoreSnapshot())
+            let tasksByID = Dictionary(uniqueKeysWithValues: current.tasks.map { ($0.id, $0) })
+            let changes = intents.flatMap { intent in
+                intent.taskIDs.map { taskID in
+                    let task = tasksByID[taskID]
+                    return AgentReviewChange(
+                        taskID: taskID,
+                        title: task?.title ?? taskID,
+                        oldDue: task?.due,
+                        newDue: intent.due ?? RelativeDate.todayYMD()
+                    )
+                }
+            }
+            agentState = .review(changes: changes, intents: intents)
+        } catch {
+            agentState = .error(error.localizedDescription)
         }
     }
 

@@ -448,15 +448,264 @@ struct QuadrantView: View {
     }
 }
 
-// MARK: - ⌘3 便箋
+// MARK: - ⌘3 Agent
 
-struct ScratchView: View {
+struct AgentView: View {
     @EnvironmentObject var store: TaskStore
+    @State private var prompt = ""
+
+    private enum DisclosureState {
+        case ready(AgentDisclosure)
+        case missingEndpoint
+        case failure(String)
+    }
 
     var body: some View {
-        TextEditor(text: Binding(get: { store.scratch }, set: { store.scratch = $0; store.saveScratch() }))
-            .font(Theme.mono).foregroundColor(Theme.fg)
-            .scrollContentBackground(.hidden)
-            .padding(10).frame(minHeight: 380)
+        VStack(alignment: .leading, spacing: 16) {
+            stateHeader
+            stateBody
+        }
+        .padding(.horizontal, 24).padding(.vertical, 22)
+        .frame(maxWidth: 760, minHeight: 420, alignment: .topLeading)
+    }
+
+    private var stateHeader: some View {
+        HStack(spacing: 8) {
+            Text("AGENT").font(Theme.monoSmall).tracking(1.8).foregroundColor(Theme.dim)
+            Rectangle().fill(Theme.border).frame(height: 1)
+            Text(stateLabel).font(Theme.monoSmall).foregroundColor(stateColor)
+        }
+    }
+
+    @ViewBuilder private var stateBody: some View {
+        switch store.agentState {
+        case .idle:
+            idleView
+        case .running:
+            runningView
+        case .review(let changes, _):
+            reviewView(changes)
+        case .error(let message):
+            errorView(message)
+        }
+    }
+
+    @ViewBuilder private var idleView: some View {
+        let disclosure = disclosureState
+        VStack(alignment: .leading, spacing: 14) {
+            Text("告訴 Agent 要如何重新安排到期日")
+                .font(Theme.mono).foregroundColor(Theme.fg)
+
+            HStack(spacing: Theme.isTerminal ? 0 : 8) {
+                Text(Theme.isTerminal ? "❯ " : ">")
+                    .foregroundColor(Theme.isTerminal ? Theme.green : store.accent)
+                ZStack(alignment: .leading) {
+                    if prompt.isEmpty {
+                        Text("把逾期的都排到這週五")
+                            .font(Theme.mono).foregroundColor(Theme.dim.opacity(0.45))
+                    }
+                    TerminalInputField(
+                        text: $prompt,
+                        onSubmit: { if canSubmit(disclosure) { store.runAgentQuery(prompt: prompt) } },
+                        onCancel: { prompt = "" }
+                    )
+                }
+                .frame(height: 22)
+                agentButton("送出", color: Theme.green) {
+                    store.runAgentQuery(prompt: prompt)
+                }
+                .disabled(!canSubmit(disclosure))
+                .opacity(canSubmit(disclosure) ? 1 : 0.4)
+            }
+            .padding(10)
+            .background(Theme.panel)
+            .overlay(Rectangle().stroke(Theme.border))
+
+            disclosureView(disclosure)
+        }
+    }
+
+    private var runningView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text("正在等待 Agent 回應…").foregroundColor(Theme.fg)
+                Spacer()
+                agentButton("取消", color: Theme.red) { store.cancelAgentQuery() }
+            }
+            Text("尚未寫入 tasks.txt；回應完成後會先顯示變更供你審核。")
+                .font(Theme.monoSmall).foregroundColor(Theme.dim)
+        }
+        .padding(14)
+        .background(Theme.panel)
+        .overlay(Rectangle().stroke(Theme.border))
+    }
+
+    private func reviewView(_ changes: [AgentReviewChange]) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("檢查提議變更").foregroundColor(Theme.fg)
+                Spacer()
+                Text("\(changes.count) CHANGES").font(Theme.monoSmall).foregroundColor(Theme.yellow)
+            }
+            Text("只有按下「套用」才會寫入 tasks.txt。")
+                .font(Theme.monoSmall).foregroundColor(Theme.dim)
+
+            if changes.isEmpty {
+                Text("Agent 沒有提議任何變更。")
+                    .foregroundColor(Theme.dim)
+                    .padding(.vertical, 12)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(changes) { change in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(change.title).foregroundColor(Theme.fg)
+                            HStack(spacing: 8) {
+                                Text(change.oldDue ?? "—").foregroundColor(Theme.dim)
+                                Text("→").foregroundColor(Theme.yellow)
+                                Text(change.newDue).foregroundColor(Theme.green)
+                                Spacer()
+                                Text(change.taskID).font(Theme.monoSmall).foregroundColor(Theme.dim.opacity(0.7))
+                                    .lineLimit(1).truncationMode(.middle)
+                            }
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
+                    }
+                }
+                .background(Theme.panel)
+                .overlay(Rectangle().stroke(Theme.border))
+            }
+
+            HStack {
+                Spacer()
+                agentButton("捨棄", color: Theme.dim) { store.discardAgentReview() }
+                agentButton("套用", color: Theme.green) { store.applyAgentReview() }
+                    .disabled(changes.isEmpty)
+                    .opacity(changes.isEmpty ? 0.4 : 1)
+            }
+        }
+    }
+
+    private func errorView(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Agent 執行失敗").foregroundColor(Theme.red)
+            Text(message)
+                .font(Theme.monoSmall).foregroundColor(Theme.fg)
+                .textSelection(.enabled)
+            HStack {
+                Spacer()
+                agentButton("返回", color: Theme.dim) { store.resetAgentState() }
+            }
+        }
+        .padding(14)
+        .background(Theme.red.opacity(0.08))
+        .overlay(Rectangle().stroke(Theme.red.opacity(0.55)))
+    }
+
+    @ViewBuilder private func disclosureView(_ state: DisclosureState) -> some View {
+        switch state {
+        case .ready(let disclosure):
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Text("將送出").foregroundColor(Theme.dim)
+                    Text("\(disclosure.tasks.count)").foregroundColor(Theme.cyan)
+                    Text("筆未完成任務的 id / title / due 到").foregroundColor(Theme.dim)
+                    Text(disclosure.endpointHost).foregroundColor(Theme.cyan)
+                }
+                .font(Theme.monoSmall)
+
+                if disclosure.tasks.isEmpty {
+                    Text("目前沒有未完成任務。")
+                        .font(Theme.monoSmall).foregroundColor(Theme.dim)
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 10) {
+                            Text("ID").frame(width: 180, alignment: .leading)
+                            Text("TITLE").frame(maxWidth: .infinity, alignment: .leading)
+                            Text("DUE").frame(width: 90, alignment: .leading)
+                        }
+                        .font(Theme.monoSmall).foregroundColor(Theme.dim)
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .background(Theme.panel)
+                        ForEach(disclosure.tasks) { task in
+                            HStack(alignment: .top, spacing: 10) {
+                                Text(task.id).frame(width: 180, alignment: .leading)
+                                    .lineLimit(1).truncationMode(.middle).foregroundColor(Theme.dim)
+                                Text(task.title).frame(maxWidth: .infinity, alignment: .leading)
+                                    .foregroundColor(Theme.fg)
+                                Text(task.due ?? "—").frame(width: 90, alignment: .leading)
+                                    .foregroundColor(task.due == nil ? Theme.dim : Theme.yellow)
+                            }
+                            .font(Theme.monoSmall)
+                            .padding(.horizontal, 10).padding(.vertical, 7)
+                            .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
+                        }
+                    }
+                    .overlay(Rectangle().stroke(Theme.border))
+                }
+            }
+        case .missingEndpoint:
+            HStack(spacing: 10) {
+                Text("尚未設定 Agent Endpoint。請先到設定填入 Base URL、API Key 與 Model。")
+                    .font(Theme.monoSmall).foregroundColor(Theme.yellow)
+                Spacer()
+                agentButton("前往設定", color: Theme.yellow) { store.view = .settings }
+            }
+            .padding(12)
+            .background(Theme.yellow.opacity(0.08))
+            .overlay(Rectangle().stroke(Theme.yellow.opacity(0.45)))
+        case .failure(let message):
+            Text(message)
+                .font(Theme.monoSmall).foregroundColor(Theme.red)
+                .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.red.opacity(0.08))
+                .overlay(Rectangle().stroke(Theme.red.opacity(0.45)))
+        }
+    }
+
+    private var disclosureState: DisclosureState {
+        do {
+            return .ready(try store.agentDisclosure())
+        } catch AgentCredentialStoreError.missingConfiguration {
+            return .missingEndpoint
+        } catch {
+            return .failure(error.localizedDescription)
+        }
+    }
+
+    private func canSubmit(_ state: DisclosureState) -> Bool {
+        guard case .ready(let disclosure) = state else { return false }
+        return !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !disclosure.tasks.isEmpty
+    }
+
+    private func agentButton(_ title: LocalizedStringKey, color: Color,
+                             action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text("[") + Text(title) + Text("]")
+        }
+        .buttonStyle(.plain)
+        .font(Theme.monoSmall)
+        .foregroundColor(color)
+        .padding(.horizontal, 5).padding(.vertical, 3)
+        .contentShape(Rectangle())
+    }
+
+    private var stateLabel: LocalizedStringKey {
+        switch store.agentState {
+        case .idle: return "IDLE"
+        case .running: return "RUNNING"
+        case .review: return "REVIEW"
+        case .error: return "ERROR"
+        }
+    }
+
+    private var stateColor: Color {
+        switch store.agentState {
+        case .idle: return Theme.dim
+        case .running: return Theme.cyan
+        case .review: return Theme.yellow
+        case .error: return Theme.red
+        }
     }
 }
