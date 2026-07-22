@@ -3,7 +3,7 @@
 </div>
 
 <p align="center">
-  <a href="https://shigachentw.github.io/txtnimal/"><b>官方網站 / Website</b></a>
+  <a href="https://shigachentw.github.io/txtnimal/"><b>官方網站 / Website</b></a> · 
   <a href="#繁體中文">繁體中文</a> · <a href="#english">English</a>
 </p>
 
