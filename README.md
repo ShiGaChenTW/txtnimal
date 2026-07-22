@@ -159,6 +159,43 @@ scripts/package-macos-release.sh
 
 成品會輸出至 `.build/package-v<version>/output/`。此腳本使用 ad-hoc 簽章，不會執行 Apple 公證。
 
+### 發布到 GitHub Releases
+
+最簡單的方式是開啟專案的 [Releases 頁面](https://github.com/ShiGaChenTW/txtnimal/releases)，選擇 **Draft a new release**，建立 `v0.1.0` 等版本標籤，填寫標題與更新內容，再上傳以下兩個檔案：
+
+```text
+.build/package-v0.1.0/output/txtnimal-v0.1.0-macos-universal.dmg
+.build/package-v0.1.0/output/txtnimal-v0.1.0-macos-universal.dmg.sha256
+```
+
+也可以安裝 [GitHub CLI](https://cli.github.com/) 後從命令列發布。首次發布新版本時：
+
+```bash
+version="$(tr -d '[:space:]' < VERSION)"
+scripts/package-macos-release.sh "$version"
+
+git tag -a "v$version" -m "txtnimal v$version"
+git push origin "v$version"
+
+gh release create "v$version" \
+  ".build/package-v$version/output/txtnimal-v$version-macos-universal.dmg" \
+  ".build/package-v$version/output/txtnimal-v$version-macos-universal.dmg.sha256" \
+  --title "txtnimal v$version" \
+  --generate-notes
+```
+
+若該版本的 Release 已存在，只要重新上傳成品：
+
+```bash
+version="$(tr -d '[:space:]' < VERSION)"
+gh release upload "v$version" \
+  ".build/package-v$version/output/txtnimal-v$version-macos-universal.dmg" \
+  ".build/package-v$version/output/txtnimal-v$version-macos-universal.dmg.sha256" \
+  --clobber
+```
+
+發布前請先確認 `git status` 沒有未提交變更、測試與 CI 通過，並核對 `VERSION`、Git tag、App 版本及檔名一致。不要將 `.app` 資料夾直接上傳；DMG 已包含可拖入 Applications 的完整 App。
+
 主要目錄：
 
 ```text
@@ -322,6 +359,43 @@ scripts/package-macos-release.sh
 ```
 
 Artifacts are written to `.build/package-v<version>/output/`. The script uses an ad-hoc signature and does not submit the build for Apple notarization.
+
+### Publish a GitHub Release
+
+The simplest option is to open the project's [Releases page](https://github.com/ShiGaChenTW/txtnimal/releases), choose **Draft a new release**, create a version tag such as `v0.1.0`, add a title and release notes, then upload these two files:
+
+```text
+.build/package-v0.1.0/output/txtnimal-v0.1.0-macos-universal.dmg
+.build/package-v0.1.0/output/txtnimal-v0.1.0-macos-universal.dmg.sha256
+```
+
+You can also publish from the command line after installing the [GitHub CLI](https://cli.github.com/). For a new version:
+
+```bash
+version="$(tr -d '[:space:]' < VERSION)"
+scripts/package-macos-release.sh "$version"
+
+git tag -a "v$version" -m "txtnimal v$version"
+git push origin "v$version"
+
+gh release create "v$version" \
+  ".build/package-v$version/output/txtnimal-v$version-macos-universal.dmg" \
+  ".build/package-v$version/output/txtnimal-v$version-macos-universal.dmg.sha256" \
+  --title "txtnimal v$version" \
+  --generate-notes
+```
+
+If the Release already exists, replace its artifacts with:
+
+```bash
+version="$(tr -d '[:space:]' < VERSION)"
+gh release upload "v$version" \
+  ".build/package-v$version/output/txtnimal-v$version-macos-universal.dmg" \
+  ".build/package-v$version/output/txtnimal-v$version-macos-universal.dmg.sha256" \
+  --clobber
+```
+
+Before publishing, confirm that `git status` is clean, tests and CI pass, and `VERSION`, the Git tag, the app version, and artifact names all match. Do not upload the `.app` directory directly; the DMG already contains the complete app and an Applications shortcut.
 
 Repository layout:
 
