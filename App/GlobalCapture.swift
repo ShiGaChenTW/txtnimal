@@ -40,10 +40,17 @@ final class SidebarController {
     private let minSideWidth: Double = 660
     /// reveal 當下鎖定的螢幕;收回前都用它,避免焦點切螢幕導致座標飛掉(雙螢幕 bug)。
     private var activeScreen: NSScreen?
+    private var outsideClickMonitor: Any?
 
     func install(store: TaskStore) {
         self.store = store
         KeyboardShortcuts.onKeyUp(for: .toggleSidebar) { [weak self] in self?.toggle() }
+        // 點面板以外(其他 app / 桌面)→ 自動收起。全域監聽只在事件不屬於本 app 時觸發,
+        // 也就是點在面板之外;面板內的點擊走 local、不會誤收。
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            guard let self, self.panel?.isVisible == true, self.store?.windowMode == .sidebar else { return }
+            self.hide(animated: true, orderOut: true)
+        }
         ensurePanel()                 // 預熱：首次滑出不卡頓
         apply(store.windowMode, store: store)
     }
