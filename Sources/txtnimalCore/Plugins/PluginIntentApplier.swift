@@ -36,8 +36,12 @@ public enum PluginIntentApplier {
             line.setDue(intent.due)
             lines.append(line)
         case .rescheduleTask:
+            // Resolve by the same identity scheme the snapshot builder uses, so legacy rows
+            // reschedule without stamping a synthetic id: token into the file. Map is computed
+            // once against these lines; indices stay valid as we only mutate due in place.
+            let identityMap = PluginSnapshotBuilder.identityMap(for: lines)
             for id in intent.taskIDs {
-                guard let index = lines.firstIndex(where: { $0.stableID == id }) else {
+                guard let index = identityMap[id] else {
                     throw PluginIntentApplyError.taskNotFound(id)
                 }
                 lines[index].setDue(intent.due ?? todayYMD)

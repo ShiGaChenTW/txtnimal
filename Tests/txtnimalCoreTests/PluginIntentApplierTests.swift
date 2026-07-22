@@ -11,6 +11,23 @@ final class PluginIntentApplierTests: XCTestCase {
         XCTAssertEqual(result.map(\.due), ["2026-07-22", "2026-07-20"])
     }
 
+    func testRescheduleResolvesLegacyRowWithoutStampingID() throws {
+        let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("Legacy task due:2026-07-20"))
+        // The builder assigns a deterministic legacy id; reschedule must resolve it by identity
+        // rather than requiring a persisted id: token.
+        let legacyID = try PluginSnapshotBuilder.build(from: snapshot).tasks[0].id
+        XCTAssertTrue(legacyID.hasPrefix("legacy-"))
+        let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .rescheduleTask,
+                                           taskIDs: [legacyID], due: "2026-07-25", expectedRevision: "rev",
+                                           documentRevision: snapshot.documentRevision)
+
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-21")
+
+        XCTAssertEqual(result[0].due, "2026-07-25")
+        XCTAssertNil(result[0].stableID)                   // no id: token stamped into the file
+        XCTAssertFalse(result[0].raw.contains("id:"))
+    }
+
     func testStaleIntentFailsWithoutMutation() throws {
         let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("One id:task-one"))
         let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .rescheduleOverdue,

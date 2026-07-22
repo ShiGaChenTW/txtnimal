@@ -15,27 +15,47 @@ public enum PluginSnapshotError: LocalizedError, Equatable, Sendable {
 public enum PluginSnapshotBuilder {
     public static func build(from document: TaskDocumentSnapshot) throws -> PluginDocumentSnapshot {
         var seen = Set<String>()
+        let tasks = try orderedIdentities(for: document.lines).map { entry -> PluginTaskSnapshot in
+            guard seen.insert(entry.id).inserted else {
+                throw PluginSnapshotError.duplicatePersistedIdentity(entry.id)
+            }
+            let line = document.lines[entry.index]
+            return PluginTaskSnapshot(id: entry.id, title: line.title, due: line.due,
+                                      completed: line.isDone, lists: line.projects, tags: line.contexts,
+                                      revision: DocumentRevision.make(for: line.raw))
+        }
+        return PluginDocumentSnapshot(documentRevision: document.documentRevision, tasks: tasks)
+    }
+
+    /// Maps each non-blank line's plugin identity → its index in `lines`, using the exact scheme
+    /// `build` assigns. Lets the applier resolve legacy (unpersisted) IDs without stamping them
+    /// into the file — so rescheduling an ID-less row changes only its due, not its tokens.
+    static func identityMap(for lines: [TaskLine]) -> [String: Int] {
+        var map: [String: Int] = [:]
+        for entry in orderedIdentities(for: lines) where map[entry.id] == nil {
+            map[entry.id] = entry.index
+        }
+        return map
+    }
+
+    /// Single source of the id-assignment logic shared by `build` and `identityMap`.
+    private static func orderedIdentities(for lines: [TaskLine]) -> [(index: Int, id: String)] {
+        var result: [(index: Int, id: String)] = []
         var legacyOccurrences: [String: Int] = [:]
-        let tasks = try document.lines.enumerated().compactMap { _, line -> PluginTaskSnapshot? in
-            guard !line.isBlank else { return nil }
+        for (index, line) in lines.enumerated() {
+            guard !line.isBlank else { continue }
             let id: String
             if let persisted = line.stableID, isValidPersistedID(persisted) {
                 id = persisted
-                guard seen.insert(id).inserted else { throw PluginSnapshotError.duplicatePersistedIdentity(id) }
             } else {
                 let base = "legacy-\(DocumentRevision.make(for: line.raw).prefix(16))"
                 let occurrence = legacyOccurrences[base, default: 0]
                 legacyOccurrences[base] = occurrence + 1
                 id = occurrence == 0 ? base : "\(base)-\(occurrence)"
-                guard seen.insert(id).inserted else {
-                    throw PluginSnapshotError.duplicatePersistedIdentity(id)
-                }
             }
-            return PluginTaskSnapshot(id: id, title: line.title, due: line.due,
-                                      completed: line.isDone, lists: line.projects, tags: line.contexts,
-                                      revision: DocumentRevision.make(for: line.raw))
+            result.append((index, id))
         }
-        return PluginDocumentSnapshot(documentRevision: document.documentRevision, tasks: tasks)
+        return result
     }
 
     private static func isValidPersistedID(_ id: String) -> Bool {

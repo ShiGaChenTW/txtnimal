@@ -605,12 +605,6 @@ final class TaskStore: ObservableObject {
         }
 
         var lines = self.lines
-        let intendedTaskIDs = Set(intents.flatMap(\.taskIDs))
-        let lineIndices = lines.indices.filter { !lines[$0].isBlank }
-        for (index, task) in zip(lineIndices, current.tasks)
-            where lines[index].stableID == nil && intendedTaskIDs.contains(task.id) {
-            lines[index].setStableID(task.id)
-        }
         for intent in intents {
             let snapshot = TaskDocumentSnapshot(
                 lines: lines,
@@ -708,21 +702,12 @@ final class TaskStore: ObservableObject {
         guard case .review(_, let intents) = agentState else { return }
         do {
             let original = documentStoreSnapshot()
-            let pluginDoc = try PluginSnapshotBuilder.build(from: original)
-            let intendedTaskIDs = Set(intents.flatMap(\.taskIDs))
             var lines = self.lines
-            let lineIndices = lines.indices.filter { !lines[$0].isBlank }
-
-            // PluginSnapshotBuilder gives legacy rows deterministic IDs. Persist only the
-            // accepted rows' IDs as part of the same reviewed write so the Core applier can
-            // address older tasks without creating a pre-review side effect.
-            for (index, task) in zip(lineIndices, pluginDoc.tasks)
-                where lines[index].stableID == nil && intendedTaskIDs.contains(task.id) {
-                lines[index].setStableID(task.id)
-            }
 
             // Every batch intent was validated against the same pre-apply revision. Keep
             // that revision stable while merging the in-memory results, then save once.
+            // (Legacy rows are resolved by identity inside the applier — no id: token is
+            // stamped into the file, so a reschedule changes only the due.)
             for intent in intents {
                 let snapshot = TaskDocumentSnapshot(
                     lines: lines,
