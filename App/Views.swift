@@ -775,6 +775,7 @@ private final class AgentChatViewModel: ObservableObject {
     @Published private(set) var endpointIssue: String?
     @Published var errorMessage: String?
     @Published private(set) var pendingReview: AgentChatPendingReview?
+    @Published private(set) var streamingText = ""      // assistant text as it streams in
 
     private let chatStore: ChatStore
     private let credentialStore: any AgentCredentialStore
@@ -897,40 +898,24 @@ private final class AgentChatViewModel: ObservableObject {
         let runID = UUID()
         requestID = runID
         isSending = true
+        streamingText = ""
         requestTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let reply = try await client.send(messages: messages)
-                guard self.requestID == runID, self.current?.id == conversationID else { return }
-                switch reply {
-                case .text(let content):
-                    try self.appendAssistant(content, to: conversationID)
-                    self.finish(runID: runID)
-                case .actions(let actions, let assistantNote):
-                    let allowedTaskIDs = Set(context.tasks.map(\.id))
-                    let filtered = actions.filter { action in
-                        switch action {
-                        case .reschedule(let taskID, _), .complete(let taskID),
-                             .delete(let taskID), .retitle(let taskID, _):
-                            return allowedTaskIDs.contains(taskID)
-                        case .create:
-                            return true
-                        }
+                for try await event in client.stream(messages: messages) {
+                    guard self.requestID == runID, self.current?.id == conversationID else { return }
+                    switch event {
+                    case .textDelta(let piece):
+                        self.streamingText += piece
+                    case .completed(let reply):
+                        try self.handleCompletedReply(reply, conversationID: conversationID,
+                                                      context: context, runID: runID)
                     }
-                    if filtered.isEmpty {
-                        let prefix = assistantNote.map { $0 + "\n\n" } ?? ""
-                        try self.appendAssistant(
-                            prefix + "提議的任務不在本輪提供的任務背景中，未建立任何變更。",
-                            to: conversationID
-                        )
-                    } else {
-                        self.pendingReview = AgentChatPendingReview(
-                            conversationID: conversationID,
-                            actions: filtered,
-                            assistantNote: assistantNote,
-                            context: context
-                        )
-                    }
+                }
+                // Stream ended without a `.completed` (defensive): flush whatever text arrived.
+                if self.requestID == runID, self.isSending {
+                    let streamed = self.streamingText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !streamed.isEmpty { try? self.appendAssistant(streamed, to: conversationID) }
                     self.finish(runID: runID)
                 }
             } catch {
@@ -941,6 +926,40 @@ private final class AgentChatViewModel: ObservableObject {
                 }
                 self.errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    @MainActor
+    private func handleCompletedReply(_ reply: AgentChatReply, conversationID: String,
+                                      context: AgentChatContext, runID: UUID) throws {
+        switch reply {
+        case .text(let content):
+            try appendAssistant(content, to: conversationID)
+            finish(runID: runID)
+        case .actions(let actions, let assistantNote):
+            let allowedTaskIDs = Set(context.tasks.map(\.id))
+            let filtered = actions.filter { action in
+                switch action {
+                case .reschedule(let taskID, _), .complete(let taskID),
+                     .delete(let taskID), .retitle(let taskID, _):
+                    return allowedTaskIDs.contains(taskID)
+                case .create:
+                    return true
+                }
+            }
+            if filtered.isEmpty {
+                let prefix = assistantNote.map { $0 + "\n\n" } ?? ""
+                try appendAssistant(prefix + "提議的任務不在本輪提供的任務背景中，未建立任何變更。",
+                                    to: conversationID)
+            } else {
+                pendingReview = AgentChatPendingReview(
+                    conversationID: conversationID,
+                    actions: filtered,
+                    assistantNote: assistantNote,
+                    context: context
+                )
+            }
+            finish(runID: runID)
         }
     }
 
@@ -972,6 +991,7 @@ private final class AgentChatViewModel: ObservableObject {
         requestTask = nil
         requestID = nil
         isSending = false
+        streamingText = ""
     }
 
     private func finish(runID: UUID) {
@@ -979,6 +999,7 @@ private final class AgentChatViewModel: ObservableObject {
         requestTask = nil
         requestID = nil
         isSending = false
+        streamingText = ""
     }
 
     private func persist(_ conversation: ChatConversation) throws {
@@ -1145,17 +1166,26 @@ private struct AgentChatView: View {
                         reviewCard(review).id(review.id)
                     }
                     if model.isSending {
-                        HStack(spacing: 9) {
-                            ProgressView().controlSize(.small)
-                            Text("Agent 正在回應…").foregroundColor(Theme.cyan)
+                        if model.streamingText.isEmpty {
+                            HStack(spacing: 9) {
+                                ProgressView().controlSize(.small)
+                                Text("Agent 正在回應…").foregroundColor(Theme.cyan)
+                            }
+                            .font(Theme.monoSmall).padding(.horizontal, 18).padding(.vertical, 12)
+                            .id(messages.count)
+                        } else {
+                            // Live-streamed assistant text, rendered like a normal assistant row.
+                            messageRow(AgentChatMessage(role: .assistant, content: model.streamingText))
+                                .id(messages.count)
                         }
-                        .font(Theme.monoSmall).padding(.horizontal, 18).padding(.vertical, 12)
-                        .id(messages.count)
                     }
                 }
             }
             .onChange(of: model.current?.messages.count ?? 0) { count in
                 withAnimation { proxy.scrollTo(max(0, count - 1), anchor: .bottom) }
+            }
+            .onChange(of: model.streamingText) { _ in
+                proxy.scrollTo(model.current?.messages.count ?? 0, anchor: .bottom)
             }
             .onChange(of: model.isSending) { sending in
                 if sending { withAnimation { proxy.scrollTo(model.current?.messages.count ?? 0, anchor: .bottom) } }

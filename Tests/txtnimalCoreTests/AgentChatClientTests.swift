@@ -115,6 +115,46 @@ final class AgentChatClientTests: XCTestCase {
         ], assistantNote: nil))
     }
 
+    func testStreamYieldsTextDeltasThenCompletedText() async throws {
+        let sse = "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\n"
+                + "data: {\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n\n"
+                + "data: [DONE]\n\n"
+        ChatMockURLProtocol.handler = { request in
+            (try self.response(for: request, statusCode: 200), Data(sse.utf8))
+        }
+        let (client, session) = makeClient()
+        defer { session.invalidateAndCancel() }
+
+        var deltas: [String] = []
+        var final: AgentChatReply?
+        for try await event in client.stream(messages: [.init(role: .user, content: "Hi")]) {
+            switch event {
+            case .textDelta(let piece): deltas.append(piece)
+            case .completed(let reply): final = reply
+            }
+        }
+        XCTAssertEqual(deltas, ["Hel", "lo"])
+        XCTAssertEqual(final, .text("Hello"))
+    }
+
+    func testStreamAssemblesFragmentedToolCallDeltasIntoActions() async throws {
+        // name arrives in the first chunk; arguments are split across two chunks by index.
+        let sse = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"reschedule_tasks\",\"arguments\":\"{\\\"updates\\\":[{\\\"taskID\\\":\\\"task-1\\\",\"}}]}}]}\n\n"
+                + "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"newDue\\\":\\\"2026-07-25\\\"}]}\"}}]}}]}\n\n"
+                + "data: [DONE]\n\n"
+        ChatMockURLProtocol.handler = { request in
+            (try self.response(for: request, statusCode: 200), Data(sse.utf8))
+        }
+        let (client, session) = makeClient()
+        defer { session.invalidateAndCancel() }
+
+        var final: AgentChatReply?
+        for try await event in client.stream(messages: [.init(role: .user, content: "Move")]) {
+            if case .completed(let reply) = event { final = reply }
+        }
+        XCTAssertEqual(final, .actions([.reschedule(taskID: "task-1", newDue: "2026-07-25")], assistantNote: nil))
+    }
+
     func testParsesAddAndMixedToolCalls() async throws {
         ChatMockURLProtocol.handler = { request in
             (try self.response(for: request, statusCode: 200), Data(#"""

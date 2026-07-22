@@ -29,6 +29,11 @@ public enum AgentChatReply: Equatable, Sendable {
     case actions([AgentChatAction], assistantNote: String?)
 }
 
+public enum AgentChatStreamEvent: Equatable, Sendable {
+    case textDelta(String)              // incremental assistant text as it arrives
+    case completed(AgentChatReply)      // final result: assembled text or reviewed actions
+}
+
 public struct AgentChatClient: Sendable {
     private let credentialStore: any AgentCredentialStore
     private let session: URLSession
@@ -56,6 +61,94 @@ public struct AgentChatClient: Sendable {
             throw HTTPAgentTransportError.httpStatus(first.statusCode)
         }
         return try decodeReply(first.data)
+    }
+
+    /// Streaming variant: yields text deltas as they arrive, then a single `.completed` event with
+    /// the final reply (assembled text, or reviewed tool actions). tool_calls are accumulated across
+    /// SSE chunks by index. Endpoints that reject `tools` are retried once as a text-only stream.
+    public func stream(messages: [AgentChatMessage]) -> AsyncThrowingStream<AgentChatStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let config = try credentialStore.endpointConfig()
+                    try AgentEndpointSecurity.assertSecure(config.baseURL)
+                    do {
+                        try await runStream(config: config, messages: messages, includesTools: true,
+                                            continuation: continuation)
+                    } catch StreamControl.toolUnsupported {
+                        try await runStream(config: config, messages: messages, includesTools: false,
+                                            continuation: continuation)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private enum StreamControl: Error { case toolUnsupported }
+
+    private func runStream(config: AgentEndpointConfig, messages: [AgentChatMessage], includesTools: Bool,
+                           continuation: AsyncThrowingStream<AgentChatStreamEvent, Error>.Continuation) async throws {
+        var request = URLRequest(url: config.baseURL.appendingPathComponent("chat/completions"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        var object: [String: Any] = [
+            "model": config.model,
+            "messages": messages.map { ["role": $0.role.rawValue, "content": $0.content] },
+            "stream": true,
+        ]
+        if includesTools { object["tools"] = Self.taskTools }
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: object)
+        } catch {
+            throw HTTPAgentTransportError.invalidRequest
+        }
+
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let http = response as? HTTPURLResponse else { throw HTTPAgentTransportError.invalidResponse }
+        if includesTools, Self.toolUnsupportedStatuses.contains(http.statusCode) { throw StreamControl.toolUnsupported }
+        guard (200..<300).contains(http.statusCode) else { throw HTTPAgentTransportError.httpStatus(http.statusCode) }
+
+        var textAccum = ""
+        var toolAccum: [Int: (name: String, args: String)] = [:]
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
+            if payload == "[DONE]" { break }
+            guard let data = payload.data(using: .utf8),
+                  let chunk = try? JSONDecoder().decode(StreamChunk.self, from: data),
+                  let delta = chunk.choices?.first?.delta else { continue }
+            if let content = delta.content, !content.isEmpty {
+                textAccum += content
+                continuation.yield(.textDelta(content))
+            }
+            for call in delta.toolCalls ?? [] {
+                var entry = toolAccum[call.index] ?? (name: "", args: "")
+                if let name = call.function?.name, !name.isEmpty { entry.name = name }
+                if let args = call.function?.arguments { entry.args += args }
+                toolAccum[call.index] = entry
+            }
+        }
+
+        let trimmedText = textAccum.trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = trimmedText.isEmpty ? nil : trimmedText
+        if toolAccum.isEmpty {
+            guard let note else { throw HTTPAgentTransportError.missingContent }
+            continuation.yield(.completed(.text(note)))
+            return
+        }
+        let assembled = toolAccum.sorted { $0.key < $1.key }.map { $0.value }
+        let actions = (try? assembled.flatMap { try Self.actions(fromName: $0.name, arguments: $0.args) }) ?? []
+        if actions.isEmpty {
+            continuation.yield(.completed(.text(note ?? "The agent returned an unsupported task action.")))
+        } else {
+            continuation.yield(.completed(.actions(actions, assistantNote: note)))
+        }
     }
 
     private func perform(config: AgentEndpointConfig, messages: [AgentChatMessage],
@@ -102,7 +195,7 @@ public struct AgentChatClient: Sendable {
         }
 
         do {
-            let actions = try calls.flatMap(Self.actions(from:))
+            let actions = try calls.flatMap { try Self.actions(fromName: $0.function.name, arguments: $0.function.arguments) }
             guard !actions.isEmpty else { throw ToolCallParseError.invalidArguments }
             return .actions(actions, assistantNote: note.flatMap { $0.isEmpty ? nil : $0 })
         } catch {
@@ -111,9 +204,9 @@ public struct AgentChatClient: Sendable {
         }
     }
 
-    private static func actions(from call: ChatResponse.ToolCall) throws -> [AgentChatAction] {
-        let arguments = Data(call.function.arguments.utf8)
-        switch call.function.name {
+    static func actions(fromName name: String, arguments argumentsString: String) throws -> [AgentChatAction] {
+        let arguments = Data(argumentsString.utf8)
+        switch name {
         case "reschedule_tasks":
             let decoded = try JSONDecoder().decode(RescheduleArguments.self, from: arguments)
             guard !decoded.updates.isEmpty else { throw ToolCallParseError.invalidArguments }
@@ -315,6 +408,34 @@ private struct ChatResponse: Decodable {
         struct Function: Decodable {
             let name: String
             let arguments: String
+        }
+    }
+}
+
+private struct StreamChunk: Decodable {
+    let choices: [Choice]?
+
+    struct Choice: Decodable {
+        let delta: Delta?
+    }
+
+    struct Delta: Decodable {
+        let content: String?
+        let toolCalls: [ToolCallDelta]?
+
+        enum CodingKeys: String, CodingKey {
+            case content
+            case toolCalls = "tool_calls"
+        }
+    }
+
+    struct ToolCallDelta: Decodable {
+        let index: Int
+        let function: FunctionDelta?
+
+        struct FunctionDelta: Decodable {
+            let name: String?
+            let arguments: String?
         }
     }
 }
