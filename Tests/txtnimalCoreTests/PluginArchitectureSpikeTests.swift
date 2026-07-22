@@ -3,6 +3,29 @@ import XCTest
 @testable import txtnimalCore
 
 final class PluginArchitectureSpikeTests: XCTestCase {
+    func testAgentQueryCapabilityRoundTrips() throws {
+        let manifest = PluginManifest(id: "app.txtnimal.agent-test", name: "Agent Test", version: "1.0.0",
+                                      apiVersion: 1, entry: "main.js", capabilities: [.agentQuery])
+        let decoded = try JSONDecoder().decode(PluginManifest.self, from: JSONEncoder().encode(manifest))
+        XCTAssertEqual(decoded, manifest)
+        XCTAssertEqual(decoded.capabilities, [.agentQuery])
+    }
+
+    func testAgentQueryActionDecodesWithoutBreakingLegacyAction() throws {
+        let agentData = Data(#"{"type":"agentQuery","command":"agent.query","prompt":"Schedule tasks","taskIDs":["task-1"],"resultSchema":"[{taskID,newDue}]"}"#.utf8)
+        let agentAction = try JSONDecoder().decode(PluginAction.self, from: agentData)
+        XCTAssertEqual(agentAction.type, .agentQuery)
+        XCTAssertEqual(agentAction.prompt, "Schedule tasks")
+        XCTAssertEqual(agentAction.taskIDs, ["task-1"])
+        XCTAssertEqual(agentAction.resultSchema, "[{taskID,newDue}]")
+
+        let legacyData = Data(#"{"type":"hostCommand","command":"tasks.rescheduleOverdue","expectedRevision":"doc"}"#.utf8)
+        let legacyAction = try JSONDecoder().decode(PluginAction.self, from: legacyData)
+        XCTAssertEqual(legacyAction.type, .hostCommand)
+        XCTAssertNil(legacyAction.prompt)
+        XCTAssertNil(legacyAction.resultSchema)
+    }
+
     func testApprovedFixturesShareManifestAndActionGate() throws {
         let commandRoot = fixture("reschedule-tomorrow")
         let commandManifest = try PluginValidator.decodeManifest(Data(contentsOf: commandRoot.appendingPathComponent("manifest.json")))

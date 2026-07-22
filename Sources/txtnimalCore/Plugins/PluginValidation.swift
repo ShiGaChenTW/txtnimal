@@ -135,6 +135,22 @@ public enum PluginValidator {
                                      documentRevision: action.documentRevision)
     }
 
+    public static func validateAgentQuery(action: PluginAction, manifest: PluginManifest,
+                                          limits: PluginLimits = .init()) throws {
+        guard Set(manifest.capabilities).contains(.agentQuery) else {
+            throw PluginValidationError.missingCapability
+        }
+        let taskIDs = action.taskIDs ?? []
+        guard action.type == .agentQuery, action.command == PluginCapability.agentQuery.rawValue,
+              let prompt = action.prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let schema = action.resultSchema, !schema.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let expectedRevision = action.expectedRevision, !expectedRevision.isEmpty,
+              !taskIDs.isEmpty, taskIDs.count <= limits.maximumQueryResults,
+              Set(taskIDs).count == taskIDs.count, taskIDs.allSatisfy(isScopedIdentifier) else {
+            throw PluginValidationError.invalidAction
+        }
+    }
+
     private static func validateNode(_ node: PluginPageNode, depth: Int, isRoot: Bool,
                                      count: inout Int,
                                      ids: inout Set<String>, manifest: PluginManifest,
@@ -203,7 +219,7 @@ public enum PluginValidator {
         }
         if node.keys.contains("action"), !(node["action"] is [String: Any]) { throw PluginValidationError.invalidNode }
         if let action = node["action"] as? [String: Any] {
-            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "due", "expectedRevision", "documentRevision"])
+            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "due", "expectedRevision", "documentRevision", "prompt", "resultSchema"])
         }
         if node.keys.contains("children"), !(node["children"] is [[String: Any]]) { throw PluginValidationError.invalidNode }
         for child in node["children"] as? [[String: Any]] ?? [] { try validateNodeKeys(child) }
