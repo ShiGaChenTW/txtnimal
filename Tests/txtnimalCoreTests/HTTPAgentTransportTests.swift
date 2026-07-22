@@ -173,6 +173,55 @@ final class HTTPAgentTransportTests: XCTestCase {
         }
     }
 
+    func testWrappedUpdatesObjectIsUnwrappedToBareArray() async throws {
+        AgentMockURLProtocol.handler = { request in
+            (try self.response(for: request, statusCode: 200),
+             try JSONSerialization.data(withJSONObject: [
+                "choices": [["message": ["content": #"{"updates":[{"taskID":"task-1","newDue":"2026-07-24"}]}"#]]]
+             ]))
+        }
+        let (transport, session) = makeTransport()
+        defer { session.invalidateAndCancel() }
+
+        let result = try await transport.complete(request: hostRequest())
+        let decoded = try JSONSerialization.jsonObject(with: result) as? [[String: String]]
+        XCTAssertEqual(decoded, [["taskID": "task-1", "newDue": "2026-07-24"]])
+    }
+
+    func testInsecureRemoteHTTPEndpointIsRejectedBeforeNetwork() async {
+        AgentMockURLProtocol.handler = { _ in XCTFail("network must not be reached"); throw URLError(.badURL) }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [AgentMockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let credentials = InMemoryAgentCredentialStore(config: AgentEndpointConfig(
+            baseURL: URL(string: "http://api.remote.example/v1")!, apiKey: "top-secret", model: "model-a"))
+        let transport = HTTPAgentTransport(credentialStore: credentials, session: session)
+
+        await assertTransportError(.insecureEndpoint) {
+            try await transport.complete(request: self.hostRequest())
+        }
+    }
+
+    func testLoopbackHTTPEndpointIsAllowed() async throws {
+        let expected = #"[{"taskID":"task-1","newDue":"2026-07-24"}]"#
+        AgentMockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.scheme, "http")
+            return (try self.response(for: request, statusCode: 200),
+                    try JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": expected]]]]))
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [AgentMockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let credentials = InMemoryAgentCredentialStore(config: AgentEndpointConfig(
+            baseURL: URL(string: "http://localhost:11434/v1")!, apiKey: "k", model: "model-a"))
+        let transport = HTTPAgentTransport(credentialStore: credentials, session: session)
+
+        let result = try await transport.complete(request: hostRequest())
+        XCTAssertEqual(String(decoding: result, as: UTF8.self), expected)
+    }
+
     private func makeTransport() -> (HTTPAgentTransport, URLSession) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AgentMockURLProtocol.self]

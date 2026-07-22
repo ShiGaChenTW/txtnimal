@@ -83,9 +83,11 @@ public actor AgentRunner {
         self.limits = limits
     }
 
+    /// `taskRevisions` may be nil for batch agent flows — pass `documentRevision` instead and let the
+    /// whole-document optimistic lock guard the batch (any task change flips the document revision).
     public func execute(query: PluginAction, manifest: PluginManifest,
                         tasks: [PluginTaskSnapshot] = [],
-                        taskRevisions: [String: String], documentRevision: String? = nil) async throws
+                        taskRevisions: [String: String]? = nil, documentRevision: String? = nil) async throws
         -> [ValidatedPluginIntent] {
         let executionID = UUID()
         append(id: executionID, record: PluginExecutionRecord(pluginID: manifest.id,
@@ -156,7 +158,7 @@ public actor AgentRunner {
             switch error {
             case .invalidResponse, .missingContent, .invalidContent:
                 throw AgentRunnerError.invalidResponse
-            case .invalidRequest, .httpStatus:
+            case .invalidRequest, .httpStatus, .insecureEndpoint:
                 throw AgentRunnerError.transport(error.errorDescription ?? "HTTP transport failed")
             }
         } catch {

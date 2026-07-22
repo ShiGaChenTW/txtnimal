@@ -6,6 +6,7 @@ public enum HTTPAgentTransportError: LocalizedError, Equatable, Sendable {
     case httpStatus(Int)
     case missingContent
     case invalidContent
+    case insecureEndpoint
 
     public var errorDescription: String? {
         switch self {
@@ -14,6 +15,7 @@ public enum HTTPAgentTransportError: LocalizedError, Equatable, Sendable {
         case .httpStatus(let status): return "agent endpoint returned HTTP status \(status)"
         case .missingContent: return "agent endpoint response has no message content"
         case .invalidContent: return "agent endpoint message content is not JSON"
+        case .insecureEndpoint: return "agent endpoint must use https (http allowed only for localhost)"
         }
     }
 }
@@ -36,6 +38,7 @@ public struct HTTPAgentTransport: AgentTransport {
         }
 
         let config = try credentialStore.endpointConfig()
+        try Self.assertSecure(config.baseURL)
         let body = try makeRequestBody(hostRequest: hostRequest, model: config.model)
         var urlRequest = URLRequest(url: config.baseURL.appendingPathComponent("chat/completions"))
         urlRequest.httpMethod = "POST"
@@ -62,11 +65,31 @@ public struct HTTPAgentTransport: AgentTransport {
             throw HTTPAgentTransportError.missingContent
         }
 
+        // The schema wraps the array in an object ({"updates":[...]}) because strict json_schema
+        // requires an object root. Unwrap back to the bare array the dispatcher expects. Stay lenient:
+        // accept a bare array too, for OpenAI-compatible endpoints that return one directly.
         let contentData = Data(content.utf8)
-        guard (try? JSONSerialization.jsonObject(with: contentData, options: [.fragmentsAllowed])) != nil else {
-            throw HTTPAgentTransportError.invalidContent
+        let parsed = try? JSONSerialization.jsonObject(with: contentData)
+        if let object = parsed as? [String: Any], let wrapped = object["updates"] {
+            guard let arrayData = try? JSONSerialization.data(withJSONObject: wrapped) else {
+                throw HTTPAgentTransportError.invalidContent
+            }
+            return arrayData
         }
+        // Endpoint returned a bare array directly — pass the original bytes through unchanged.
+        guard parsed is [Any] else { throw HTTPAgentTransportError.invalidContent }
         return contentData
+    }
+
+    private static func assertSecure(_ url: URL) throws {
+        switch url.scheme?.lowercased() {
+        case "https":
+            return
+        case "http" where ["localhost", "127.0.0.1", "::1"].contains(url.host?.lowercased() ?? ""):
+            return  // ponytail: loopback http allowed for local models (Ollama/LM Studio)
+        default:
+            throw HTTPAgentTransportError.insecureEndpoint
+        }
     }
 
     private func makeRequestBody(hostRequest: AgentTransportRequest, model: String) throws -> Data {
@@ -96,7 +119,7 @@ public struct HTTPAgentTransport: AgentTransport {
     }
 
     private static let systemInstruction =
-        "Return only a JSON array [{\"taskID\":\"...\",\"newDue\":\"YYYY-MM-DD\"}]. " +
+        "Return only a JSON object {\"updates\":[{\"taskID\":\"...\",\"newDue\":\"YYYY-MM-DD\"}]}. " +
         "newDue must use YYYY-MM-DD. Do not include markdown or explanatory text."
 }
 
@@ -139,20 +162,35 @@ private struct ChatCompletionRequest: Encodable {
 
     struct Schema: Encodable {
         let type: String
-        let items: Items
+        let properties: [String: ArrayField]
+        let required: [String]
+        let additionalProperties: Bool
 
+        // strict json_schema requires an object root, so wrap the array under "updates".
         static let reschedule = Schema(
-            type: "array",
-            items: Items(
-                type: "object",
-                properties: [
-                    "taskID": Property(type: "string", pattern: nil),
-                    "newDue": Property(type: "string", pattern: #"^\d{4}-\d{2}-\d{2}$"#),
-                ],
-                required: ["taskID", "newDue"],
-                additionalProperties: false
-            )
+            type: "object",
+            properties: [
+                "updates": ArrayField(
+                    type: "array",
+                    items: Items(
+                        type: "object",
+                        properties: [
+                            "taskID": Property(type: "string", pattern: nil),
+                            "newDue": Property(type: "string", pattern: #"^\d{4}-\d{2}-\d{2}$"#),
+                        ],
+                        required: ["taskID", "newDue"],
+                        additionalProperties: false
+                    )
+                )
+            ],
+            required: ["updates"],
+            additionalProperties: false
         )
+
+        struct ArrayField: Encodable {
+            let type: String
+            let items: Items
+        }
 
         struct Items: Encodable {
             let type: String
