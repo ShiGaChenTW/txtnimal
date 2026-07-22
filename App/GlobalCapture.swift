@@ -443,17 +443,26 @@ private struct SidebarHandleView: View {
         }
     }
 
-    /// 拖曳沿邊移動(超過門檻才算移動,不影響點擊滑出)。hotzone 為滿邊不提供。
-    private var moveGesture: some Gesture {
-        DragGesture(minimumDistance: 6)
-            .onChanged { _ in dragging = true; onMove(NSEvent.mouseLocation) }
-            .onEnded { _ in dragging = false; onMoveEnd() }
+    /// 單一手勢同時處理「點一下開啟」與「拖曳移動」:按下沒移動 → 開啟;
+    /// 移動超過門檻 → 拖曳。避免兩個手勢互搶導致點擊沒反應。
+    private var pressGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { v in
+                if abs(v.translation.width) > 6 || abs(v.translation.height) > 6 {
+                    dragging = true
+                    onMove(NSEvent.mouseLocation)
+                }
+            }
+            .onEnded { _ in
+                if dragging { dragging = false; onMoveEnd() }
+                else { onActivate() }          // 純點擊 → 滑出
+            }
     }
 
     var body: some View {
         Group {
             if style == .hotzone { content }
-            else { content.gesture(moveGesture) }
+            else { content.contentShape(Rectangle()).gesture(pressGesture) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -465,7 +474,6 @@ private struct SidebarHandleView: View {
                 .font(.system(size: hovering ? 11 : 13, weight: .bold, design: .monospaced))
                 .foregroundColor(onBadge).lineLimit(1))
             .onHover { hovering = $0; onHoverExpand($0) }
-            .onTapGesture { onActivate() }
             .help("點一下滑出 tasks.txt")
     }
 
@@ -479,7 +487,6 @@ private struct SidebarHandleView: View {
                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                 .foregroundColor(onBadge).lineLimit(1).padding(.horizontal, 6))
             .onHover { hovering = $0; onHoverExpand($0) }
-            .onTapGesture { onActivate() }
             .help("滑出 tasks.txt ⌥T")
     }
 
@@ -497,7 +504,6 @@ private struct SidebarHandleView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onHover { hovering = $0 }
-        .onTapGesture { onActivate() }
         .help(stats.focusTitle == nil ? "滑出 tasks.txt" : "▶ \(text)")
     }
 
@@ -507,7 +513,6 @@ private struct SidebarHandleView: View {
             .overlay(innerRounded(6).stroke(accent.opacity(hovering ? 0.85 : 0.45), lineWidth: 1))
             .overlay(Text(horizontal ? "⋯" : "⋮").font(.system(size: 13, weight: .bold)).foregroundColor(accent))
             .onHover { hovering = $0 }
-            .onTapGesture { onActivate() }
             .help("點一下滑出 tasks.txt")
     }
 
@@ -519,7 +524,6 @@ private struct SidebarHandleView: View {
             .overlay(innerRounded(13).stroke(statusColor, lineWidth: 1))
             .overlay(Text(label).font(.system(size: 11, weight: .bold, design: .monospaced)).foregroundColor(statusColor))
             .onHover { hovering = $0 }
-            .onTapGesture { onActivate() }
             .help(stats.overdue > 0 ? "\(stats.overdue) 筆逾期 · 滑出" : "今日 \(stats.today) 筆 · 滑出")
     }
 
@@ -546,7 +550,6 @@ private struct SidebarHandleView: View {
                     cursorFrac = horizontal ? p.x / max(1, geo.size.width) : p.y / max(1, geo.size.height)
                 } else { cursorFrac = -1 }
             }
-            .onTapGesture { onActivate() }
         }
         .help("點一下滑出 tasks.txt")
     }
