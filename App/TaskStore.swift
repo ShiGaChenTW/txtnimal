@@ -16,6 +16,22 @@ enum SidebarEdge: String, CaseIterable, Hashable {
     var label: String { ["right": "右側", "left": "左側", "top": "頂部下拉"][rawValue]! }
 }
 
+/// 面板收起時的邊緣指示條樣式。
+enum SidebarHandleStyle: String, CaseIterable, Hashable {
+    case tab, sliver, hotzone, grabber, badge, dots, synthesis
+    var label: String {
+        switch self {
+        case .tab:       return "標籤把手"
+        case .sliver:    return "內容預覽"
+        case .hotzone:   return "邊緣感應（懸停滑出）"
+        case .grabber:   return "抓握把手"
+        case .badge:     return "狀態徽章"
+        case .dots:      return "磁吸點"
+        case .synthesis: return "推薦合成（帶資訊標籤）"
+        }
+    }
+}
+
 struct InstalledPlugin: Identifiable, Hashable {
     let id: String
     let name: String
@@ -205,6 +221,30 @@ final class TaskStore: ObservableObject {
         (UserDefaults.standard.object(forKey: "sidebarOpacity") as? Double) ?? 0.85
     }() {
         didSet { UserDefaults.standard.set(sidebarOpacity, forKey: "sidebarOpacity") }
+    }
+    /// 指示條沿邊位置(0=底/左,1=頂/右),可用滑鼠拖曳。
+    @Published var sidebarHandlePos: Double = {
+        (UserDefaults.standard.object(forKey: "sidebarHandlePos") as? Double) ?? 0.5
+    }() {
+        didSet { UserDefaults.standard.set(sidebarHandlePos, forKey: "sidebarHandlePos") }
+    }
+    /// 收起時的邊緣指示條樣式,可在設定切換。
+    @Published var sidebarHandleStyle: SidebarHandleStyle = {
+        SidebarHandleStyle(rawValue: UserDefaults.standard.string(forKey: "sidebarHandleStyle") ?? "synthesis") ?? .synthesis
+    }() {
+        didSet {
+            UserDefaults.standard.set(sidebarHandleStyle.rawValue, forKey: "sidebarHandleStyle")
+            SidebarController.shared.handleStyleChanged()
+        }
+    }
+    /// 側邊面板可變邊長(側邊=寬,頂部=高),由內緣把手拖曳調整。下限吃 ContentView 的 minWidth。
+    @Published var sidebarWidth: Double = {
+        (UserDefaults.standard.object(forKey: "sidebarWidth") as? Double) ?? 680
+    }() {
+        didSet {
+            UserDefaults.standard.set(sidebarWidth, forKey: "sidebarWidth")
+            SidebarController.shared.resize()
+        }
     }
     // 0 系統 / 1 深色 / 2 淺色
     @Published var appearanceMode: Int = UserDefaults.standard.integer(forKey: "appearance") {
