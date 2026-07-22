@@ -32,7 +32,7 @@ final class AgentChatClientTests: XCTestCase {
         super.tearDown()
     }
 
-    func testSuccessfulCompletionSendsFullConversationWithoutResponseFormat() async throws {
+    func testSuccessfulCompletionSendsFullConversationAndTaskTools() async throws {
         let messages = [
             AgentChatMessage(role: .system, content: "Read-only task context"),
             AgentChatMessage(role: .user, content: "What should I do first?"),
@@ -52,6 +52,12 @@ final class AgentChatClientTests: XCTestCase {
             let encodedMessages = try XCTUnwrap(object["messages"] as? [[String: String]])
             XCTAssertEqual(encodedMessages.map { $0["role"] }, ["system", "user", "assistant", "user"])
             XCTAssertEqual(encodedMessages.map { $0["content"] }, messages.map(\.content))
+            let tools = try XCTUnwrap(object["tools"] as? [[String: Any]])
+            XCTAssertEqual(tools.count, 2)
+            let names = try tools.map {
+                try XCTUnwrap(($0["function"] as? [String: Any])?["name"] as? String)
+            }
+            XCTAssertEqual(names, ["reschedule_tasks", "add_tasks"])
 
             return (try self.response(for: request, statusCode: 200),
                     Data(#"{"choices":[{"message":{"content":"Because it is due today."}}]}"#.utf8))
@@ -61,7 +67,93 @@ final class AgentChatClientTests: XCTestCase {
 
         let reply = try await client.send(messages: messages)
 
-        XCTAssertEqual(reply, "Because it is due today.")
+        XCTAssertEqual(reply, .text("Because it is due today."))
+    }
+
+    func testParsesRescheduleToolCall() async throws {
+        ChatMockURLProtocol.handler = { request in
+            (try self.response(for: request, statusCode: 200), Data(#"""
+            {
+              "choices":[{"message":{"content":"I suggest moving these.","tool_calls":[
+                {"id":"call-1","type":"function","function":{"name":"reschedule_tasks","arguments":"{\"updates\":[{\"taskID\":\"task-1\",\"newDue\":\"2026-07-25\"},{\"taskID\":\"task-2\",\"newDue\":\"2026-07-26\"}]}"}}
+              ]}}]
+            }
+            """#.utf8))
+        }
+        let (client, session) = makeClient()
+        defer { session.invalidateAndCancel() }
+
+        let reply = try await client.send(messages: [.init(role: .user, content: "Move them")])
+
+        XCTAssertEqual(reply, .actions([
+            .reschedule(taskID: "task-1", newDue: "2026-07-25"),
+            .reschedule(taskID: "task-2", newDue: "2026-07-26"),
+        ], assistantNote: "I suggest moving these."))
+    }
+
+    func testParsesAddAndMixedToolCalls() async throws {
+        ChatMockURLProtocol.handler = { request in
+            (try self.response(for: request, statusCode: 200), Data(#"""
+            {
+              "choices":[{"message":{"content":null,"tool_calls":[
+                {"id":"call-1","type":"function","function":{"name":"reschedule_tasks","arguments":"{\"updates\":[{\"taskID\":\"task-1\",\"newDue\":\"2026-07-25\"}]}"}},
+                {"id":"call-2","type":"function","function":{"name":"add_tasks","arguments":"{\"tasks\":[{\"title\":\"Write launch notes\",\"due\":\"2026-07-26\"},{\"title\":\"Book room\"}]}"}}
+              ]}}]
+            }
+            """#.utf8))
+        }
+        let (client, session) = makeClient()
+        defer { session.invalidateAndCancel() }
+
+        let reply = try await client.send(messages: [.init(role: .user, content: "Plan launch")])
+
+        XCTAssertEqual(reply, .actions([
+            .reschedule(taskID: "task-1", newDue: "2026-07-25"),
+            .create(title: "Write launch notes", due: "2026-07-26"),
+            .create(title: "Book room", due: nil),
+        ], assistantNote: nil))
+    }
+
+    func testBadArgumentsAndUnknownToolsFallBackToText() async throws {
+        let responses = [
+            #"{"choices":[{"message":{"content":"I could not prepare that change.","tool_calls":[{"type":"function","function":{"name":"add_tasks","arguments":"not-json"}}]}}]}"#,
+            #"{"choices":[{"message":{"content":null,"tool_calls":[{"type":"function","function":{"name":"delete_tasks","arguments":"{}"}}]}}]}"#,
+        ]
+        var index = 0
+        ChatMockURLProtocol.handler = { request in
+            defer { index += 1 }
+            return (try self.response(for: request, statusCode: 200), Data(responses[index].utf8))
+        }
+        let (client, session) = makeClient()
+        defer { session.invalidateAndCancel() }
+
+        let first = try await client.send(messages: [.init(role: .user, content: "First")])
+        let second = try await client.send(messages: [.init(role: .user, content: "Second")])
+        XCTAssertEqual(first, .text("I could not prepare that change."))
+        XCTAssertEqual(second, .text("The agent returned an unsupported task action."))
+    }
+
+    func testEndpointRejectingToolsRetriesAsTextWithoutTools() async throws {
+        var requestCount = 0
+        ChatMockURLProtocol.handler = { request in
+            requestCount += 1
+            let body = try self.bodyData(for: request)
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            if requestCount == 1 {
+                XCTAssertNotNil(object["tools"])
+                return (try self.response(for: request, statusCode: 400), Data())
+            }
+            XCTAssertNil(object["tools"])
+            return (try self.response(for: request, statusCode: 200),
+                    Data(#"{"choices":[{"message":{"content":"Text-only endpoint reply."}}]}"#.utf8))
+        }
+        let (client, session) = makeClient()
+        defer { session.invalidateAndCancel() }
+
+        let reply = try await client.send(messages: [.init(role: .user, content: "Hello")])
+
+        XCTAssertEqual(requestCount, 2)
+        XCTAssertEqual(reply, .text("Text-only endpoint reply."))
     }
 
     func testNon2xxThrowsRecognizableRedactedError() async {
