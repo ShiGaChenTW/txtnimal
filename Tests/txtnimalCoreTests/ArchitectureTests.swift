@@ -107,6 +107,46 @@ final class ArchitectureTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: store.archiveURL.path))
     }
 
+    func testManualArchiveSeparatesExistingArchiveWithoutTrailingNewline() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try FileSystemTaskDocumentStore(directory: dir)
+        try store.bootstrap(sample: "new entry")
+        try "existing entry".write(to: store.archiveURL, atomically: true, encoding: .utf8)
+        let snapshot = try store.load()
+        _ = try store.archiveTask(TaskHandle(generation: snapshot.generation, index: 0),
+                                  expectedGeneration: snapshot.generation)
+        XCTAssertEqual(try String(contentsOf: store.archiveURL, encoding: .utf8),
+                       "existing entry\nnew entry\n")
+    }
+
+    func testManualArchiveRejectsMissingTask() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try FileSystemTaskDocumentStore(directory: dir)
+        try store.bootstrap(sample: "keep me")
+        let snapshot = try store.load()
+        XCTAssertThrowsError(try store.archiveTask(TaskHandle(generation: snapshot.generation, index: 99),
+                                                   expectedGeneration: snapshot.generation)) { error in
+            XCTAssertEqual(error as? TaskWorkspaceError, .missingTask)
+        }
+        XCTAssertEqual(try String(contentsOf: store.tasksURL, encoding: .utf8), "keep me")
+    }
+
+    func testPermanentDeleteSaveLeavesArchiveUntouched() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try FileSystemTaskDocumentStore(directory: dir)
+        try store.bootstrap(sample: "delete me\nkeep me")
+        try "archived already\n".write(to: store.archiveURL, atomically: true, encoding: .utf8)
+        let snapshot = try store.load()
+        let changed = try TaskWorkspace.apply(.delete(TaskHandle(generation: snapshot.generation, index: 0)),
+                                              to: snapshot, todayYMD: "2026-07-23")
+        _ = try store.save(lines: changed, expectedGeneration: snapshot.generation)
+        XCTAssertEqual(try String(contentsOf: store.tasksURL, encoding: .utf8), "keep me")
+        XCTAssertEqual(try String(contentsOf: store.archiveURL, encoding: .utf8), "archived already\n")
+    }
+
     func testActivityReportIncludesArchive() {
         let live = TasksDocument.parse("x live +work created:2026-07-19 done:2026-07-20")
         let archive = TasksDocument.parse("x old +home created:2026-06-01 done:2026-07-18")

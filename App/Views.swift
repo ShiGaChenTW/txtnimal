@@ -503,7 +503,7 @@ private struct TaskContextMenu: View {
             }
             Divider()
             Button { store.setQuadrant(nil, using: handle) } label: {
-                checkedLabel(task.quadrant == nil, "未歸位")
+                checkedLabel(task.quadrant == nil, NSLocalizedString("未歸位", comment: "Task without a quadrant"))
             }
         }
         .disabled(task.isDone)
