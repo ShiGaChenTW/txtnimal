@@ -36,8 +36,8 @@ final class SidebarController {
     private var resizeHandle: EdgeResizeHandle?  // 內緣拖曳把手,調整側邊寬度
     private var handle: NSPanel?
     private weak var store: TaskStore?
-    /// 側邊寬度下限須 ≥ ContentView 的 minWidth(660),否則內容被裁。
-    private let minSideWidth: Double = 660
+    /// 側邊寬度下限。側邊模式的 ContentView minWidth 也放寬到此值,內容才不被裁。
+    private let minSideWidth: Double = 100
     /// reveal 當下鎖定的螢幕;收回前都用它,避免焦點切螢幕導致座標飛掉(雙螢幕 bug)。
     private var activeScreen: NSScreen?
     private var outsideClickMonitor: Any?

@@ -37,7 +37,7 @@ struct ContentView: View {
             if showingPalette { paletteOverlay }  // ⌘K:條件掛載,不常駐樹中(焦點教訓)
             if isSidebarPanel { sidebarInnerEdge }  // 內緣外框 + 柔和陰影
         }
-        .frame(minWidth: 660, minHeight: 580)
+        .frame(minWidth: isSidebarPanel ? 100 : 660, minHeight: 580)
         .background(WindowAccessor { hostWindow = $0 })
         .font(Theme.mono).foregroundColor(Theme.fg)
         .environment(\.locale, store.appLanguage.locale)
