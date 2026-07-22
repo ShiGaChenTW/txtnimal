@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var projectText = ""
     @State private var monitor: Any?
     @State private var hostWindow: NSWindow?
+    @State private var showTabMenu = false
 
     var body: some View {
         ZStack {
@@ -162,10 +163,53 @@ struct ContentView: View {
                 .font(Theme.monoSmall)
                 .lineLimit(1).truncationMode(.middle)
             Spacer()
-            tab("⌘1 清單", .list); tab("⌘2 象限", .grid); tab("⌘3 便箋", .pad); tab("⌘4 統計", .dash)
-            tab("⌘5 設定", .settings)
+            // 寬度夠 → 整排頁籤;太窄一行放不下 → 自動收成主題化下拉選單。
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    tab("⌘1 清單", .list); tab("⌘2 象限", .grid); tab("⌘3 便箋", .pad)
+                    tab("⌘4 統計", .dash); tab("⌘5 設定", .settings)
+                }
+                tabMenu
+            }
         }
         .padding(.horizontal, 14).padding(.vertical, 11).background(Theme.panel)
+    }
+
+    private static let headerTabs: [(String, AppView)] = [
+        ("⌘1 清單", .list), ("⌘2 象限", .grid), ("⌘3 便箋", .pad), ("⌘4 統計", .dash), ("⌘5 設定", .settings)
+    ]
+    /// 窄版下拉選單:按鈕顯示目前頁面,展開的清單用 Theme 配色,與頁籤視覺一致。
+    private var tabMenu: some View {
+        let cur = Self.headerTabs.first { $0.1 == store.view }?.0 ?? "選單"
+        let label = Theme.isTerminal
+            ? Text("[") + Text(LocalizedStringKey(cur)) + Text(" ▾]")
+            : Text(LocalizedStringKey(cur)) + Text(" ▾")
+        return Button { showTabMenu.toggle() } label: {
+            label.font(Theme.monoSmall)
+                .foregroundColor(Theme.isTerminal ? Theme.green : Theme.fg)
+                .padding(.horizontal, 9).padding(.vertical, 3)
+                .background(Theme.isTerminal ? Theme.green.opacity(0.08) : Theme.bg)
+                .overlay(Rectangle().stroke(Theme.isTerminal ? Theme.green.opacity(0.45) : Theme.border))
+                .lineLimit(1).fixedSize()
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $showTabMenu, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Self.headerTabs, id: \.1) { it in
+                    let on = store.view == it.1
+                    Text(LocalizedStringKey(it.0)).font(Theme.monoSmall)
+                        .foregroundColor(on ? (Theme.isTerminal ? Theme.green : Theme.fg) : Theme.dim)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(on ? (Theme.isTerminal ? Theme.green.opacity(0.10) : Theme.bg) : .clear)
+                        .overlay(Rectangle().stroke(on ? (Theme.isTerminal ? Theme.green.opacity(0.4) : Theme.border) : .clear))
+                        .contentShape(Rectangle())
+                        .onTapGesture { store.view = it.1; store.ensureCursor(); showTabMenu = false }
+                }
+            }
+            .padding(6).frame(width: 156)
+            .background(Theme.panel)
+        }
     }
     private var headerAppIcon: NSImage {
         store.appIconStyle.image() ?? AppIconStyle.flatGeometric.image() ?? NSApp.applicationIconImage
@@ -202,7 +246,17 @@ struct ContentView: View {
                 Text(store.appLanguage == .english ? "Filter \(f) — esc to clear" : "篩選 \(f) — esc 清除")
                     .foregroundColor(tagColor(f))
             } else {
-                Text(statusText).foregroundColor(Theme.dim)
+                // 兩行放得下 → 完整指令;放不下 → 收成可點的「?查看指令」開啟指令面板。
+                ViewThatFits(in: .vertical) {
+                    Text(statusText).foregroundColor(Theme.dim)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(store.appLanguage == .english ? "?  Commands" : "?  查看指令")
+                        .foregroundColor(Theme.isTerminal ? Theme.green : Theme.fg)
+                        .contentShape(Rectangle())
+                        .onTapGesture { paletteQuery = ""; paletteSel = 0; showingPalette = true }
+                        .help(store.appLanguage == .english ? "Open commands (⌘K)" : "開啟指令面板（⌘K）")
+                }
+                .frame(maxHeight: 30, alignment: .leading)
             }
             }
         }
