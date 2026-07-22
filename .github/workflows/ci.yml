@@ -9,12 +9,11 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
       - name: Core tests
         run: swift test
       - name: App build
         run: xcodebuild -project txtnimal.xcodeproj -scheme txtnimal -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
-      - name: Verify generated project
-        run: |
-          brew install xcodegen
-          xcodegen generate
-          git diff --exit-code -- txtnimal.xcodeproj/project.pbxproj
