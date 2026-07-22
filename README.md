@@ -408,3 +408,7 @@ project.yml           XcodeGen project definition
 ## Privacy and trade-offs
 
 txtnimal has no accounts, cloud backend, or telemetry. The macOS App Sandbox is currently disabled to support custom file locations, a global shortcut, menu-bar presence, and launch at login. This build is intended for local use and portfolio distribution rather than the Mac App Store.
+
+## License
+
+Released under the [MIT License](LICENSE).
