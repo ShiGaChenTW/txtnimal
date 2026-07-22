@@ -46,7 +46,69 @@ private actor ControlledAgentTransport: AgentTransport {
     }
 }
 
+private actor RecordingAgentTransport: AgentTransport {
+    private let response: Data
+    private var recordedRequest: Data?
+
+    init(response: Data) { self.response = response }
+
+    func complete(request: Data) async throws -> Data {
+        recordedRequest = request
+        return response
+    }
+
+    func request() -> Data? { recordedRequest }
+}
+
 final class AgentRunnerTests: XCTestCase {
+    func testRequestContainsOnlySelectedTaskMinimalFields() async throws {
+        let response = Data(#"[{"taskID":"task-1","newDue":"2026-07-24"}]"#.utf8)
+        let transport = RecordingAgentTransport(response: response)
+        let runner = AgentRunner(transport: transport)
+        let selected = PluginTaskSnapshot(id: "task-1", title: "Selected task", due: "2026-07-23",
+                                          completed: true, lists: ["private-list"], tags: ["private-tag"],
+                                          revision: "private-revision")
+        let unselected = PluginTaskSnapshot(id: "task-2", title: "Unselected task", due: "2026-07-25",
+                                            revision: "other-revision")
+
+        _ = try await runner.execute(query: query(), manifest: manifest(), tasks: [selected, unselected],
+                                     taskRevisions: ["task-1": "task-rev"],
+                                     documentRevision: "doc-rev")
+
+        let recordedRequest = await transport.request()
+        let requestData = try XCTUnwrap(recordedRequest)
+        let request = try JSONDecoder().decode(AgentTransportRequest.self, from: requestData)
+        XCTAssertEqual(request.tasks, [
+            AgentTransportTask(id: "task-1", title: "Selected task", due: "2026-07-23")
+        ])
+        let payload = String(decoding: requestData, as: UTF8.self)
+        for excludedValue in ["task-2", "Unselected task", "private-list", "private-tag",
+                              "private-revision", "completed", "lists", "tags", "revision"] {
+            XCTAssertFalse(payload.contains(excludedValue), "request leaked \(excludedValue)")
+        }
+    }
+
+    func testLegacyTransportRequestDefaultsTasksToEmpty() throws {
+        let data = Data(#"{"prompt":"prompt","taskIDs":["task-1"],"resultSchema":"reschedule.v1"}"#.utf8)
+
+        let request = try JSONDecoder().decode(AgentTransportRequest.self, from: data)
+
+        XCTAssertEqual(request.tasks, [])
+    }
+
+    func testTransportTaskEncodesMissingDueExplicitlyAsNull() throws {
+        let request = AgentTransportRequest(prompt: "prompt", taskIDs: ["task-1"],
+                                            resultSchema: "reschedule.v1",
+                                            tasks: [.init(id: "task-1", title: "No due task", due: nil)])
+
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let tasks = try XCTUnwrap(object["tasks"] as? [[String: Any]])
+
+        XCTAssertTrue(tasks[0].keys.contains("due"))
+        XCTAssertTrue(tasks[0]["due"] is NSNull)
+    }
+
     func testSuccessfulResultMapsThroughValidatorAndTransitionsToApplied() async throws {
         let response = Data(#"[{"taskID":"task-1","newDue":"2026-07-23"}]"#.utf8)
         let transport = ControlledAgentTransport(response: response)

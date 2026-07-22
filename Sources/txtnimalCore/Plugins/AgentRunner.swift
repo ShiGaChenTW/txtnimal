@@ -25,10 +25,48 @@ public enum AgentRunnerError: LocalizedError, Equatable, Sendable {
     }
 }
 
-private struct AgentTransportRequest: Codable, Sendable {
+struct AgentTransportTask: Codable, Equatable, Sendable {
+    let id: String
+    let title: String
+    let due: String?
+
+    private enum CodingKeys: String, CodingKey { case id, title, due }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        if let due {
+            try container.encode(due, forKey: .due)
+        } else {
+            try container.encodeNil(forKey: .due)
+        }
+    }
+}
+
+struct AgentTransportRequest: Codable, Equatable, Sendable {
     let prompt: String
     let taskIDs: [String]
     let resultSchema: String
+    let tasks: [AgentTransportTask]
+
+    init(prompt: String, taskIDs: [String], resultSchema: String,
+         tasks: [AgentTransportTask] = []) {
+        self.prompt = prompt
+        self.taskIDs = taskIDs
+        self.resultSchema = resultSchema
+        self.tasks = tasks
+    }
+
+    private enum CodingKeys: String, CodingKey { case prompt, taskIDs, resultSchema, tasks }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        prompt = try container.decode(String.self, forKey: .prompt)
+        taskIDs = try container.decode([String].self, forKey: .taskIDs)
+        resultSchema = try container.decode(String.self, forKey: .resultSchema)
+        tasks = try container.decodeIfPresent([AgentTransportTask].self, forKey: .tasks) ?? []
+    }
 }
 
 public actor AgentRunner {
@@ -46,6 +84,7 @@ public actor AgentRunner {
     }
 
     public func execute(query: PluginAction, manifest: PluginManifest,
+                        tasks: [PluginTaskSnapshot] = [],
                         taskRevisions: [String: String], documentRevision: String? = nil) async throws
         -> [ValidatedPluginIntent] {
         let executionID = UUID()
@@ -55,9 +94,19 @@ public actor AgentRunner {
         do {
             try PluginValidator.validateAgentQuery(action: query, manifest: manifest, limits: limits)
             try Task.checkCancellation()
+            let selectedTaskIDs = query.taskIDs ?? []
+            let selectedTaskIDSet = Set(selectedTaskIDs)
+            var snapshotsByID: [String: PluginTaskSnapshot] = [:]
+            for task in tasks where selectedTaskIDSet.contains(task.id) && snapshotsByID[task.id] == nil {
+                snapshotsByID[task.id] = task
+            }
+            let requestTasks = selectedTaskIDs.prefix(limits.maximumQueryResults).compactMap { taskID in
+                snapshotsByID[taskID].map { AgentTransportTask(id: $0.id, title: $0.title, due: $0.due) }
+            }
             let request = try JSONEncoder().encode(AgentTransportRequest(prompt: query.prompt ?? "",
-                                                                          taskIDs: query.taskIDs ?? [],
-                                                                          resultSchema: query.resultSchema ?? ""))
+                                                                          taskIDs: selectedTaskIDs,
+                                                                          resultSchema: query.resultSchema ?? "",
+                                                                          tasks: requestTasks))
             let response = try await response(for: request)
             try Task.checkCancellation()
             guard response.count <= limits.maximumPayloadBytes else { throw AgentRunnerError.payloadTooLarge }
@@ -103,6 +152,13 @@ public actor AgentRunner {
             throw AgentRunnerError.cancelled
         } catch let error as AgentRunnerError {
             throw error
+        } catch let error as HTTPAgentTransportError {
+            switch error {
+            case .invalidResponse, .missingContent, .invalidContent:
+                throw AgentRunnerError.invalidResponse
+            case .invalidRequest, .httpStatus:
+                throw AgentRunnerError.transport(error.errorDescription ?? "HTTP transport failed")
+            }
         } catch {
             throw AgentRunnerError.transport((error as? LocalizedError)?.errorDescription ?? String(describing: error))
         }
