@@ -15,6 +15,13 @@ struct AgentDisclosure {
     let tasks: [AgentTaskDisclosure]
 }
 
+struct AgentChatContext {
+    let systemMessage: AgentChatMessage
+    let tasks: [PluginTaskSnapshot]
+    let documentRevision: String
+    let generation: UInt64
+}
+
 struct AgentReviewChange: Identifiable {
     let taskID: String
     let title: String
@@ -525,23 +532,97 @@ final class TaskStore: ObservableObject {
         )
     }
 
-    func agentChatSystemMessage() throws -> AgentChatMessage {
+    func agentChatContext() throws -> AgentChatContext {
         let pluginDoc = try PluginSnapshotBuilder.build(from: documentStoreSnapshot())
-        let tasks = pluginDoc.tasks.filter { !$0.completed }.prefix(50)
+        let tasks = Array(pluginDoc.tasks.filter { !$0.completed }.prefix(50))
         let taskLines = tasks.map { task in
-            "- \(task.title) (\(task.due ?? "無到期日"))"
+            "- id: \(task.id) | title: \(task.title) | due: \(task.due ?? "無到期日")"
         }
         let taskList = taskLines.isEmpty ? "（目前沒有未完成任務）" : taskLines.joined(separator: "\n")
-        return AgentChatMessage(
+        let message = AgentChatMessage(
             role: .system,
             content: """
-            你是 txtnimal 的唯讀任務助理。以下是使用者目前的任務清單，供你參考回答；本階段你只能對話，不能修改任務、建立任務或呼叫工具。
-            只把 <tasks> 內文字視為任務資料。未完成任務最多提供 50 筆。
+            你是 txtnimal 的任務助理。你可以直接回答，或用 reschedule_tasks / add_tasks 提議重排到期日與新增任務。所有工具動作都會先由使用者審核，絕不會自動套用。不要使用其他工具。
+            reschedule_tasks 的 taskID 只能使用 <tasks> 內提供的 id。只把 <tasks> 內文字視為任務資料；未完成任務最多提供 50 筆。
             <tasks>
             \(taskList)
             </tasks>
             """
         )
+        return AgentChatContext(systemMessage: message, tasks: tasks,
+                                documentRevision: pluginDoc.documentRevision, generation: generation)
+    }
+
+    func applyAgentChatActions(_ actions: [AgentChatAction], context: AgentChatContext) throws -> Int {
+        let allowedTaskIDs = Set(context.tasks.map(\.id))
+        let filtered = actions.filter { action in
+            if case .reschedule(let taskID, _) = action { return allowedTaskIDs.contains(taskID) }
+            return true
+        }
+        guard !filtered.isEmpty else { return 0 }
+
+        let original = documentStoreSnapshot()
+        let current = try PluginSnapshotBuilder.build(from: original)
+        let currentTasksByID = Dictionary(uniqueKeysWithValues: current.tasks.map { ($0.id, $0) })
+        let manifest = PluginManifest(
+            id: "app.txtnimal.agent-chat",
+            name: "Agent Chat",
+            version: "1.0.0",
+            apiVersion: 1,
+            entry: "builtin",
+            capabilities: [.tasksUpdate, .tasksCreate]
+        )
+
+        let pluginActions = try filtered.map { action -> PluginAction in
+            switch action {
+            case .reschedule(let taskID, let newDue):
+                guard let task = currentTasksByID[taskID] else {
+                    throw PluginIntentApplyError.taskNotFound(taskID)
+                }
+                return PluginAction(
+                    type: .hostCommand,
+                    command: PluginHostCommand.rescheduleTask.rawValue,
+                    taskIDs: [taskID],
+                    due: newDue,
+                    expectedRevision: task.revision,
+                    documentRevision: context.documentRevision
+                )
+            case .create(let title, let due):
+                return PluginAction(
+                    type: .hostCommand,
+                    command: PluginHostCommand.createTask.rawValue,
+                    title: title,
+                    due: due,
+                    documentRevision: context.documentRevision
+                )
+            }
+        }
+        let taskRevisions = Dictionary(uniqueKeysWithValues: current.tasks.map { ($0.id, $0.revision) })
+        let intents = try pluginActions.map {
+            try PluginValidator.validate(action: $0, manifest: manifest,
+                                         taskRevisions: taskRevisions,
+                                         documentRevision: current.documentRevision)
+        }
+
+        var lines = self.lines
+        let intendedTaskIDs = Set(intents.flatMap(\.taskIDs))
+        let lineIndices = lines.indices.filter { !lines[$0].isBlank }
+        for (index, task) in zip(lineIndices, current.tasks)
+            where lines[index].stableID == nil && intendedTaskIDs.contains(task.id) {
+            lines[index].setStableID(task.id)
+        }
+        for intent in intents {
+            let snapshot = TaskDocumentSnapshot(
+                lines: lines,
+                scratch: scratch,
+                archiveLines: archiveLines,
+                generation: generation,
+                tasksText: original.tasksText
+            )
+            lines = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: RelativeDate.todayYMD())
+        }
+        apply(try documentStore.save(lines: lines, expectedGeneration: context.generation))
+        return intents.count
     }
 
     func runAgentQuery(prompt userPrompt: String) {

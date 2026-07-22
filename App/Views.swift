@@ -759,6 +759,14 @@ struct AgentView: View {
     }
 }
 
+private struct AgentChatPendingReview: Identifiable {
+    let id = UUID()
+    let conversationID: String
+    let actions: [AgentChatAction]
+    let assistantNote: String?
+    let context: AgentChatContext
+}
+
 private final class AgentChatViewModel: ObservableObject {
     @Published private(set) var conversations: [ChatConversation] = []
     @Published var current: ChatConversation?
@@ -766,6 +774,7 @@ private final class AgentChatViewModel: ObservableObject {
     @Published private(set) var isSending = false
     @Published private(set) var endpointIssue: String?
     @Published var errorMessage: String?
+    @Published private(set) var pendingReview: AgentChatPendingReview?
 
     private let chatStore: ChatStore
     private let credentialStore: any AgentCredentialStore
@@ -787,7 +796,8 @@ private final class AgentChatViewModel: ObservableObject {
     }
 
     var canSend: Bool {
-        endpointIssue == nil && !isSending && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        endpointIssue == nil && !isSending && pendingReview == nil
+            && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     func refreshEndpoint() {
@@ -816,6 +826,7 @@ private final class AgentChatViewModel: ObservableObject {
 
     func startNewConversation() {
         cancel()
+        pendingReview = nil
         let now = Date()
         current = ChatConversation(id: UUID().uuidString, title: "新對話", messages: [], createdAt: now, updatedAt: now)
         draft = ""
@@ -824,6 +835,7 @@ private final class AgentChatViewModel: ObservableObject {
 
     func load(_ conversation: ChatConversation) {
         cancel()
+        pendingReview = nil
         current = conversation
         draft = ""
         errorMessage = nil
@@ -831,6 +843,7 @@ private final class AgentChatViewModel: ObservableObject {
 
     func delete(_ conversation: ChatConversation) {
         cancel()
+        pendingReview = nil
         do {
             try chatStore.delete(id: conversation.id)
             if current?.id == conversation.id { current = nil }
@@ -845,9 +858,9 @@ private final class AgentChatViewModel: ObservableObject {
         errorMessage = error.localizedDescription
     }
 
-    func send(systemMessage: AgentChatMessage) {
+    func send(context: AgentChatContext) {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isSending else { return }
+        guard !text.isEmpty, !isSending, pendingReview == nil else { return }
 
         let config: AgentEndpointConfig
         do {
@@ -879,7 +892,7 @@ private final class AgentChatViewModel: ObservableObject {
         let client = AgentChatClient(
             credentialStore: InMemoryAgentCredentialStore(config: config)
         )
-        let messages = [systemMessage] + conversation.messages
+        let messages = [context.systemMessage] + conversation.messages
         let conversationID = conversation.id
         let runID = UUID()
         requestID = runID
@@ -889,12 +902,34 @@ private final class AgentChatViewModel: ObservableObject {
             do {
                 let reply = try await client.send(messages: messages)
                 guard self.requestID == runID, self.current?.id == conversationID else { return }
-                var updated = self.current ?? conversation
-                updated.messages.append(AgentChatMessage(role: .assistant, content: reply))
-                updated.updatedAt = Date()
-                self.current = updated
-                try self.persist(updated)
-                self.finish(runID: runID)
+                switch reply {
+                case .text(let content):
+                    try self.appendAssistant(content, to: conversationID)
+                    self.finish(runID: runID)
+                case .actions(let actions, let assistantNote):
+                    let allowedTaskIDs = Set(context.tasks.map(\.id))
+                    let filtered = actions.filter { action in
+                        if case .reschedule(let taskID, _) = action {
+                            return allowedTaskIDs.contains(taskID)
+                        }
+                        return true
+                    }
+                    if filtered.isEmpty {
+                        let prefix = assistantNote.map { $0 + "\n\n" } ?? ""
+                        try self.appendAssistant(
+                            prefix + "提議的任務不在本輪提供的任務背景中，未建立任何變更。",
+                            to: conversationID
+                        )
+                    } else {
+                        self.pendingReview = AgentChatPendingReview(
+                            conversationID: conversationID,
+                            actions: filtered,
+                            assistantNote: assistantNote,
+                            context: context
+                        )
+                    }
+                    self.finish(runID: runID)
+                }
             } catch {
                 guard self.requestID == runID else { return }
                 self.finish(runID: runID)
@@ -903,6 +938,29 @@ private final class AgentChatViewModel: ObservableObject {
                 }
                 self.errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    func discardPendingReview() {
+        guard let review = pendingReview, current?.id == review.conversationID else { return }
+        pendingReview = nil
+        do {
+            try appendAssistant(flatten(review: review, outcome: "已略過，未修改 tasks.txt。"),
+                                to: review.conversationID)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func applyPendingReview(using store: TaskStore) {
+        guard let review = pendingReview, current?.id == review.conversationID else { return }
+        do {
+            let count = try store.applyAgentChatActions(review.actions, context: review.context)
+            pendingReview = nil
+            try appendAssistant(flatten(review: review, outcome: "已套用 \(count) 項變更。"),
+                                to: review.conversationID)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -924,6 +982,29 @@ private final class AgentChatViewModel: ObservableObject {
         try chatStore.save(conversation)
         conversations = try chatStore.list()
         current = conversations.first(where: { $0.id == conversation.id }) ?? conversation
+    }
+
+    private func appendAssistant(_ content: String, to conversationID: String) throws {
+        guard var conversation = current, conversation.id == conversationID else { return }
+        conversation.messages.append(AgentChatMessage(role: .assistant, content: content))
+        conversation.updatedAt = Date()
+        current = conversation
+        try persist(conversation)
+    }
+
+    private func flatten(review: AgentChatPendingReview, outcome: String) -> String {
+        let tasksByID = Dictionary(uniqueKeysWithValues: review.context.tasks.map { ($0.id, $0) })
+        let proposals = review.actions.map { action in
+            switch action {
+            case .reschedule(let taskID, let newDue):
+                let task = tasksByID[taskID]
+                return "- \(task?.title ?? taskID)：\(task?.due ?? "無期限") → \(newDue)"
+            case .create(let title, let due):
+                return "- ＋新增：\(title)（\(due ?? "無期限")）"
+            }
+        }.joined(separator: "\n")
+        let note = review.assistantNote.map { $0 + "\n\n" } ?? ""
+        return "\(note)提議變更：\n\(proposals)\n\n\(outcome)"
     }
 
     private func makeConversation() -> ChatConversation {
@@ -1042,13 +1123,17 @@ private struct AgentChatView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("開始一段關於任務的對話")
                                 .foregroundColor(Theme.fg)
-                            Text("Agent 會看到最多 50 筆未完成任務作為唯讀背景；本階段不會修改或建立任務。")
+                            Text("Agent 會看到最多 50 筆未完成任務；重排與新增提議一律先顯示審核卡。")
                                 .font(Theme.monoSmall).foregroundColor(Theme.dim)
                         }
                         .padding(20).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     ForEach(Array(messages.enumerated()), id: \.offset) { index, message in
                         messageRow(message).id(index)
+                    }
+                    if let review = model.pendingReview,
+                       review.conversationID == model.current?.id {
+                        reviewCard(review).id(review.id)
                     }
                     if model.isSending {
                         HStack(spacing: 9) {
@@ -1065,6 +1150,9 @@ private struct AgentChatView: View {
             }
             .onChange(of: model.isSending) { sending in
                 if sending { withAnimation { proxy.scrollTo(model.current?.messages.count ?? 0, anchor: .bottom) } }
+            }
+            .onChange(of: model.pendingReview?.id) { reviewID in
+                if let reviewID { withAnimation { proxy.scrollTo(reviewID, anchor: .bottom) } }
             }
         }
     }
@@ -1086,6 +1174,62 @@ private struct AgentChatView: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
     }
 
+    private func reviewCard(_ review: AgentChatPendingReview) -> some View {
+        let tasksByID = Dictionary(uniqueKeysWithValues: review.context.tasks.map { ($0.id, $0) })
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("檢查提議變更").foregroundColor(Theme.fg)
+                Spacer()
+                Text("\(review.actions.count) CHANGES")
+                    .font(Theme.monoSmall).foregroundColor(Theme.yellow)
+            }
+            if let note = review.assistantNote {
+                Text(note).font(Theme.monoSmall).foregroundColor(Theme.dim)
+            }
+            Text("只有按下「套用」才會寫入 tasks.txt。")
+                .font(Theme.monoSmall).foregroundColor(Theme.dim)
+
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(review.actions.enumerated()), id: \.offset) { _, action in
+                    VStack(alignment: .leading, spacing: 5) {
+                        switch action {
+                        case .reschedule(let taskID, let newDue):
+                            let task = tasksByID[taskID]
+                            Text(task?.title ?? taskID).foregroundColor(Theme.fg)
+                            HStack(spacing: 8) {
+                                Text(task?.due ?? "無期限").foregroundColor(Theme.dim)
+                                Text("→").foregroundColor(Theme.yellow)
+                                Text(newDue).foregroundColor(Theme.green)
+                                Spacer()
+                                Text(taskID).font(Theme.monoSmall).foregroundColor(Theme.dim.opacity(0.7))
+                                    .lineLimit(1).truncationMode(.middle)
+                            }
+                        case .create(let title, let due):
+                            Text("＋新增：\(title)").foregroundColor(Theme.fg)
+                            Text(due ?? "無期限")
+                                .font(Theme.monoSmall)
+                                .foregroundColor(due == nil ? Theme.dim : Theme.green)
+                        }
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
+                }
+            }
+            .background(Theme.panel)
+            .overlay(Rectangle().stroke(Theme.border))
+
+            HStack {
+                Spacer()
+                chatButton("捨棄", color: Theme.dim) { model.discardPendingReview() }
+                chatButton("套用", color: Theme.green) { model.applyPendingReview(using: store) }
+            }
+        }
+        .padding(14)
+        .background(Theme.yellow.opacity(0.05))
+        .overlay(Rectangle().stroke(Theme.yellow.opacity(0.55)))
+        .padding(.horizontal, 18).padding(.vertical, 12)
+    }
+
     private var inputBar: some View {
         HStack(spacing: Theme.isTerminal ? 0 : 8) {
             Text(Theme.isTerminal ? "❯ " : ">")
@@ -1100,7 +1244,7 @@ private struct AgentChatView: View {
                     onSubmit: { if model.canSend { send() } },
                     onCancel: { model.draft = "" }
                 )
-                .disabled(model.endpointIssue != nil)
+                .disabled(model.endpointIssue != nil || model.pendingReview != nil)
             }
             .frame(height: 22)
             if model.isSending {
@@ -1117,7 +1261,7 @@ private struct AgentChatView: View {
 
     private func send() {
         do {
-            model.send(systemMessage: try store.agentChatSystemMessage())
+            model.send(context: try store.agentChatContext())
         } catch {
             model.show(error: error)
         }
