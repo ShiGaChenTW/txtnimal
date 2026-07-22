@@ -450,9 +450,58 @@ struct QuadrantView: View {
 
 // MARK: - ⌘3 Agent
 
+struct AgentWorkspaceView: View {
+    private enum Section {
+        case schedule
+        case chat
+    }
+
+    @State private var section: Section = .schedule
+    @State private var schedulePrompt = ""
+    @StateObject private var chatModel = AgentChatViewModel()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                sectionTab("排程", .schedule)
+                sectionTab("Chat", .chat)
+                Spacer()
+                Text(section == .schedule ? "RESCHEDULE" : "READ-ONLY")
+                    .font(Theme.monoSmall).foregroundColor(Theme.dim)
+            }
+            .padding(.horizontal, 24).padding(.vertical, 10)
+            .background(Theme.panel)
+            Rectangle().fill(Theme.border).frame(height: 1)
+
+            switch section {
+            case .schedule:
+                ScrollView {
+                    AgentView(prompt: $schedulePrompt)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            case .chat:
+                AgentChatView(model: chatModel)
+            }
+        }
+    }
+
+    private func sectionTab(_ title: String, _ target: Section) -> some View {
+        let selected = section == target
+        return Button { section = target } label: {
+            Text(Theme.isTerminal ? "[\(title)]" : title)
+                .font(Theme.monoSmall)
+                .foregroundColor(selected ? (Theme.isTerminal ? Theme.green : Theme.fg) : Theme.dim)
+                .padding(.horizontal, 11).padding(.vertical, 5)
+                .background(selected ? (Theme.isTerminal ? Theme.green.opacity(0.08) : Theme.bg) : .clear)
+                .overlay(Rectangle().stroke(selected ? (Theme.isTerminal ? Theme.green.opacity(0.45) : Theme.border) : .clear))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct AgentView: View {
     @EnvironmentObject var store: TaskStore
-    @State private var prompt = ""
+    @Binding var prompt: String
 
     private enum DisclosureState {
         case ready(AgentDisclosure)
@@ -708,4 +757,382 @@ struct AgentView: View {
         case .error: return Theme.red
         }
     }
+}
+
+private final class AgentChatViewModel: ObservableObject {
+    @Published private(set) var conversations: [ChatConversation] = []
+    @Published var current: ChatConversation?
+    @Published var draft = ""
+    @Published private(set) var isSending = false
+    @Published private(set) var endpointIssue: String?
+    @Published var errorMessage: String?
+
+    private let chatStore: ChatStore
+    private let credentialStore: any AgentCredentialStore
+    private var requestTask: Task<Void, Never>?
+    private var requestID: UUID?
+
+    init(
+        chatStore: ChatStore = ChatStore(
+            directory: FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Documents/txtnimal", isDirectory: true)
+        ),
+        credentialStore: any AgentCredentialStore = KeychainAgentCredentialStore()
+    ) {
+        self.chatStore = chatStore
+        self.credentialStore = credentialStore
+        refreshEndpoint()
+        reloadHistory()
+        if current == nil { startNewConversation() }
+    }
+
+    var canSend: Bool {
+        endpointIssue == nil && !isSending && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func refreshEndpoint() {
+        do {
+            _ = try credentialStore.endpointConfig()
+            endpointIssue = nil
+        } catch AgentCredentialStoreError.missingConfiguration {
+            endpointIssue = "尚未設定 Agent Endpoint。請先到 ⌘5 設定 Base URL、API Key 與 Model。"
+        } catch {
+            endpointIssue = error.localizedDescription
+        }
+    }
+
+    func reloadHistory(selecting selectedID: String? = nil) {
+        do {
+            conversations = try chatStore.list()
+            if let selectedID, let selected = conversations.first(where: { $0.id == selectedID }) {
+                current = selected
+            } else if current == nil {
+                current = conversations.first
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func startNewConversation() {
+        cancel()
+        let now = Date()
+        current = ChatConversation(id: UUID().uuidString, title: "新對話", messages: [], createdAt: now, updatedAt: now)
+        draft = ""
+        errorMessage = nil
+    }
+
+    func load(_ conversation: ChatConversation) {
+        cancel()
+        current = conversation
+        draft = ""
+        errorMessage = nil
+    }
+
+    func delete(_ conversation: ChatConversation) {
+        cancel()
+        do {
+            try chatStore.delete(id: conversation.id)
+            if current?.id == conversation.id { current = nil }
+            reloadHistory()
+            if current == nil { startNewConversation() }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func show(error: Error) {
+        errorMessage = error.localizedDescription
+    }
+
+    func send(systemMessage: AgentChatMessage) {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !isSending else { return }
+
+        let config: AgentEndpointConfig
+        do {
+            config = try credentialStore.endpointConfig()
+            endpointIssue = nil
+        } catch {
+            refreshEndpoint()
+            errorMessage = error.localizedDescription
+            return
+        }
+
+        var conversation = current ?? makeConversation()
+        if conversation.messages.first(where: { $0.role == .user }) == nil {
+            conversation.title = Self.title(for: text)
+        }
+        conversation.messages.append(AgentChatMessage(role: .user, content: text))
+        conversation.updatedAt = Date()
+        current = conversation
+        draft = ""
+        errorMessage = nil
+
+        do {
+            try persist(conversation)
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
+
+        let client = AgentChatClient(
+            credentialStore: InMemoryAgentCredentialStore(config: config)
+        )
+        let messages = [systemMessage] + conversation.messages
+        let conversationID = conversation.id
+        let runID = UUID()
+        requestID = runID
+        isSending = true
+        requestTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let reply = try await client.send(messages: messages)
+                guard self.requestID == runID, self.current?.id == conversationID else { return }
+                var updated = self.current ?? conversation
+                updated.messages.append(AgentChatMessage(role: .assistant, content: reply))
+                updated.updatedAt = Date()
+                self.current = updated
+                try self.persist(updated)
+                self.finish(runID: runID)
+            } catch {
+                guard self.requestID == runID else { return }
+                self.finish(runID: runID)
+                if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                    return
+                }
+                self.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func cancel() {
+        requestTask?.cancel()
+        requestTask = nil
+        requestID = nil
+        isSending = false
+    }
+
+    private func finish(runID: UUID) {
+        guard requestID == runID else { return }
+        requestTask = nil
+        requestID = nil
+        isSending = false
+    }
+
+    private func persist(_ conversation: ChatConversation) throws {
+        try chatStore.save(conversation)
+        conversations = try chatStore.list()
+        current = conversations.first(where: { $0.id == conversation.id }) ?? conversation
+    }
+
+    private func makeConversation() -> ChatConversation {
+        let now = Date()
+        return ChatConversation(id: UUID().uuidString, title: "新對話", messages: [], createdAt: now, updatedAt: now)
+    }
+
+    private static func title(for text: String) -> String {
+        let limit = 28
+        let prefix = String(text.prefix(limit))
+        return text.count > limit ? prefix + "…" : prefix
+    }
+}
+
+private struct AgentChatView: View {
+    @EnvironmentObject var store: TaskStore
+    @ObservedObject var model: AgentChatViewModel
+
+    var body: some View {
+        HStack(spacing: 0) {
+            historyPanel
+                .frame(width: 190)
+            Rectangle().fill(Theme.border).frame(width: 1)
+            conversationPanel
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { model.refreshEndpoint() }
+    }
+
+    private var historyPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("HISTORY").font(Theme.monoSmall).tracking(1.2).foregroundColor(Theme.dim)
+                Spacer()
+                chatButton("新增", color: Theme.green) { model.startNewConversation() }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            Rectangle().fill(Theme.border).frame(height: 1)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if model.conversations.isEmpty {
+                        Text("尚無對話紀錄")
+                            .font(Theme.monoSmall).foregroundColor(Theme.dim)
+                            .padding(12)
+                    }
+                    ForEach(model.conversations) { conversation in
+                        historyRow(conversation)
+                    }
+                }
+            }
+        }
+        .background(Theme.panel.opacity(0.55))
+    }
+
+    private func historyRow(_ conversation: ChatConversation) -> some View {
+        let selected = model.current?.id == conversation.id
+        return HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(conversation.title).lineLimit(2).foregroundColor(selected ? Theme.fg : Theme.dim)
+                Text(Self.historyDate.string(from: conversation.updatedAt))
+                    .font(Theme.monoSmall).foregroundColor(Theme.dim.opacity(0.7))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button { model.delete(conversation) } label: {
+                Text("×").font(Theme.mono).foregroundColor(Theme.red.opacity(0.8))
+            }
+            .buttonStyle(.plain).help("刪除對話")
+        }
+        .font(Theme.monoSmall)
+        .padding(.horizontal, 10).padding(.vertical, 9)
+        .background(selected ? Theme.selBg : .clear)
+        .overlay(alignment: .leading) {
+            if selected { Rectangle().fill(Theme.cyan).frame(width: 2) }
+        }
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
+        .contentShape(Rectangle())
+        .onTapGesture { model.load(conversation) }
+    }
+
+    private var conversationPanel: some View {
+        VStack(spacing: 0) {
+            messagesView
+            Rectangle().fill(Theme.border).frame(height: 1)
+            if let endpointIssue = model.endpointIssue {
+                HStack(spacing: 10) {
+                    Text(endpointIssue).font(Theme.monoSmall).foregroundColor(Theme.yellow)
+                    Spacer()
+                    chatButton("前往設定", color: Theme.yellow) { store.view = .settings }
+                }
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .background(Theme.yellow.opacity(0.07))
+                Rectangle().fill(Theme.border).frame(height: 1)
+            }
+            if let error = model.errorMessage {
+                HStack(alignment: .top, spacing: 8) {
+                    Text("ERROR").foregroundColor(Theme.red)
+                    Text(error).foregroundColor(Theme.fg).textSelection(.enabled)
+                    Spacer()
+                    Button { model.errorMessage = nil } label: { Text("×").foregroundColor(Theme.dim) }
+                        .buttonStyle(.plain)
+                }
+                .font(Theme.monoSmall).padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Theme.red.opacity(0.07))
+                Rectangle().fill(Theme.border).frame(height: 1)
+            }
+            inputBar
+        }
+    }
+
+    private var messagesView: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    let messages = model.current?.messages ?? []
+                    if messages.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("開始一段關於任務的對話")
+                                .foregroundColor(Theme.fg)
+                            Text("Agent 會看到最多 50 筆未完成任務作為唯讀背景；本階段不會修改或建立任務。")
+                                .font(Theme.monoSmall).foregroundColor(Theme.dim)
+                        }
+                        .padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    ForEach(Array(messages.enumerated()), id: \.offset) { index, message in
+                        messageRow(message).id(index)
+                    }
+                    if model.isSending {
+                        HStack(spacing: 9) {
+                            ProgressView().controlSize(.small)
+                            Text("Agent 正在回應…").foregroundColor(Theme.cyan)
+                        }
+                        .font(Theme.monoSmall).padding(.horizontal, 18).padding(.vertical, 12)
+                        .id(messages.count)
+                    }
+                }
+            }
+            .onChange(of: model.current?.messages.count ?? 0) { count in
+                withAnimation { proxy.scrollTo(max(0, count - 1), anchor: .bottom) }
+            }
+            .onChange(of: model.isSending) { sending in
+                if sending { withAnimation { proxy.scrollTo(model.current?.messages.count ?? 0, anchor: .bottom) } }
+            }
+        }
+    }
+
+    private func messageRow(_ message: AgentChatMessage) -> some View {
+        let isUser = message.role == .user
+        return HStack(alignment: .top, spacing: 12) {
+            Text(isUser ? "YOU" : "AGENT")
+                .font(Theme.monoSmall).tracking(0.8)
+                .foregroundColor(isUser ? Theme.blue : Theme.cyan)
+                .frame(width: 48, alignment: .leading)
+            Text(message.content)
+                .font(Theme.mono).foregroundColor(Theme.fg)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 13)
+        .background(isUser ? Theme.blue.opacity(0.045) : .clear)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
+    }
+
+    private var inputBar: some View {
+        HStack(spacing: Theme.isTerminal ? 0 : 8) {
+            Text(Theme.isTerminal ? "❯ " : ">")
+                .foregroundColor(Theme.isTerminal ? Theme.green : store.accent)
+            ZStack(alignment: .leading) {
+                if model.draft.isEmpty {
+                    Text("詢問目前任務、優先順序或規劃建議…")
+                        .font(Theme.mono).foregroundColor(Theme.dim.opacity(0.45))
+                }
+                TerminalInputField(
+                    text: $model.draft,
+                    onSubmit: { if model.canSend { send() } },
+                    onCancel: { model.draft = "" }
+                )
+                .disabled(model.endpointIssue != nil)
+            }
+            .frame(height: 22)
+            if model.isSending {
+                chatButton("取消", color: Theme.red) { model.cancel() }
+            } else {
+                chatButton("送出", color: Theme.green) { send() }
+                    .disabled(!model.canSend)
+                    .opacity(model.canSend ? 1 : 0.4)
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 11)
+        .background(Theme.panel)
+    }
+
+    private func send() {
+        do {
+            model.send(systemMessage: try store.agentChatSystemMessage())
+        } catch {
+            model.show(error: error)
+        }
+    }
+
+    private func chatButton(_ title: LocalizedStringKey, color: Color,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) { Text("[") + Text(title) + Text("]") }
+            .buttonStyle(.plain).font(Theme.monoSmall).foregroundColor(color)
+            .padding(.horizontal, 4).padding(.vertical, 3).contentShape(Rectangle())
+    }
+
+    private static let historyDate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d HH:mm"
+        return formatter
+    }()
 }

@@ -525,6 +525,25 @@ final class TaskStore: ObservableObject {
         )
     }
 
+    func agentChatSystemMessage() throws -> AgentChatMessage {
+        let pluginDoc = try PluginSnapshotBuilder.build(from: documentStoreSnapshot())
+        let tasks = pluginDoc.tasks.filter { !$0.completed }.prefix(50)
+        let taskLines = tasks.map { task in
+            "- \(task.title) (\(task.due ?? "無到期日"))"
+        }
+        let taskList = taskLines.isEmpty ? "（目前沒有未完成任務）" : taskLines.joined(separator: "\n")
+        return AgentChatMessage(
+            role: .system,
+            content: """
+            你是 txtnimal 的唯讀任務助理。以下是使用者目前的任務清單，供你參考回答；本階段你只能對話，不能修改任務、建立任務或呼叫工具。
+            只把 <tasks> 內文字視為任務資料。未完成任務最多提供 50 筆。
+            <tasks>
+            \(taskList)
+            </tasks>
+            """
+        )
+    }
+
     func runAgentQuery(prompt userPrompt: String) {
         let prompt = userPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }

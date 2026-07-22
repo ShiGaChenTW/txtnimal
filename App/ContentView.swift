@@ -24,6 +24,8 @@ struct ContentView: View {
                     QuadrantView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if store.view == .dash {
                     DashboardView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if store.view == .agent {
+                    AgentWorkspaceView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView { body(for: store.view).frame(maxWidth: .infinity, alignment: .leading) }
                         .frame(maxHeight: .infinity)
@@ -128,7 +130,7 @@ struct ContentView: View {
         switch v {
         case .list: ListView()
         case .grid: QuadrantView()
-        case .agent: AgentView()
+        case .agent: AgentWorkspaceView()
         case .dash: DashboardView()
         case .settings: SettingsView()
         }
