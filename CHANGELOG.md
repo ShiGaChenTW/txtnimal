@@ -24,4 +24,5 @@ All notable changes to txtnimal are documented in this file.
 ### Distribution notes
 
 - Requires macOS 13 Ventura or later on Apple Silicon or Intel Macs.
+- Includes a repeatable script that packages an ad-hoc signed Universal app, DMG, and SHA-256 checksum for self-use distribution.
 - This local portfolio build is not notarized for public distribution unless packaged with a Developer ID certificate.
