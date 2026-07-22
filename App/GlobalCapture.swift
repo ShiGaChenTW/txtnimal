@@ -254,6 +254,7 @@ final class SidebarController {
     // MARK: - 貼邊指示條(面板收起時顯示,7 種樣式可在設定切換)
 
     private var handleExpanded = false   // tab/synthesis hover 展開狀態
+    private var handlePos: CGFloat = 0.5 // 指示條沿邊位置(0..1)
 
     /// 從 store 取即時摘要(徽章數字、Focus 標題、逾期數)。
     private func handleStats() -> HandleStats {
@@ -266,26 +267,45 @@ final class SidebarController {
     /// 各樣式的(厚度, 長度);hotzone 為滿邊。以側邊方向表示。
     private func handleMetrics() -> (thickness: CGFloat, length: CGFloat, full: Bool) {
         switch store?.sidebarHandleStyle ?? .synthesis {
-        case .tab:       return (handleExpanded ? 138 : 40, 52, false)
-        case .synthesis: return (handleExpanded ? 150 : 50, 56, false)
-        case .sliver:    return (22, 232, false)
-        case .grabber:   return (12, 66, false)
-        case .badge:     return (34, 34, false)
-        case .dots:      return (18, 180, false)
-        case .hotzone:   return (6, 0, true)
+        case .tab:       return (handleExpanded ? 116 : 26, 38, false)
+        case .synthesis: return (handleExpanded ? 124 : 34, 40, false)
+        case .sliver:    return (16, 168, false)
+        case .grabber:   return (10, 50, false)
+        case .badge:     return (26, 26, false)
+        case .dots:      return (14, 132, false)
+        case .hotzone:   return (5, 0, true)
         }
     }
 
-    /// 指示條幾何:貼在鎖定螢幕的目標邊。
+    /// 指示條幾何:貼在鎖定螢幕的目標邊,沿邊位置吃 handlePos。
     private func handleFrame() -> NSRect {
         let vf = (activeScreen ?? currentScreen()).visibleFrame
-        let m = handleMetrics(), t = m.thickness
+        let m = handleMetrics(), t = m.thickness, pos = min(max(handlePos, 0), 1)
         switch store?.sidebarEdge ?? .right {
-        case .right: let l = m.full ? vf.height : m.length; return NSRect(x: vf.maxX - t, y: m.full ? vf.minY : vf.midY - l/2, width: t, height: l)
-        case .left:  let l = m.full ? vf.height : m.length; return NSRect(x: vf.minX,     y: m.full ? vf.minY : vf.midY - l/2, width: t, height: l)
-        case .top:   let l = m.full ? vf.width  : m.length; return NSRect(x: m.full ? vf.minX : vf.midX - l/2, y: vf.maxY - t, width: l, height: t)
+        case .right, .left:
+            let l = m.full ? vf.height : m.length
+            let x = (store?.sidebarEdge == .left) ? vf.minX : vf.maxX - t
+            let y = m.full ? vf.minY : vf.minY + pos * (vf.height - l)
+            return NSRect(x: x, y: y, width: t, height: l)
+        case .top:
+            let l = m.full ? vf.width : m.length
+            let x = m.full ? vf.minX : vf.minX + pos * (vf.width - l)
+            return NSRect(x: x, y: vf.maxY - t, width: l, height: t)
         }
     }
+
+    /// 拖曳指示條沿邊移動(用滑鼠絕對座標)。
+    private func dragHandle(to mouse: NSPoint) {
+        let vf = (activeScreen ?? currentScreen()).visibleFrame
+        let l = handleMetrics().length
+        switch store?.sidebarEdge ?? .right {
+        case .right, .left: handlePos = (vf.height - l) > 0 ? (mouse.y - vf.minY - l/2) / (vf.height - l) : 0.5
+        case .top:          handlePos = (vf.width  - l) > 0 ? (mouse.x - vf.minX - l/2) / (vf.width  - l) : 0.5
+        }
+        handlePos = min(max(handlePos, 0), 1)
+        handle?.setFrame(handleFrame(), display: true)
+    }
+    private func endHandleDrag() { store?.sidebarHandlePos = Double(handlePos) }
 
     private func rootHandleView() -> SidebarHandleView {
         SidebarHandleView(
@@ -294,12 +314,15 @@ final class SidebarController {
             accent: store?.accent ?? Theme.focus,
             stats: handleStats(),
             onActivate: { [weak self] in self?.reveal(animated: true) },
-            onHoverExpand: { [weak self] on in self?.setHandleExpanded(on) })
+            onHoverExpand: { [weak self] on in self?.setHandleExpanded(on) },
+            onMove: { [weak self] mouse in self?.dragHandle(to: mouse) },
+            onMoveEnd: { [weak self] in self?.endHandleDrag() })
     }
 
     private func showHandle() {
         if activeScreen == nil { activeScreen = currentScreen() }
         handleExpanded = false
+        handlePos = CGFloat(store?.sidebarHandlePos ?? 0.5)
         let h = ensureHandle()
         positionHandle()
         h.orderFrontRegardless()
@@ -375,8 +398,11 @@ private struct SidebarHandleView: View {
     let stats: HandleStats
     let onActivate: () -> Void
     let onHoverExpand: (Bool) -> Void
+    let onMove: (NSPoint) -> Void
+    let onMoveEnd: () -> Void
     @State private var hovering = false
     @State private var cursorFrac: CGFloat = -1
+    @State private var dragging = false
 
     private var horizontal: Bool { edge == .top }              // 指示條長邊為水平
     private var statusColor: Color { stats.overdue > 0 ? Theme.red : accent }
@@ -393,17 +419,29 @@ private struct SidebarHandleView: View {
     private var outerAlign: Alignment { edge == .right ? .trailing : (edge == .left ? .leading : .top) }
     private var innerAlign: Alignment { edge == .right ? .leading : (edge == .left ? .trailing : .bottom) }
 
+    @ViewBuilder private var content: some View {
+        switch style {
+        case .tab:       tab
+        case .synthesis: synthesis
+        case .sliver:    sliver
+        case .grabber:   grabber
+        case .badge:     badge
+        case .dots:      dots
+        case .hotzone:   hotzone
+        }
+    }
+
+    /// 拖曳沿邊移動(超過門檻才算移動,不影響點擊滑出)。hotzone 為滿邊不提供。
+    private var moveGesture: some Gesture {
+        DragGesture(minimumDistance: 6)
+            .onChanged { _ in dragging = true; onMove(NSEvent.mouseLocation) }
+            .onEnded { _ in dragging = false; onMoveEnd() }
+    }
+
     var body: some View {
         Group {
-            switch style {
-            case .tab:       tab
-            case .synthesis: synthesis
-            case .sliver:    sliver
-            case .grabber:   grabber
-            case .badge:     badge
-            case .dots:      dots
-            case .hotzone:   hotzone
-            }
+            if style == .hotzone { content }
+            else { content.gesture(moveGesture) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -465,9 +503,9 @@ private struct SidebarHandleView: View {
     private var badge: some View {
         let label = stats.overdue > 0 ? "\(stats.overdue)!"
             : (stats.focusTitle != nil ? "▶" : "\(stats.today)")
-        return innerRounded(15).fill(Theme.bg)
-            .overlay(innerRounded(15).stroke(statusColor, lineWidth: 1))
-            .overlay(Text(label).font(.system(size: 12, weight: .bold, design: .monospaced)).foregroundColor(statusColor))
+        return innerRounded(13).fill(Theme.bg)
+            .overlay(innerRounded(13).stroke(statusColor, lineWidth: 1))
+            .overlay(Text(label).font(.system(size: 11, weight: .bold, design: .monospaced)).foregroundColor(statusColor))
             .onHover { hovering = $0 }
             .onTapGesture { onActivate() }
             .help(stats.overdue > 0 ? "\(stats.overdue) 筆逾期 · 滑出" : "今日 \(stats.today) 筆 · 滑出")

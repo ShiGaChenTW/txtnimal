@@ -222,6 +222,12 @@ final class TaskStore: ObservableObject {
     }() {
         didSet { UserDefaults.standard.set(sidebarOpacity, forKey: "sidebarOpacity") }
     }
+    /// 指示條沿邊位置(0=底/左,1=頂/右),可用滑鼠拖曳。
+    @Published var sidebarHandlePos: Double = {
+        (UserDefaults.standard.object(forKey: "sidebarHandlePos") as? Double) ?? 0.5
+    }() {
+        didSet { UserDefaults.standard.set(sidebarHandlePos, forKey: "sidebarHandlePos") }
+    }
     /// 收起時的邊緣指示條樣式,可在設定切換。
     @Published var sidebarHandleStyle: SidebarHandleStyle = {
         SidebarHandleStyle(rawValue: UserDefaults.standard.string(forKey: "sidebarHandleStyle") ?? "synthesis") ?? .synthesis
