@@ -5,3 +5,24 @@ DerivedData/
 xcuserdata/
 .claude/settings.local.json
 .solomd/
+
+# Local AI/BMAD tooling and generated working notes
+.agents/
+.claude/
+_bmad/
+_bmad-output/
+plans/
+
+# Local design explorations and obsolete generated project shells
+AppIconConcepts/
+TasksTxt/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.cer
+*.key
+*.mobileprovision
+*.p12
+*.pfx
