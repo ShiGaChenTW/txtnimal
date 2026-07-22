@@ -1,5 +1,23 @@
 import SwiftUI
 import txtnimalCore
+import AppKit
+
+struct TaskContextActions {
+    var edit: (TaskHandle) -> Void = { _ in }
+    var confirmArchive: (TaskHandle, String) -> Void = { _, _ in }
+    var confirmDelete: (TaskHandle, String) -> Void = { _, _ in }
+}
+
+private struct TaskContextActionsKey: EnvironmentKey {
+    static let defaultValue = TaskContextActions()
+}
+
+extension EnvironmentValues {
+    var taskContextActions: TaskContextActions {
+        get { self[TaskContextActionsKey.self] }
+        set { self[TaskContextActionsKey.self] = newValue }
+    }
+}
 import UniformTypeIdentifiers
 
 // MARK: - ⌘1 主清單
@@ -229,6 +247,7 @@ struct ListView: View {
 
 struct RowView: View {
     @EnvironmentObject var store: TaskStore
+    @Environment(\.taskContextActions) private var contextActions
     let index: Int
     let group: String
     @State private var flash = false   // 完成瞬間綠光一閃(SPEC 7.5 招牌時刻)
@@ -293,6 +312,7 @@ struct RowView: View {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { store.toggleDone() }
         }
         .onTapGesture { store.cursor = index }
+        .contextMenu { TaskContextMenu(handle: store.handle(for: index), task: t, actions: contextActions) }
     }
 
     /// checkbox 顏色跟隨分組(與分組標題同色系)
@@ -348,6 +368,7 @@ struct EditRow: View {
 
 struct QuadrantView: View {
     @EnvironmentObject var store: TaskStore
+    @Environment(\.taskContextActions) private var contextActions
     private let meta: [(Int, String, String, Color)] = [
         (1, "Do", "重要且緊急", Theme.red), (2, "Schedule", "重要但不緊急", Theme.yellow),
         (3, "Delegate", "緊急但不重要", Theme.cyan), (4, "Delete", "不重要且不緊急", Theme.dim),
@@ -426,6 +447,7 @@ struct QuadrantView: View {
             }
             .onTapGesture { store.cursor = i }
             .onDrag { NSItemProvider(object: store.dragPayload(for: i) as NSString) }
+            .contextMenu { TaskContextMenu(handle: store.handle(for: i), task: t, actions: contextActions) }
         }
     }
 
@@ -445,6 +467,100 @@ struct QuadrantView: View {
         .contentShape(Rectangle())
         .onDrop(of: [.text], isTargeted: nil) { handleDrop($0, q: nil) }
         .padding(14)
+    }
+}
+
+private struct TaskContextMenu: View {
+    @EnvironmentObject private var store: TaskStore
+    let handle: TaskHandle
+    let task: TaskLine
+    let actions: TaskContextActions
+
+    var body: some View {
+        Button("編輯任務…") { actions.edit(handle) }
+            .disabled(task.isDone)
+        Button(task.isDone ? "取消完成" : "完成") { store.toggleDone(using: handle) }
+        Button(task.isFocused ? "取消 Focus" : "設為 Focus") { store.toggleFocus(using: handle) }
+            .disabled(task.isDone)
+
+        Divider()
+
+        Menu("到期日") {
+            Button("今天") { store.setDue(store.todayYMD, using: handle) }
+            Button("明天") { store.setDue(date(daysFromToday: 1), using: handle) }
+            Button("下週") { store.setDue(date(daysFromToday: 7), using: handle) }
+            Divider()
+            Button("清除到期日") { store.setDue(nil, using: handle) }
+                .disabled(task.due == nil)
+        }
+        .disabled(task.isDone)
+
+        Menu("象限") {
+            ForEach(1...4, id: \.self) { quadrant in
+                Button { store.setQuadrant(quadrant, using: handle) } label: {
+                    checkedLabel(task.quadrant == quadrant, "\(quadrant) \(quadrantName(quadrant))")
+                }
+            }
+            Divider()
+            Button { store.setQuadrant(nil, using: handle) } label: {
+                checkedLabel(task.quadrant == nil, "未歸位")
+            }
+        }
+        .disabled(task.isDone)
+
+        Menu("List") {
+            if store.allProjects().isEmpty { Text("尚無 List") }
+            ForEach(store.allProjects(), id: \.self) { project in
+                Button {
+                    store.setTag("+" + project, enabled: !task.projects.contains(project), using: handle)
+                } label: { checkedLabel(task.projects.contains(project), "+" + project) }
+            }
+            Divider()
+            Button("編輯更多…") { actions.edit(handle) }
+        }
+        .disabled(task.isDone)
+
+        Menu("Tag") {
+            if store.allContexts().isEmpty { Text("尚無 Tag") }
+            ForEach(store.allContexts(), id: \.self) { context in
+                Button {
+                    store.setTag("@" + context, enabled: !task.contexts.contains(context), using: handle)
+                } label: { checkedLabel(task.contexts.contains(context), "@" + context) }
+            }
+            Divider()
+            Button("編輯更多…") { actions.edit(handle) }
+        }
+        .disabled(task.isDone)
+
+        Divider()
+
+        Button("複製任務文字") { copyRawTask() }
+        Button("封存任務…") { actions.confirmArchive(handle, task.title) }
+        Button("刪除任務…", role: .destructive) { actions.confirmDelete(handle, task.title) }
+    }
+
+    @ViewBuilder private func checkedLabel(_ checked: Bool, _ title: String) -> some View {
+        if checked { Label(title, systemImage: "checkmark") } else { Text(title) }
+    }
+
+    private func quadrantName(_ quadrant: Int) -> String {
+        switch quadrant {
+        case 1: return "Do"
+        case 2: return "Schedule"
+        case 3: return "Delegate"
+        default: return NSLocalizedString("Delete（象限）", comment: "Eisenhower quadrant name")
+        }
+    }
+
+    private func date(daysFromToday days: Int) -> String {
+        let date = Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date()
+        return RelativeDate.todayYMD(date)
+    }
+
+    private func copyRawTask() {
+        guard let current = store.task(using: handle) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(current.raw, forType: .string)
     }
 }
 

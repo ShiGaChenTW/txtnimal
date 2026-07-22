@@ -139,6 +139,8 @@ Review landing page due:2026-07-25 +website @mac note:"check mobile spacing"
 全域快速捕捉熱鍵可在設定頁自行綁定。
 輸入 `+`、`@` 或 `due:` 時會顯示候選清單；可繼續輸入過濾，或使用 `↑`／`↓` 選擇並以 `Enter`／`Tab` 套用。
 
+在清單或四象限的任務上按右鍵，可編輯任務、調整完成／Focus／到期日／List／Tag／象限、複製原始 todo.txt 行、封存或刪除。封存會把原始行移至 `archive.txt`；刪除經確認後永久生效，不會自動封存。象限選單中的 `4 Delete（象限）`只代表 Eisenhower 象限，不會刪除任務。
+
 ## 開發與測試
 
 核心解析與檔案邏輯位於 Swift Package `txtnimalCore`：
@@ -346,6 +348,8 @@ See the [todo.txt format specification](https://github.com/todotxt/todo.txt) for
 
 The global quick-capture shortcut can be changed in Settings.
 Type `+`, `@`, or `due:` to open suggestions. Keep typing to filter, or use `↑`/`↓` and apply a choice with `Enter` or `Tab`.
+
+Right-click a task in the List or Quadrants view to edit it, change completion, Focus, due date, Lists, Tags, or quadrant, copy its original todo.txt line, archive it, or delete it. Archiving moves the unchanged line to `archive.txt`; deletion is permanent after confirmation and does not archive the task. The Quadrant item `4 Delete (Quadrant)` only assigns the Eisenhower quadrant—it does not delete the task.
 
 ## Development and testing
 

@@ -9,6 +9,9 @@ public enum TaskCommand: Equatable {
     case toggleDone(TaskHandle)
     case toggleFocus(TaskHandle)
     case setQuadrant(TaskHandle, Int?)
+    case setDue(TaskHandle, String?)
+    case setTag(TaskHandle, String, Bool)
+    case delete(TaskHandle)
     case rescheduleOverdue
 }
 
@@ -36,6 +39,13 @@ public enum TaskWorkspace {
             lines = TasksDocument.setFocus(lines, onIndex: lines[i].isFocused ? nil : i)
         case .setQuadrant(let handle, let q):
             let i = try index(handle); guard !lines[i].isDone else { return lines }; lines[i].setQuadrant(q)
+        case .setDue(let handle, let due):
+            let i = try index(handle); guard !lines[i].isDone else { return lines }; lines[i].setDue(due)
+        case .setTag(let handle, let tag, let enabled):
+            let i = try index(handle); guard !lines[i].isDone else { return lines }
+            if enabled { lines[i].addTag(tag) } else { lines[i].removeTag(tag) }
+        case .delete(let handle):
+            lines.remove(at: try index(handle))
         case .rescheduleOverdue:
             for i in lines.indices where !lines[i].isDone && (lines[i].due ?? todayYMD) < todayYMD { lines[i].setDue(todayYMD) }
         }

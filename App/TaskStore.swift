@@ -730,6 +730,51 @@ final class TaskStore: ObservableObject {
         do { lines = try TaskWorkspace.apply(.toggleDone(handle(for: i)), to: currentSnapshot, todayYMD: todayYMD); save(); ensureCursor() }
         catch { report(error) }
     }
+    func task(using handle: TaskHandle) -> TaskLine? {
+        guard handle.generation == generation, lines.indices.contains(handle.index) else { return nil }
+        return lines[handle.index]
+    }
+    func select(using handle: TaskHandle) {
+        guard task(using: handle) != nil else { return }
+        cursor = handle.index
+    }
+    func toggleDone(using handle: TaskHandle) { apply(.toggleDone(handle)) }
+    func toggleFocus(using handle: TaskHandle) {
+        let wasFocused = task(using: handle)?.isFocused == true
+        apply(.toggleFocus(handle))
+        if wasFocused { focusMode = false }
+    }
+    func setDue(_ due: String?, using handle: TaskHandle) { apply(.setDue(handle, due)) }
+    func setTag(_ tag: String, enabled: Bool, using handle: TaskHandle) {
+        apply(.setTag(handle, tag, enabled))
+    }
+    func deleteTask(using handle: TaskHandle) {
+        let nextCursor = cursorAfterRemoving(handle.index)
+        do {
+            lines = try TaskWorkspace.apply(.delete(handle), to: currentSnapshot, todayYMD: todayYMD)
+            save(); editingIndex = nil; cursor = nextCursor; ensureCursor()
+        } catch { report(error) }
+    }
+    func archiveTask(using handle: TaskHandle) {
+        let nextCursor = cursorAfterRemoving(handle.index)
+        do {
+            apply(try documentStore.archiveTask(handle, expectedGeneration: generation))
+            editingIndex = nil; cursor = nextCursor; ensureCursor()
+        } catch { report(error) }
+    }
+    private func apply(_ command: TaskCommand) {
+        do {
+            lines = try TaskWorkspace.apply(command, to: currentSnapshot, todayYMD: todayYMD)
+            save(); ensureCursor()
+        } catch { report(error) }
+    }
+    private func cursorAfterRemoving(_ removed: Int) -> Int? {
+        let remaining = currentOrder().filter { $0 != removed }.map { $0 > removed ? $0 - 1 : $0 }
+        guard !remaining.isEmpty else { return nil }
+        let oldOrder = currentOrder()
+        let position = oldOrder.firstIndex(of: removed) ?? 0
+        return remaining[min(position, remaining.count - 1)]
+    }
     func toggleFocus() {
         guard let i = cursor, lines.indices.contains(i) else { return }
         let already = lines[i].isFocused

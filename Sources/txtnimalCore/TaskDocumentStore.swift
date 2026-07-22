@@ -51,6 +51,7 @@ public protocol TaskDocumentStore {
     func save(lines: [TaskLine], expectedGeneration: UInt64) throws -> TaskDocumentSnapshot
     func saveScratch(_ text: String) throws
     func archiveCompleted(before todayYMD: String, expectedGeneration: UInt64) throws -> TaskDocumentSnapshot
+    func archiveTask(_ handle: TaskHandle, expectedGeneration: UInt64) throws -> TaskDocumentSnapshot
 }
 
 /// Filesystem adapter. Failed reads never become empty documents and failed archive
@@ -117,6 +118,28 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         try commit(tasksText: tasksText, archiveText: archiveText)
         generation &+= 1
         return TaskDocumentSnapshot(lines: kept, scratch: try readOptional(scratchURL),
+                                    archiveLines: TasksDocument.parse(archiveText), generation: generation,
+                                    tasksText: tasksText)
+    }
+
+    public func archiveTask(_ handle: TaskHandle, expectedGeneration: UInt64) throws -> TaskDocumentSnapshot {
+        try requireGeneration(expectedGeneration)
+        guard handle.generation == expectedGeneration else {
+            throw TaskDocumentStoreError.staleSnapshot(expected: handle.generation, actual: expectedGeneration)
+        }
+        let currentText = try readRequired(tasksURL)
+        var current = TasksDocument.parse(currentText)
+        guard current.indices.contains(handle.index), !current[handle.index].isBlank else {
+            throw TaskWorkspaceError.missingTask
+        }
+        let archivedRaw = current.remove(at: handle.index).raw
+        let previousArchive = try readOptional(archiveURL)
+        let separator = previousArchive.isEmpty || previousArchive.hasSuffix("\n") ? "" : "\n"
+        let archiveText = previousArchive + separator + archivedRaw + "\n"
+        let tasksText = TasksDocument.serialize(current)
+        try commit(tasksText: tasksText, archiveText: archiveText)
+        generation &+= 1
+        return TaskDocumentSnapshot(lines: current, scratch: try readOptional(scratchURL),
                                     archiveLines: TasksDocument.parse(archiveText), generation: generation,
                                     tasksText: tasksText)
     }

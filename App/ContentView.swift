@@ -1,6 +1,11 @@
 import SwiftUI
 import txtnimalCore
 
+private enum PendingTaskAction {
+    case archive(TaskHandle, String)
+    case delete(TaskHandle, String)
+}
+
 struct ContentView: View {
     @EnvironmentObject var store: TaskStore
     @Environment(\.isSidebarPanel) private var isSidebarPanel
@@ -11,6 +16,7 @@ struct ContentView: View {
     @State private var monitor: Any?
     @State private var hostWindow: NSWindow?
     @State private var showTabMenu = false
+    @State private var pendingTaskAction: PendingTaskAction?
 
     var body: some View {
         ZStack {
@@ -42,6 +48,7 @@ struct ContentView: View {
         .background(WindowAccessor { hostWindow = $0 })
         .font(Theme.mono).foregroundColor(Theme.fg)
         .environment(\.locale, store.appLanguage.locale)
+        .environment(\.taskContextActions, taskContextActions)
         .onAppear {
             installMonitor()
             store.applyAppearance()
@@ -63,6 +70,35 @@ struct ContentView: View {
         )) { Button("好") { store.lastError = nil } } message: {
             Text(store.lastError ?? "未知錯誤")
         }
+        .confirmationDialog("確認任務操作", isPresented: Binding(
+            get: { pendingTaskAction != nil },
+            set: { if !$0 { pendingTaskAction = nil } }
+        ), titleVisibility: .visible) {
+            if case .archive(let handle, _) = pendingTaskAction {
+                Button("封存任務") { store.archiveTask(using: handle); pendingTaskAction = nil }
+            }
+            if case .delete(let handle, _) = pendingTaskAction {
+                Button("永久刪除", role: .destructive) { store.deleteTask(using: handle); pendingTaskAction = nil }
+            }
+            Button("取消", role: .cancel) { pendingTaskAction = nil }
+        } message: {
+            switch pendingTaskAction {
+            case .archive(_, let title):
+                Text("「\(title)」將移至 archive.txt，可從封存檔找回。")
+            case .delete(_, let title):
+                Text("確定永久刪除「\(title)」？此任務不會移至 archive.txt。")
+            case nil:
+                EmptyView()
+            }
+        }
+    }
+
+    private var taskContextActions: TaskContextActions {
+        TaskContextActions(
+            edit: { openEdit($0) },
+            confirmArchive: { pendingTaskAction = .archive($0, $1) },
+            confirmDelete: { pendingTaskAction = .delete($0, $1) }
+        )
     }
 
     private var hline: some View { Rectangle().fill(Theme.border).frame(height: 1) }
@@ -553,9 +589,13 @@ struct ContentView: View {
     }
 
     private func openEdit() {
-        guard let i = store.cursor, store.lines.indices.contains(i) else { return }
-        let t = store.lines[i]
-        editIndex = i
+        guard let i = store.cursor else { return }
+        openEdit(store.handle(for: i))
+    }
+    private func openEdit(_ handle: TaskHandle) {
+        guard let t = store.task(using: handle), !t.isDone else { return }
+        store.select(using: handle)
+        editIndex = handle.index
         editTitle = t.title
         editDue = t.due ?? ""
         editProjects = t.projects.map { "+" + $0 }.joined(separator: " ")
