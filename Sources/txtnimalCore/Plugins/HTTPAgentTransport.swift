@@ -38,7 +38,7 @@ public struct HTTPAgentTransport: AgentTransport {
         }
 
         let config = try credentialStore.endpointConfig()
-        try Self.assertSecure(config.baseURL)
+        try AgentEndpointSecurity.assertSecure(config.baseURL)
         let body = try makeRequestBody(hostRequest: hostRequest, model: config.model)
         var urlRequest = URLRequest(url: config.baseURL.appendingPathComponent("chat/completions"))
         urlRequest.httpMethod = "POST"
@@ -79,17 +79,6 @@ public struct HTTPAgentTransport: AgentTransport {
         // Endpoint returned a bare array directly — pass the original bytes through unchanged.
         guard parsed is [Any] else { throw HTTPAgentTransportError.invalidContent }
         return contentData
-    }
-
-    private static func assertSecure(_ url: URL) throws {
-        switch url.scheme?.lowercased() {
-        case "https":
-            return
-        case "http" where ["localhost", "127.0.0.1", "::1"].contains(url.host?.lowercased() ?? ""):
-            return  // ponytail: loopback http allowed for local models (Ollama/LM Studio)
-        default:
-            throw HTTPAgentTransportError.insecureEndpoint
-        }
     }
 
     private func makeRequestBody(hostRequest: AgentTransportRequest, model: String) throws -> Data {
