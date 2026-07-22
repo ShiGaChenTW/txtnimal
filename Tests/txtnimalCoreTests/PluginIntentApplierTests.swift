@@ -19,4 +19,34 @@ final class PluginIntentApplierTests: XCTestCase {
             XCTAssertEqual(error as? PluginIntentApplyError, .staleDocument)
         }
     }
+
+    func testCreateTaskAppendsStampedLineWithoutChangingExistingTasks() throws {
+        let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("Existing id:task-one due:2026-07-20"))
+        let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .createTask,
+                                           taskIDs: [], title: "Write launch notes", due: "2026-07-24",
+                                           expectedRevision: nil, documentRevision: snapshot.documentRevision)
+
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+
+        XCTAssertEqual(result.count, snapshot.lines.count + 1)
+        XCTAssertEqual(result.first, snapshot.lines.first)
+        XCTAssertEqual(result.last?.title, "Write launch notes")
+        XCTAssertEqual(result.last?.due, "2026-07-24")
+        XCTAssertEqual(result.last?.created, "2026-07-23")
+    }
+
+    func testCreateTaskSanitizesLineBreaksAndOverridesEmbeddedDates() throws {
+        let snapshot = TaskDocumentSnapshot(lines: [])
+        let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .createTask,
+                                           taskIDs: [], title: "Review due:2020-01-01\ncreated:2020-01-01",
+                                           due: nil, expectedRevision: nil,
+                                           documentRevision: snapshot.documentRevision)
+
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+
+        XCTAssertEqual(result.count, 1)
+        XCTAssertNil(result[0].due)
+        XCTAssertEqual(result[0].created, "2026-07-23")
+        XCTAssertFalse(result[0].raw.contains("\n"))
+    }
 }

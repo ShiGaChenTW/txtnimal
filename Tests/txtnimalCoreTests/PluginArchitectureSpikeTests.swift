@@ -26,6 +26,53 @@ final class PluginArchitectureSpikeTests: XCTestCase {
         XCTAssertNil(legacyAction.resultSchema)
     }
 
+    func testCreateTaskActionRoundTripsWithOptionalTitle() throws {
+        let action = PluginAction(type: .hostCommand, command: PluginHostCommand.createTask.rawValue,
+                                  title: "Write launch notes", due: "2026-07-24",
+                                  documentRevision: "doc-revision")
+
+        let decoded = try JSONDecoder().decode(PluginAction.self, from: JSONEncoder().encode(action))
+
+        XCTAssertEqual(decoded, action)
+        XCTAssertEqual(decoded.title, "Write launch notes")
+
+        let legacyData = Data(#"{"type":"hostCommand","command":"tasks.rescheduleOverdue","expectedRevision":"doc"}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(PluginAction.self, from: legacyData).title)
+    }
+
+    func testCreateTaskValidationRequiresCapabilityTitleAndValidDue() throws {
+        let creator = try PluginValidator.decodeManifest(manifestJSON(capabilities: ["tasks.create"]))
+        let action = PluginAction(type: .hostCommand, command: PluginHostCommand.createTask.rawValue,
+                                  title: "  Write launch notes  ", due: "2026-07-24",
+                                  documentRevision: "doc-revision")
+
+        let intent = try PluginValidator.validate(action: action, manifest: creator,
+                                                  documentRevision: "doc-revision")
+        XCTAssertEqual(intent.command, .createTask)
+        XCTAssertEqual(intent.title, "Write launch notes")
+        XCTAssertEqual(intent.due, "2026-07-24")
+        XCTAssertTrue(intent.taskIDs.isEmpty)
+
+        let updater = try PluginValidator.decodeManifest(manifestJSON(capabilities: ["tasks.update"]))
+        assertValidationError(.missingCapability) {
+            try PluginValidator.validate(action: action, manifest: updater,
+                                         documentRevision: "doc-revision")
+        }
+        for invalid in [
+            PluginAction(type: .hostCommand, command: PluginHostCommand.createTask.rawValue,
+                         title: " \n ", documentRevision: "doc-revision"),
+            PluginAction(type: .hostCommand, command: PluginHostCommand.createTask.rawValue,
+                         title: "Write launch notes", due: "2026-02-30", documentRevision: "doc-revision"),
+            PluginAction(type: .hostCommand, command: PluginHostCommand.createTask.rawValue,
+                         taskIDs: ["task-1"], title: "Write launch notes", documentRevision: "doc-revision"),
+        ] {
+            assertValidationError(.invalidAction) {
+                try PluginValidator.validate(action: invalid, manifest: creator,
+                                             documentRevision: "doc-revision")
+            }
+        }
+    }
+
     func testApprovedFixturesShareManifestAndActionGate() throws {
         let commandRoot = fixture("reschedule-tomorrow")
         let commandManifest = try PluginValidator.decodeManifest(Data(contentsOf: commandRoot.appendingPathComponent("manifest.json")))

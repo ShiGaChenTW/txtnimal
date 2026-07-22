@@ -114,12 +114,21 @@ public enum PluginValidator {
         guard action.type == .hostCommand, let command = PluginHostCommand(rawValue: action.command) else {
             throw PluginValidationError.invalidAction
         }
-        guard Set(manifest.capabilities).contains(.tasksUpdate) else {
-            throw PluginValidationError.missingCapability
-        }
         let taskIDs = action.taskIDs ?? []
+        let title = action.title?.trimmingCharacters(in: .whitespacesAndNewlines)
         switch command {
+        case .createTask:
+            guard Set(manifest.capabilities).contains(.tasksCreate) else {
+                throw PluginValidationError.missingCapability
+            }
+            guard taskIDs.isEmpty, let title, !title.isEmpty,
+                  action.due.map(isISODate) ?? true else {
+                throw PluginValidationError.invalidAction
+            }
         case .rescheduleTask:
+            guard Set(manifest.capabilities).contains(.tasksUpdate) else {
+                throw PluginValidationError.missingCapability
+            }
             guard !taskIDs.isEmpty, taskIDs.count <= limits.maximumQueryResults,
                   Set(taskIDs).count == taskIDs.count, taskIDs.allSatisfy(isScopedIdentifier),
                   let due = action.due, isISODate(due), let expected = action.expectedRevision,
@@ -127,11 +136,14 @@ public enum PluginValidator {
                 throw PluginValidationError.invalidAction
             }
         case .rescheduleOverdue:
+            guard Set(manifest.capabilities).contains(.tasksUpdate) else {
+                throw PluginValidationError.missingCapability
+            }
             guard taskIDs.isEmpty, action.due == nil, let expected = action.expectedRevision,
                   documentRevision.map({ expected == $0 }) ?? true else { throw PluginValidationError.invalidAction }
         }
         return ValidatedPluginIntent(pluginID: manifest.id, command: command, taskIDs: taskIDs,
-                                     due: action.due, expectedRevision: action.expectedRevision,
+                                     title: title, due: action.due, expectedRevision: action.expectedRevision,
                                      documentRevision: action.documentRevision)
     }
 
@@ -219,7 +231,7 @@ public enum PluginValidator {
         }
         if node.keys.contains("action"), !(node["action"] is [String: Any]) { throw PluginValidationError.invalidNode }
         if let action = node["action"] as? [String: Any] {
-            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "due", "expectedRevision", "documentRevision", "prompt", "resultSchema"])
+            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "title", "due", "expectedRevision", "documentRevision", "prompt", "resultSchema"])
         }
         if node.keys.contains("children"), !(node["children"] is [[String: Any]]) { throw PluginValidationError.invalidNode }
         for child in node["children"] as? [[String: Any]] ?? [] { try validateNodeKeys(child) }

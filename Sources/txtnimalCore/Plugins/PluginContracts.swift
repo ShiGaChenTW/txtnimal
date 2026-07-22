@@ -77,6 +77,7 @@ public struct PluginDocumentSnapshot: Codable, Equatable, Sendable {
 }
 
 public enum PluginHostCommand: String, Codable, Equatable, Sendable {
+    case createTask = "tasks.create"
     case rescheduleTask = "tasks.reschedule"
     case rescheduleOverdue = "tasks.rescheduleOverdue"
 }
@@ -86,16 +87,18 @@ public struct PluginAction: Codable, Equatable, Sendable {
     public let type: Kind
     public let command: String
     public let taskIDs: [String]?
+    public let title: String?
     public let due: String?
     public let expectedRevision: String?
     public let documentRevision: String?
     public let prompt: String?
     public let resultSchema: String?
 
-    public init(type: Kind, command: String, taskIDs: [String]? = nil, due: String? = nil,
+    public init(type: Kind, command: String, taskIDs: [String]? = nil, title: String? = nil, due: String? = nil,
                 expectedRevision: String? = nil, documentRevision: String? = nil,
                 prompt: String? = nil, resultSchema: String? = nil) {
         self.type = type; self.command = command; self.taskIDs = taskIDs
+        self.title = title
         self.due = due; self.expectedRevision = expectedRevision; self.documentRevision = documentRevision
         self.prompt = prompt; self.resultSchema = resultSchema
     }
@@ -105,7 +108,19 @@ public struct ValidatedPluginIntent: Equatable, Sendable {
     public let pluginID: String
     public let command: PluginHostCommand
     public let taskIDs: [String]
+    public let title: String?
     public let due: String?
     public let expectedRevision: String?
     public let documentRevision: String?
+
+    public init(pluginID: String, command: PluginHostCommand, taskIDs: [String], title: String? = nil,
+                due: String?, expectedRevision: String?, documentRevision: String?) {
+        self.pluginID = pluginID
+        self.command = command
+        self.taskIDs = taskIDs
+        self.title = title
+        self.due = due
+        self.expectedRevision = expectedRevision
+        self.documentRevision = documentRevision
+    }
 }
