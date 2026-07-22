@@ -1347,6 +1347,17 @@ struct SettingsView: View {
             agentEndpointStatus = store.appLanguage == .english ? "Enter a valid Base URL" : "請輸入有效的 Base URL"
             return
         }
+        // Reject insecure remote endpoints at save time (not only at send time) — same rule the
+        // transport enforces: https required, http only for loopback.
+        do {
+            try AgentEndpointSecurity.assertSecure(baseURL)
+        } catch {
+            agentEndpointConfigured = false
+            agentEndpointStatus = store.appLanguage == .english
+                ? "Remote endpoints must use https (http only for localhost)"
+                : "遠端必須使用 https(http 僅限 localhost)"
+            return
+        }
         guard !model.isEmpty else {
             agentEndpointConfigured = false
             agentEndpointStatus = store.appLanguage == .english ? "Model is required" : "請填寫 Model"

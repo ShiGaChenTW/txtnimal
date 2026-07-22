@@ -1,7 +1,7 @@
 import Foundation
 
-enum AgentEndpointSecurity {
-    static func assertSecure(_ url: URL) throws {
+public enum AgentEndpointSecurity {
+    public static func assertSecure(_ url: URL) throws {
         switch url.scheme?.lowercased() {
         case "https":
             return
