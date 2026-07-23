@@ -155,6 +155,25 @@ final class AgentChatClientTests: XCTestCase {
         XCTAssertEqual(final, .actions([.reschedule(taskID: "task-1", newDue: "2026-07-25")], assistantNote: nil))
     }
 
+    func testStreamCombinesMultiLineDataEventIntoOneJSON() async throws {
+        // A single SSE event whose JSON is split across two data: lines must be joined, not
+        // decoded per line (each line alone is invalid JSON).
+        let sse = "data: {\"choices\":[{\"delta\":\n"
+                + "data: {\"content\":\"Hi\"}}]}\n\n"
+                + "data: [DONE]\n\n"
+        ChatMockURLProtocol.handler = { request in
+            (try self.response(for: request, statusCode: 200), Data(sse.utf8))
+        }
+        let (client, session) = makeClient()
+        defer { session.invalidateAndCancel() }
+
+        var final: AgentChatReply?
+        for try await event in client.stream(messages: [.init(role: .user, content: "Hi")]) {
+            if case .completed(let reply) = event { final = reply }
+        }
+        XCTAssertEqual(final, .text("Hi"))
+    }
+
     func testParsesAddAndMixedToolCalls() async throws {
         ChatMockURLProtocol.handler = { request in
             (try self.response(for: request, statusCode: 200), Data(#"""

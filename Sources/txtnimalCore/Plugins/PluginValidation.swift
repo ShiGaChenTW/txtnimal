@@ -145,9 +145,11 @@ public enum PluginValidator {
             guard Set(manifest.capabilities).contains(.tasksComplete) else {
                 throw PluginValidationError.missingCapability
             }
+            // documentRevision required: the whole-document optimistic lock is the freshness guard
+            // for these batch mutations (mirrors reschedule requiring a revision).
             guard !taskIDs.isEmpty, taskIDs.count <= limits.maximumQueryResults,
                   Set(taskIDs).count == taskIDs.count, taskIDs.allSatisfy(isScopedIdentifier),
-                  action.due == nil else {
+                  action.due == nil, action.documentRevision != nil else {
                 throw PluginValidationError.invalidAction
             }
         case .deleteTask:
@@ -156,7 +158,7 @@ public enum PluginValidator {
             }
             guard !taskIDs.isEmpty, taskIDs.count <= limits.maximumQueryResults,
                   Set(taskIDs).count == taskIDs.count, taskIDs.allSatisfy(isScopedIdentifier),
-                  action.due == nil else {
+                  action.due == nil, action.documentRevision != nil else {
                 throw PluginValidationError.invalidAction
             }
         case .retitleTask:
@@ -164,7 +166,7 @@ public enum PluginValidator {
                 throw PluginValidationError.missingCapability
             }
             guard taskIDs.count == 1, taskIDs.allSatisfy(isScopedIdentifier),
-                  let title, !title.isEmpty, action.due == nil else {
+                  let title, !title.isEmpty, action.due == nil, action.documentRevision != nil else {
                 throw PluginValidationError.invalidAction
             }
         }

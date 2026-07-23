@@ -636,17 +636,15 @@ final class TaskStore: ObservableObject {
                                          documentRevision: current.documentRevision)
         }
 
-        var lines = self.lines
-        for intent in intents {
-            let snapshot = TaskDocumentSnapshot(
-                lines: lines,
-                scratch: scratch,
-                archiveLines: archiveLines,
-                generation: generation,
-                tasksText: original.tasksText
-            )
-            lines = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: RelativeDate.todayYMD())
-        }
+        // Apply the whole batch against one snapshot so identity resolves once (no legacy-ID drift).
+        let snapshot = TaskDocumentSnapshot(
+            lines: self.lines,
+            scratch: scratch,
+            archiveLines: archiveLines,
+            generation: generation,
+            tasksText: original.tasksText
+        )
+        let lines = try PluginIntentApplier.applyBatch(intents, to: snapshot, todayYMD: RelativeDate.todayYMD())
         apply(try documentStore.save(lines: lines, expectedGeneration: context.generation))
         return intents.count
     }
@@ -734,26 +732,17 @@ final class TaskStore: ObservableObject {
         guard case .review(_, let intents) = agentState else { return }
         do {
             let original = documentStoreSnapshot()
-            var lines = self.lines
-
-            // Every batch intent was validated against the same pre-apply revision. Keep
-            // that revision stable while merging the in-memory results, then save once.
-            // (Legacy rows are resolved by identity inside the applier — no id: token is
-            // stamped into the file, so a reschedule changes only the due.)
-            for intent in intents {
-                let snapshot = TaskDocumentSnapshot(
-                    lines: lines,
-                    scratch: scratch,
-                    archiveLines: archiveLines,
-                    generation: generation,
-                    tasksText: original.tasksText
-                )
-                lines = try PluginIntentApplier.apply(
-                    intent,
-                    to: snapshot,
-                    todayYMD: RelativeDate.todayYMD()
-                )
-            }
+            // Apply the whole batch against one snapshot: identity resolves once, so legacy IDs
+            // don't drift between intents. Legacy rows resolve by identity — no id: token stamped.
+            let snapshot = TaskDocumentSnapshot(
+                lines: self.lines,
+                scratch: scratch,
+                archiveLines: archiveLines,
+                generation: generation,
+                tasksText: original.tasksText
+            )
+            let lines = try PluginIntentApplier.applyBatch(intents, to: snapshot,
+                                                           todayYMD: RelativeDate.todayYMD())
             self.apply(try documentStore.save(lines: lines, expectedGeneration: generation))
             refreshPluginExecutionRecords()
             agentState = .idle

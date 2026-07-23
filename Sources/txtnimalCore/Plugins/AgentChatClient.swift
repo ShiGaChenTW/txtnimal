@@ -115,25 +115,43 @@ public struct AgentChatClient: Sendable {
 
         var textAccum = ""
         var toolAccum: [Int: (name: String, args: String)] = [:]
-        for try await line in bytes.lines {
-            try Task.checkCancellation()
-            guard line.hasPrefix("data:") else { continue }
-            let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
-            if payload == "[DONE]" { break }
-            guard let data = payload.data(using: .utf8),
+
+        // Decode one fully-assembled SSE event's JSON and fold it into the accumulators. Both name
+        // and arguments concatenate across chunks — some endpoints fragment either.
+        func consume(_ payload: String) {
+            guard !payload.isEmpty,
+                  let data = payload.data(using: .utf8),
                   let chunk = try? JSONDecoder().decode(StreamChunk.self, from: data),
-                  let delta = chunk.choices?.first?.delta else { continue }
+                  let delta = chunk.choices?.first?.delta else { return }
             if let content = delta.content, !content.isEmpty {
                 textAccum += content
                 continuation.yield(.textDelta(content))
             }
             for call in delta.toolCalls ?? [] {
                 var entry = toolAccum[call.index] ?? (name: "", args: "")
-                if let name = call.function?.name, !name.isEmpty { entry.name = name }
+                if let name = call.function?.name { entry.name += name }
                 if let args = call.function?.arguments { entry.args += args }
                 toolAccum[call.index] = entry
             }
         }
+
+        // An SSE event may carry its JSON across multiple `data:` lines. Accumulate them and dispatch
+        // as soon as the joined payload is complete JSON — this handles both one-data-per-event
+        // (the common case) and split payloads without relying on blank-line separators, which the
+        // line sequence may not surface.
+        var eventPayload = ""
+        streamLoop: for try await line in bytes.lines {
+            try Task.checkCancellation()
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
+            if payload == "[DONE]" { break streamLoop }
+            eventPayload += eventPayload.isEmpty ? payload : "\n" + payload
+            if (try? JSONSerialization.jsonObject(with: Data(eventPayload.utf8))) != nil {
+                consume(eventPayload)
+                eventPayload = ""
+            }
+        }
+        consume(eventPayload)   // flush any trailing partial
 
         let trimmedText = textAccum.trimmingCharacters(in: .whitespacesAndNewlines)
         let note = trimmedText.isEmpty ? nil : trimmedText

@@ -28,6 +28,34 @@ final class PluginIntentApplierTests: XCTestCase {
         XCTAssertFalse(result[0].raw.contains("id:"))
     }
 
+    func testApplyBatchReschedulesDuplicateLegacyTasksIndependently() throws {
+        // Two identical legacy rows (no persisted id) — the pre-fix per-intent loop drifted and
+        // failed the second one. applyBatch resolves identity once, so both land correctly.
+        let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("Todo\nTodo"))
+        let built = try PluginSnapshotBuilder.build(from: snapshot)
+        let intents = [
+            ValidatedPluginIntent(pluginID: "t", command: .rescheduleTask, taskIDs: [built.tasks[0].id],
+                                  title: nil, due: "2026-07-25", expectedRevision: "r", documentRevision: snapshot.documentRevision),
+            ValidatedPluginIntent(pluginID: "t", command: .rescheduleTask, taskIDs: [built.tasks[1].id],
+                                  title: nil, due: "2026-07-26", expectedRevision: "r", documentRevision: snapshot.documentRevision),
+        ]
+        let result = try PluginIntentApplier.applyBatch(intents, to: snapshot, todayYMD: "2026-07-20")
+        XCTAssertEqual(result.map { $0.due }, ["2026-07-25", "2026-07-26"])
+    }
+
+    func testRetitleSanitizesInjectedControlTokens() throws {
+        let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("Original id:task-one due:2026-07-20"))
+        let intent = ValidatedPluginIntent(pluginID: "t", command: .retitleTask, taskIDs: ["task-one"],
+                                           title: "x Pwned due:2099-12-31 id:other\nsecond line", due: nil,
+                                           expectedRevision: nil, documentRevision: snapshot.documentRevision)
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+        XCTAssertEqual(result.count, 1)                 // no extra line injected via newline
+        XCTAssertFalse(result[0].isDone)                // leading "x" neutralized
+        XCTAssertEqual(result[0].due, "2026-07-20")     // due: token not injected
+        XCTAssertEqual(result[0].stableID, "task-one")  // id: token not injected
+        XCTAssertFalse(result[0].raw.contains("\n"))
+    }
+
     func testStaleIntentFailsWithoutMutation() throws {
         let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("One id:task-one"))
         let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .rescheduleOverdue,
