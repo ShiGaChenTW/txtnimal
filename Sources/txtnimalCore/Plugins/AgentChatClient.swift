@@ -37,10 +37,13 @@ public enum AgentChatStreamEvent: Equatable, Sendable {
 public struct AgentChatClient: Sendable {
     private let credentialStore: any AgentCredentialStore
     private let session: URLSession
+    private let streamTimeoutNanoseconds: UInt64
 
-    public init(credentialStore: any AgentCredentialStore, session: URLSession = .shared) {
+    public init(credentialStore: any AgentCredentialStore, session: URLSession = .shared,
+                streamTimeoutNanoseconds: UInt64 = 120_000_000_000) {
         self.credentialStore = credentialStore
         self.session = session
+        self.streamTimeoutNanoseconds = streamTimeoutNanoseconds
     }
 
     /// Sends the full conversation with the two reviewed task-mutation tools.
@@ -72,12 +75,24 @@ public struct AgentChatClient: Sendable {
                 do {
                     let config = try credentialStore.endpointConfig()
                     try AgentEndpointSecurity.assertSecure(config.baseURL)
-                    do {
-                        try await runStream(config: config, messages: messages, includesTools: true,
-                                            continuation: continuation)
-                    } catch StreamControl.toolUnsupported {
-                        try await runStream(config: config, messages: messages, includesTools: false,
-                                            continuation: continuation)
+                    // Wall-clock cap: an idle timeout can't catch a keepalive-fed stream that never
+                    // sends [DONE], so race the whole stream against a hard deadline instead.
+                    try await withThrowingTaskGroup(of: Void.self) { group in
+                        group.addTask {
+                            do {
+                                try await runStream(config: config, messages: messages,
+                                                    includesTools: true, continuation: continuation)
+                            } catch StreamControl.toolUnsupported {
+                                try await runStream(config: config, messages: messages,
+                                                    includesTools: false, continuation: continuation)
+                            }
+                        }
+                        group.addTask {
+                            try await Task.sleep(nanoseconds: streamTimeoutNanoseconds)
+                            throw AgentRunnerError.timedOut
+                        }
+                        try await group.next()
+                        group.cancelAll()
                     }
                     continuation.finish()
                 } catch {
@@ -101,7 +116,13 @@ public struct AgentChatClient: Sendable {
             "messages": messages.map { ["role": $0.role.rawValue, "content": $0.content] },
             "stream": true,
         ]
-        if includesTools { object["tools"] = Self.taskTools }
+        if includesTools {
+            object["tools"] = Self.taskTools
+            // gpt-5.x reasoning models reject function tools in chat/completions unless reasoning is
+            // off ("Function tools with reasoning_effort are not supported"). Disabling it also drops
+            // the reasoning latency. Models that reject the param 400 and fall back to text-only below.
+            object["reasoning_effort"] = "none"
+        }
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: object)
         } catch {
@@ -187,7 +208,11 @@ public struct AgentChatClient: Sendable {
                 "model": config.model,
                 "messages": messages.map { ["role": $0.role.rawValue, "content": $0.content] },
             ]
-            if includesTools { object["tools"] = Self.taskTools }
+            if includesTools {
+                object["tools"] = Self.taskTools
+                // See runStream: reasoning models need reasoning off to accept tools here.
+                object["reasoning_effort"] = "none"
+            }
             body = try JSONSerialization.data(withJSONObject: object)
         } catch {
             throw HTTPAgentTransportError.invalidRequest

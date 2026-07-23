@@ -26,10 +26,43 @@ private final class ChatMockURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+/// Sends a 200 SSE response with a keepalive line, then never finishes — simulates a stream that
+/// stays "alive" but never delivers [DONE], the case an inactivity timeout can't catch.
+private final class StallingSSEURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
+                                       headerFields: ["Content-Type": "text/event-stream"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data("data: ping\n\n".utf8))
+        // Deliberately never call urlProtocolDidFinishLoading.
+    }
+    override func stopLoading() {}
+}
+
 final class AgentChatClientTests: XCTestCase {
     override func tearDown() {
         ChatMockURLProtocol.handler = nil
         super.tearDown()
+    }
+
+    func testStreamTimesOutWhenServerNeverTerminates() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StallingSSEURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let credentials = InMemoryAgentCredentialStore(config: AgentEndpointConfig(
+            baseURL: URL(string: "https://llm.example/v1")!, apiKey: "k", model: "model-a"))
+        let client = AgentChatClient(credentialStore: credentials, session: session,
+                                     streamTimeoutNanoseconds: 200_000_000)
+        do {
+            for try await _ in client.stream(messages: [AgentChatMessage(role: .user, content: "hi")]) {}
+            XCTFail("expected the stream to time out")
+        } catch let error as AgentRunnerError {
+            XCTAssertEqual(error, .timedOut)
+        } catch {
+            XCTFail("expected AgentRunnerError.timedOut, got \(error)")
+        }
     }
 
     func testSuccessfulCompletionSendsFullConversationAndTaskTools() async throws {
