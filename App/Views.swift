@@ -312,7 +312,10 @@ struct RowView: View {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { store.toggleDone() }
         }
         .onTapGesture { store.cursor = index }
-        .contextMenu { TaskContextMenu(handle: store.handle(for: index), task: t, actions: contextActions) }
+        .background {
+            ThemedTaskContextMenuPresenter(handle: store.handle(for: index), task: t,
+                                           actions: contextActions, store: store)
+        }
     }
 
     /// checkbox 顏色跟隨分組(與分組標題同色系)
@@ -447,7 +450,10 @@ struct QuadrantView: View {
             }
             .onTapGesture { store.cursor = i }
             .onDrag { NSItemProvider(object: store.dragPayload(for: i) as NSString) }
-            .contextMenu { TaskContextMenu(handle: store.handle(for: i), task: t, actions: contextActions) }
+            .background {
+                ThemedTaskContextMenuPresenter(handle: store.handle(for: i), task: t,
+                                               actions: contextActions, store: store)
+            }
         }
     }
 
@@ -470,77 +476,242 @@ struct QuadrantView: View {
     }
 }
 
-private struct TaskContextMenu: View {
+private struct ThemedTaskContextMenuPresenter: NSViewRepresentable {
+    let handle: TaskHandle
+    let task: TaskLine
+    let actions: TaskContextActions
+    @ObservedObject var store: TaskStore
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> RightClickView {
+        let view = RightClickView()
+        configure(view, coordinator: context.coordinator)
+        return view
+    }
+
+    func updateNSView(_ view: RightClickView, context: Context) {
+        configure(view, coordinator: context.coordinator)
+    }
+
+    private func configure(_ view: RightClickView, coordinator: Coordinator) {
+        view.onRightClick = { [weak view] point in
+            guard let view else { return }
+            coordinator.show(from: view, point: point, handle: handle, task: task,
+                             actions: actions, store: store)
+        }
+    }
+
+    final class Coordinator {
+        private var popover: NSPopover?
+
+        func show(from view: NSView, point: NSPoint, handle: TaskHandle, task: TaskLine,
+                  actions: TaskContextActions, store: TaskStore) {
+            popover?.close()
+            let popover = NSPopover()
+            popover.behavior = .transient
+            popover.animates = false
+            let menu = ThemedTaskContextMenu(
+                handle: handle, task: task, actions: actions,
+                dismiss: { [weak popover] in popover?.close() }
+            )
+            .environmentObject(store)
+            let host = NSHostingController(rootView: menu)
+            popover.contentViewController = host
+            host.view.layoutSubtreeIfNeeded()
+            let fittingHeight = host.view.fittingSize.height
+            popover.contentSize = NSSize(width: 286, height: min(max(fittingHeight, 1), 560))
+            self.popover = popover
+
+            popover.show(relativeTo: NSRect(x: point.x, y: point.y, width: 1, height: 1),
+                         of: view, preferredEdge: .maxX)
+        }
+    }
+}
+
+/// 以 local monitor 觀察右鍵，不攔截 row 原本的左鍵與拖曳事件。
+private final class RightClickView: NSView {
+    var onRightClick: ((NSPoint) -> Void)?
+    private var monitor: Any?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        guard window != nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown]) { [weak self] event in
+            guard let self, let window = self.window,
+                  event.window === window,
+                  self.bounds.contains(self.convert(event.locationInWindow, from: nil)) else {
+                return event
+            }
+            self.onRightClick?(self.convert(event.locationInWindow, from: nil))
+            return event
+        }
+    }
+
+    deinit {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+    }
+}
+
+private struct ThemedTaskContextMenu: View {
+    private enum ExpandedSection { case due, quadrant, list, tag }
+
     @EnvironmentObject private var store: TaskStore
     let handle: TaskHandle
     let task: TaskLine
     let actions: TaskContextActions
+    let dismiss: () -> Void
+    @State private var expanded: ExpandedSection?
 
     var body: some View {
-        Button("編輯任務…") { actions.edit(handle) }
-            .disabled(task.isDone)
-        Button(task.isDone ? "取消完成" : "完成") { store.toggleDone(using: handle) }
-        Button(task.isFocused ? "取消 Focus" : "設為 Focus") { store.toggleFocus(using: handle) }
-            .disabled(task.isDone)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(task.title)
+                    .font(Theme.monoSmall).foregroundColor(Theme.dim)
+                    .lineLimit(2).padding(.horizontal, 12).padding(.vertical, 9)
+                separator
 
-        Divider()
+                actionRow("編輯任務…", symbol: "e", enabled: !task.isDone) { actions.edit(handle) }
+                actionRow(task.isDone ? "取消完成" : "完成", symbol: "x") {
+                    store.toggleDone(using: handle)
+                }
+                actionRow(task.isFocused ? "取消 Focus" : "設為 Focus", symbol: "f",
+                          color: Theme.focus, enabled: !task.isDone) {
+                    store.toggleFocus(using: handle)
+                }
+                separator
 
-        Menu("到期日") {
-            Button("今天") { store.setDue(store.todayYMD, using: handle) }
-            Button("明天") { store.setDue(date(daysFromToday: 1), using: handle) }
-            Button("下週") { store.setDue(date(daysFromToday: 7), using: handle) }
-            Divider()
-            Button("清除到期日") { store.setDue(nil, using: handle) }
-                .disabled(task.due == nil)
-        }
-        .disabled(task.isDone)
+                disclosureRow("到期日", symbol: "d", section: .due, enabled: !task.isDone)
+                if expanded == .due {
+                    childRow("今天") { store.setDue(store.todayYMD, using: handle) }
+                    childRow("明天") { store.setDue(date(daysFromToday: 1), using: handle) }
+                    childRow("下週") { store.setDue(date(daysFromToday: 7), using: handle) }
+                    childRow("清除到期日", enabled: task.due != nil) { store.setDue(nil, using: handle) }
+                }
 
-        Menu("象限") {
-            ForEach(1...4, id: \.self) { quadrant in
-                Button { store.setQuadrant(quadrant, using: handle) } label: {
-                    checkedLabel(task.quadrant == quadrant, "\(quadrant) \(quadrantName(quadrant))")
+                disclosureRow("象限", symbol: "q", section: .quadrant, enabled: !task.isDone)
+                if expanded == .quadrant {
+                    ForEach(1...4, id: \.self) { quadrant in
+                        childRow("\(quadrant) \(quadrantName(quadrant))",
+                                 checked: task.quadrant == quadrant) {
+                            store.setQuadrant(quadrant, using: handle)
+                        }
+                    }
+                    childRow(NSLocalizedString("未歸位", comment: "Task without a quadrant"),
+                             checked: task.quadrant == nil) {
+                        store.setQuadrant(nil, using: handle)
+                    }
+                }
+
+                disclosureRow("List", symbol: "+", section: .list, color: Theme.mag,
+                              enabled: !task.isDone)
+                if expanded == .list {
+                    if store.allProjects().isEmpty { emptyRow("尚無 List") }
+                    ForEach(store.allProjects(), id: \.self) { project in
+                        childRow("+\(project)", checked: task.projects.contains(project),
+                                 color: Theme.mag, dismissAfter: false) {
+                            store.setTag("+\(project)", enabled: !task.projects.contains(project), using: handle)
+                        }
+                    }
+                    childRow("編輯更多…") { actions.edit(handle) }
+                }
+
+                disclosureRow("Tag", symbol: "@", section: .tag, color: Theme.cyan,
+                              enabled: !task.isDone)
+                if expanded == .tag {
+                    if store.allContexts().isEmpty { emptyRow("尚無 Tag") }
+                    ForEach(store.allContexts(), id: \.self) { context in
+                        childRow("@\(context)", checked: task.contexts.contains(context),
+                                 color: Theme.cyan, dismissAfter: false) {
+                            store.setTag("@\(context)", enabled: !task.contexts.contains(context), using: handle)
+                        }
+                    }
+                    childRow("編輯更多…") { actions.edit(handle) }
+                }
+
+                separator
+                actionRow("複製任務文字", symbol: "y") { copyRawTask() }
+                actionRow("封存任務…", symbol: "a", color: Theme.yellow) {
+                    actions.confirmArchive(handle, task.title)
+                }
+                actionRow("永久刪除…", symbol: "!", color: Theme.red) {
+                    actions.confirmDelete(handle, task.title)
                 }
             }
-            Divider()
-            Button { store.setQuadrant(nil, using: handle) } label: {
-                checkedLabel(task.quadrant == nil, NSLocalizedString("未歸位", comment: "Task without a quadrant"))
-            }
         }
-        .disabled(task.isDone)
-
-        Menu("List") {
-            if store.allProjects().isEmpty { Text("尚無 List") }
-            ForEach(store.allProjects(), id: \.self) { project in
-                Button {
-                    store.setTag("+" + project, enabled: !task.projects.contains(project), using: handle)
-                } label: { checkedLabel(task.projects.contains(project), "+" + project) }
-            }
-            Divider()
-            Button("編輯更多…") { actions.edit(handle) }
-        }
-        .disabled(task.isDone)
-
-        Menu("Tag") {
-            if store.allContexts().isEmpty { Text("尚無 Tag") }
-            ForEach(store.allContexts(), id: \.self) { context in
-                Button {
-                    store.setTag("@" + context, enabled: !task.contexts.contains(context), using: handle)
-                } label: { checkedLabel(task.contexts.contains(context), "@" + context) }
-            }
-            Divider()
-            Button("編輯更多…") { actions.edit(handle) }
-        }
-        .disabled(task.isDone)
-
-        Divider()
-
-        Button("複製任務文字") { copyRawTask() }
-        Button("封存任務…") { actions.confirmArchive(handle, task.title) }
-        Button("刪除任務…", role: .destructive) { actions.confirmDelete(handle, task.title) }
+        .frame(width: 286)
+        .frame(maxHeight: 560)
+        .background(Theme.bg)
+        .overlay(Rectangle().stroke(Theme.border))
     }
 
-    @ViewBuilder private func checkedLabel(_ checked: Bool, _ title: String) -> some View {
-        if checked { Label(title, systemImage: "checkmark") } else { Text(title) }
+    private var separator: some View {
+        Rectangle().fill(Theme.border).frame(height: 1).padding(.vertical, 4)
+    }
+
+    private func actionRow(_ title: String, symbol: String, color: Color = Theme.fg,
+                           enabled: Bool = true, action: @escaping () -> Void) -> some View {
+        Button {
+            guard enabled else { return }
+            dismiss()
+            action()
+        } label: {
+            HStack(spacing: 9) {
+                Text(symbol).foregroundColor(enabled ? color : Theme.dim.opacity(0.45)).frame(width: 16)
+                Text(title).foregroundColor(enabled ? Theme.fg : Theme.dim.opacity(0.45))
+                Spacer()
+            }
+            .font(Theme.mono).padding(.horizontal, 10).padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(ThemedMenuButtonStyle(enabled: enabled))
+        .disabled(!enabled)
+    }
+
+    private func disclosureRow(_ title: String, symbol: String, section: ExpandedSection,
+                               color: Color = Theme.fg, enabled: Bool) -> some View {
+        Button {
+            guard enabled else { return }
+            expanded = expanded == section ? nil : section
+        } label: {
+            HStack(spacing: 9) {
+                Text(symbol).foregroundColor(enabled ? color : Theme.dim.opacity(0.45)).frame(width: 16)
+                Text(title).foregroundColor(enabled ? Theme.fg : Theme.dim.opacity(0.45))
+                Spacer()
+                Text(expanded == section ? "▾" : "▸").foregroundColor(Theme.dim)
+            }
+            .font(Theme.mono).padding(.horizontal, 10).padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(ThemedMenuButtonStyle(enabled: enabled))
+        .disabled(!enabled)
+    }
+
+    private func childRow(_ title: String, checked: Bool = false, color: Color = Theme.fg,
+                          enabled: Bool = true, dismissAfter: Bool = true,
+                          action: @escaping () -> Void) -> some View {
+        Button {
+            guard enabled else { return }
+            if dismissAfter { dismiss() }
+            action()
+        } label: {
+            HStack(spacing: 8) {
+                Text(checked ? "✓" : " ").foregroundColor(color).frame(width: 16)
+                Text(title).foregroundColor(enabled ? color : Theme.dim.opacity(0.45))
+                Spacer()
+            }
+            .font(Theme.monoSmall).padding(.leading, 27).padding(.trailing, 10).padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(ThemedMenuButtonStyle(enabled: enabled, nested: true))
+        .disabled(!enabled)
+    }
+
+    private func emptyRow(_ title: String) -> some View {
+        Text(title).font(Theme.monoSmall).foregroundColor(Theme.dim)
+            .padding(.leading, 51).padding(.vertical, 5)
     }
 
     private func quadrantName(_ quadrant: Int) -> String {
@@ -561,6 +732,18 @@ private struct TaskContextMenu: View {
         guard let current = store.task(using: handle) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(current.raw, forType: .string)
+    }
+}
+
+private struct ThemedMenuButtonStyle: ButtonStyle {
+    let enabled: Bool
+    var nested = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(configuration.isPressed && enabled
+                        ? (nested ? Theme.panel : Theme.selBg) : Color.clear)
     }
 }
 
