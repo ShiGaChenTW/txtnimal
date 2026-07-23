@@ -135,23 +135,29 @@ public struct AgentChatClient: Sendable {
             }
         }
 
-        // An SSE event may carry its JSON across multiple `data:` lines. Accumulate them and dispatch
-        // as soon as the joined payload is complete JSON — this handles both one-data-per-event
-        // (the common case) and split payloads without relying on blank-line separators, which the
-        // line sequence may not surface.
-        var eventPayload = ""
+        // An SSE event's JSON may span multiple `data:` lines. Accumulate and dispatch as soon as the
+        // joined payload is complete JSON — no reliance on blank-line separators (the line sequence
+        // may not surface them). Only keep a fragment that starts like JSON (`{`/`[`); anything else
+        // (e.g. a `data: ping` keepalive) is discarded so it can't poison later events. Bounded.
+        let maxPending = 512 * 1024
+        var pending = ""
         streamLoop: for try await line in bytes.lines {
             try Task.checkCancellation()
             guard line.hasPrefix("data:") else { continue }
             let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
             if payload == "[DONE]" { break streamLoop }
-            eventPayload += eventPayload.isEmpty ? payload : "\n" + payload
-            if (try? JSONSerialization.jsonObject(with: Data(eventPayload.utf8))) != nil {
-                consume(eventPayload)
-                eventPayload = ""
+            if payload.isEmpty { continue }
+            let candidate = pending.isEmpty ? payload : pending + "\n" + payload
+            if (try? JSONSerialization.jsonObject(with: Data(candidate.utf8))) != nil {
+                consume(candidate)
+                pending = ""
+            } else if let first = candidate.first(where: { !$0.isWhitespace }),
+                      first == "{" || first == "[", candidate.utf8.count <= maxPending {
+                pending = candidate               // partial JSON — keep assembling
+            } else {
+                pending = ""                       // non-JSON keepalive or overflow — drop
             }
         }
-        consume(eventPayload)   // flush any trailing partial
 
         let trimmedText = textAccum.trimmingCharacters(in: .whitespacesAndNewlines)
         let note = trimmedText.isEmpty ? nil : trimmedText

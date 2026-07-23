@@ -174,6 +174,24 @@ final class AgentChatClientTests: XCTestCase {
         XCTAssertEqual(final, .text("Hi"))
     }
 
+    func testStreamIgnoresNonJSONKeepaliveEvents() async throws {
+        // A `data: ping` keepalive must not poison the following real event.
+        let sse = "data: ping\n\n"
+                + "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n"
+                + "data: [DONE]\n\n"
+        ChatMockURLProtocol.handler = { request in
+            (try self.response(for: request, statusCode: 200), Data(sse.utf8))
+        }
+        let (client, session) = makeClient()
+        defer { session.invalidateAndCancel() }
+
+        var final: AgentChatReply?
+        for try await event in client.stream(messages: [.init(role: .user, content: "Hi")]) {
+            if case .completed(let reply) = event { final = reply }
+        }
+        XCTAssertEqual(final, .text("Hi"))
+    }
+
     func testParsesAddAndMixedToolCalls() async throws {
         ChatMockURLProtocol.handler = { request in
             (try self.response(for: request, statusCode: 200), Data(#"""

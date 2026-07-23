@@ -56,6 +56,20 @@ final class PluginIntentApplierTests: XCTestCase {
         XCTAssertFalse(result[0].raw.contains("\n"))
     }
 
+    func testRetitleSanitizesTabAndNoteInjection() throws {
+        let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("Original id:task-one"))
+        let intent = ValidatedPluginIntent(pluginID: "t", command: .retitleTask, taskIDs: ["task-one"],
+                                           title: "x\tPwned\tdue:2099-12-31\tnote:\"hacked\"", due: nil,
+                                           expectedRevision: nil, documentRevision: snapshot.documentRevision)
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+        XCTAssertEqual(result.count, 1)
+        XCTAssertFalse(result[0].isDone)                  // tab-separated "x" neutralized
+        XCTAssertNil(result[0].due)                       // tab-separated due: not injected
+        XCTAssertEqual(result[0].stableID, "task-one")
+        XCTAssertFalse(result[0].raw.contains("note:"))   // note: not injected
+        XCTAssertFalse(result[0].raw.contains("due:"))
+    }
+
     func testStaleIntentFailsWithoutMutation() throws {
         let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("One id:task-one"))
         let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .rescheduleOverdue,

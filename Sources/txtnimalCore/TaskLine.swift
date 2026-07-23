@@ -159,11 +159,13 @@ public struct TaskLine: Equatable {
     /// `+project`, `@context`). Prevents an agent-supplied title from injecting completion, dates,
     /// identity, tags, or extra task lines.
     public static func sanitizedTitle(_ text: String) -> String {
-        text.components(separatedBy: .newlines).joined(separator: " ")
-            .split(separator: " ").map(String.init)
+        // Split on ANY whitespace (space, tab, newline) — the tokenizer does, so space-only
+        // splitting would let a tab smuggle "x", "due:", etc. past the filter. Drop every word the
+        // tokenizer would treat as metadata: completion, +project, @context, note:"…", known key:.
+        text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
             .filter { word in
                 if word == "x" { return false }
-                if word.hasPrefix("+") || word.hasPrefix("@") { return false }
+                if word.hasPrefix("+") || word.hasPrefix("@") || word.hasPrefix("note:\"") { return false }
                 if let colon = word.firstIndex(of: ":"), colon != word.startIndex,
                    knownKeys.contains(String(word[..<colon])) { return false }
                 return true
