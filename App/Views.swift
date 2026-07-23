@@ -1,6 +1,7 @@
 import SwiftUI
 import txtnimalCore
 import AppKit
+import UniformTypeIdentifiers
 
 struct TaskContextActions {
     var edit: (TaskHandle) -> Void = { _ in }
@@ -18,7 +19,6 @@ extension EnvironmentValues {
         set { self[TaskContextActionsKey.self] = newValue }
     }
 }
-import UniformTypeIdentifiers
 
 // MARK: - ⌘1 主清單
 
@@ -753,6 +753,7 @@ struct AgentWorkspaceView: View {
     private enum Section {
         case schedule
         case chat
+        case report
     }
 
     @State private var section: Section = .schedule
@@ -764,8 +765,9 @@ struct AgentWorkspaceView: View {
             HStack(spacing: 8) {
                 sectionTab("排程", .schedule)
                 sectionTab("Chat", .chat)
+                sectionTab("報表", .report)
                 Spacer()
-                Text(section == .schedule ? "RESCHEDULE" : "READ-ONLY")
+                Text(sectionStatus)
                     .font(Theme.monoSmall).foregroundColor(Theme.dim)
             }
             .padding(.horizontal, 24).padding(.vertical, 10)
@@ -780,6 +782,11 @@ struct AgentWorkspaceView: View {
                 }
             case .chat:
                 AgentChatView(model: chatModel)
+            case .report:
+                ScrollView {
+                    ReportView()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
     }
@@ -795,6 +802,14 @@ struct AgentWorkspaceView: View {
                 .overlay(Rectangle().stroke(selected ? (Theme.isTerminal ? Theme.green.opacity(0.45) : Theme.border) : .clear))
         }
         .buttonStyle(.plain)
+    }
+
+    private var sectionStatus: LocalizedStringKey {
+        switch section {
+        case .schedule: return "RESCHEDULE"
+        case .chat: return "READ-ONLY"
+        case .report: return "REPORT"
+        }
     }
 }
 
@@ -1054,6 +1069,375 @@ struct AgentView: View {
         case .running: return Theme.cyan
         case .review: return Theme.yellow
         case .error: return Theme.red
+        }
+    }
+}
+
+struct ReportView: View {
+    @EnvironmentObject var store: TaskStore
+
+    @State private var templateID = ReportTemplate.builtIn[0].id
+    @State private var tweak = ""
+    @State private var isGenerating = false
+    @State private var report: String?
+    @State private var errorMessage: String?
+
+    @State private var pluginReportType = ReportTemplate.builtIn[0].id
+    @State private var pluginDoc: PluginPageDocument?
+    @State private var pluginError: String?
+
+    private static let taskReportManifest = PluginManifest(
+        id: "app.txtnimal.task-report", name: "Task Report", version: "0.1.0",
+        apiVersion: 1, entry: "main.js", capabilities: [.tasksAllRead, .uiPage],
+        pages: [PluginPageDeclaration(id: "task-report", title: "Task Report", entryFunction: "run")])
+
+    var body: some View {
+        let tasks = store.reportCandidateTasks()
+        VStack(alignment: .leading, spacing: 16) {
+            header
+            controls
+            taskSelection(tasks)
+            actionBar(tasks)
+            if isGenerating { progressView }
+            if let message = errorMessage { errorView(message) }
+            if let report { reportPanel(report) }
+            Divider().background(Theme.border)
+            pluginSection
+        }
+        .padding(.horizontal, 24).padding(.vertical, 22)
+        .frame(maxWidth: 760, minHeight: 420, alignment: .topLeading)
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Text("REPORT").font(Theme.monoSmall).tracking(1.8).foregroundColor(Theme.dim)
+            Rectangle().fill(Theme.border).frame(height: 1)
+            Text("MARKDOWN").font(Theme.monoSmall).foregroundColor(Theme.cyan)
+        }
+    }
+
+    private var controls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("選擇範本")
+                    .font(Theme.monoSmall).foregroundColor(Theme.dim)
+                Picker("", selection: $templateID) {
+                    ForEach(ReportTemplate.builtIn) { template in
+                        Text(LocalizedStringKey(template.name)).tag(template.id)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("補充要求")
+                    .font(Theme.monoSmall).foregroundColor(Theme.dim)
+                TextField(LocalizedStringKey("補充要求（可留空）"), text: $tweak)
+                    .textFieldStyle(.plain)
+                    .font(Theme.mono)
+                    .foregroundColor(Theme.fg)
+                    .padding(.horizontal, 10).padding(.vertical, 9)
+                    .background(Theme.panel)
+                    .overlay(Rectangle().stroke(Theme.border))
+            }
+        }
+    }
+
+    private func taskSelection(_ tasks: [PluginTaskSnapshot]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("選擇任務").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                Spacer()
+                if !store.reportSelection.isEmpty {
+                    Text("\(store.reportSelection.count) SELECTED")
+                        .font(Theme.monoSmall).foregroundColor(Theme.cyan)
+                }
+            }
+
+            if tasks.isEmpty {
+                Text("目前沒有可選任務。")
+                    .font(Theme.monoSmall).foregroundColor(Theme.dim)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.panel)
+                    .overlay(Rectangle().stroke(Theme.border))
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(tasks, id: \.id) { task in
+                        HStack(alignment: .top, spacing: 10) {
+                            Text(store.reportSelection.contains(task.id) ? "[✓]" : "[ ]")
+                                .font(Theme.monoSmall)
+                                .foregroundColor(store.reportSelection.contains(task.id) ? Theme.green : Theme.dim)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(task.title).foregroundColor(Theme.fg)
+                                HStack(spacing: 8) {
+                                    Text(task.due ?? "—")
+                                        .font(Theme.monoSmall)
+                                        .foregroundColor(task.due == nil ? Theme.dim : Theme.yellow)
+                                    Text(task.id)
+                                        .font(Theme.monoSmall)
+                                        .foregroundColor(Theme.dim.opacity(0.7))
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                        .background(store.reportSelection.contains(task.id) ? Theme.cursorBg.opacity(0.45) : .clear)
+                        .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
+                        .onTapGesture { store.toggleReportSelection(task.id) }
+                    }
+                }
+                .background(Theme.panel)
+                .overlay(Rectangle().stroke(Theme.border))
+            }
+        }
+    }
+
+    private func actionBar(_ tasks: [PluginTaskSnapshot]) -> some View {
+        HStack {
+            if store.reportSelection.isEmpty {
+                Text("尚未選取任務。")
+                    .font(Theme.monoSmall).foregroundColor(Theme.dim)
+            }
+            Spacer()
+            reportButton("產生", color: Theme.green) { generateReport(from: tasks) }
+                .disabled(isGenerating || tasksForReport(from: tasks).isEmpty)
+                .opacity(isGenerating || tasksForReport(from: tasks).isEmpty ? 0.4 : 1)
+            reportButton("匯出", color: Theme.yellow) { exportReport() }
+                .disabled(report == nil)
+                .opacity(report == nil ? 0.4 : 1)
+        }
+    }
+
+    private var progressView: some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            Text("正在產生報表…").foregroundColor(Theme.fg)
+        }
+        .padding(14)
+        .background(Theme.panel)
+        .overlay(Rectangle().stroke(Theme.border))
+    }
+
+    private func reportPanel(_ report: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("報表預覽").font(Theme.monoSmall).foregroundColor(Theme.dim)
+            ScrollView {
+                Text(report)
+                    .font(Theme.monoSmall)
+                    .foregroundColor(Theme.fg)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+            }
+            .frame(minHeight: 220)
+            .background(Theme.panel)
+            .overlay(Rectangle().stroke(Theme.border))
+        }
+    }
+
+    private func errorView(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("報表產生失敗").foregroundColor(Theme.red)
+            Text(message)
+                .font(Theme.monoSmall)
+                .foregroundColor(Theme.fg)
+                .textSelection(.enabled)
+        }
+        .padding(14)
+        .background(Theme.red.opacity(0.08))
+        .overlay(Rectangle().stroke(Theme.red.opacity(0.55)))
+    }
+
+    private func reportButton(_ title: LocalizedStringKey, color: Color,
+                              action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text("[") + Text(title) + Text("]")
+        }
+        .buttonStyle(.plain)
+        .font(Theme.monoSmall)
+        .foregroundColor(color)
+        .padding(.horizontal, 5).padding(.vertical, 3)
+        .contentShape(Rectangle())
+    }
+
+    private var selectedTemplate: ReportTemplate {
+        ReportTemplate.builtIn.first { $0.id == templateID } ?? ReportTemplate.builtIn[0]
+    }
+
+    private func tasksForReport(from tasks: [PluginTaskSnapshot]) -> [ReportTask] {
+        tasks.filter { store.reportSelection.contains($0.id) }
+            .map { ReportTask(id: $0.id, title: $0.title, due: $0.due, completed: $0.completed) }
+    }
+
+    private func generateReport(from tasks: [PluginTaskSnapshot]) {
+        let selectedTasks = tasksForReport(from: tasks)
+        guard !selectedTasks.isEmpty else { return }
+
+        isGenerating = true
+        errorMessage = nil
+        report = nil
+
+        let template = selectedTemplate
+        let tweak = tweak
+        Task {
+            do {
+                let generated = try await ReportGenerator(
+                    credentialStore: KeychainAgentCredentialStore()
+                ).generate(template: template, tweak: tweak, tasks: selectedTasks)
+                await MainActor.run {
+                    report = generated
+                    isGenerating = false
+                }
+            } catch {
+                await MainActor.run {
+                    report = nil
+                    isGenerating = false
+                    errorMessage = readableMessage(for: error)
+                }
+            }
+        }
+    }
+
+    private enum ExportOutcome { case cancelled, saved, failed(String) }
+
+    /// Shared NSSavePanel .md export. Callers route the outcome into their own
+    /// error state so the LLM report and the plugin page stay independent.
+    private func saveMarkdown(_ content: String, reportType: String) -> ExportOutcome {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "report-\(exportDateString())-\(reportType).md"
+        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText, .plainText]
+        guard panel.runModal() == .OK else { return .cancelled }
+        guard let url = panel.url else { return .failed("無法取得匯出位置。") }
+        do {
+            try content.write(to: url, atomically: true, encoding: .utf8)
+            return .saved
+        } catch {
+            return .failed(readableMessage(for: error))
+        }
+    }
+
+    private func exportReport() {
+        guard let report else {
+            errorMessage = "請先產生報表。"
+            return
+        }
+        switch saveMarkdown(report, reportType: templateID) {
+        case .cancelled: break
+        case .saved: errorMessage = nil
+        case .failed(let message): errorMessage = message
+        }
+    }
+
+    private var pluginSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("PLUGIN").font(Theme.monoSmall).tracking(1.8).foregroundColor(Theme.dim)
+                Rectangle().fill(Theme.border).frame(height: 1)
+                Text("DETERMINISTIC").font(Theme.monoSmall).foregroundColor(Theme.green)
+            }
+
+            Picker("", selection: $pluginReportType) {
+                ForEach(ReportTemplate.builtIn) { template in
+                    Text(LocalizedStringKey(template.name)).tag(template.id)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+
+            HStack {
+                Spacer()
+                reportButton("用 plugin 產生", color: Theme.cyan) { generatePluginReport() }
+                reportButton("匯出 .md", color: Theme.yellow) { exportPluginReport() }
+                    .disabled(pluginDoc == nil)
+                    .opacity(pluginDoc == nil ? 0.4 : 1)
+            }
+
+            if let pluginError {
+                Text(pluginError)
+                    .font(Theme.monoSmall)
+                    .foregroundColor(Theme.red)
+                    .textSelection(.enabled)
+            }
+
+            if let pluginDoc {
+                PluginPagePrototypeView(document: pluginDoc, manifest: Self.taskReportManifest,
+                                        onIntent: { _ in })
+                    .frame(minHeight: 260)
+                    .overlay(Rectangle().stroke(Theme.border))
+            }
+        }
+    }
+
+    private func generatePluginReport() {
+        do {
+            pluginDoc = try store.taskReportPluginPage(reportType: pluginReportType)
+            pluginError = nil
+        } catch {
+            pluginDoc = nil
+            pluginError = readableMessage(for: error)
+        }
+    }
+
+    private func exportPluginReport() {
+        guard let pluginDoc else {
+            pluginError = "請先用 plugin 產生報表。"
+            return
+        }
+        switch saveMarkdown(pluginMarkdown(from: pluginDoc), reportType: pluginReportType) {
+        case .cancelled: break
+        case .saved: pluginError = nil
+        case .failed(let message): pluginError = message
+        }
+    }
+
+    /// Flattens a plugin page document to markdown: sections → `##`, text → lines,
+    /// statCard/barChart → `**label：** value`, `• ` task lines → `- ` bullets.
+    private func pluginMarkdown(from document: PluginPageDocument) -> String {
+        var lines: [String] = []
+        func walk(_ node: PluginPageNode) {
+            switch node.type {
+            case .page:
+                if let title = node.title { lines.append("# \(title)"); lines.append("") }
+            case .section:
+                if let title = node.title { lines.append(""); lines.append("## \(title)") }
+            case .statCard:
+                lines.append("**\(node.title ?? "")：** \(node.value ?? "")")
+            case .barChart:
+                if let title = node.title { lines.append("**\(title)：** \(node.value ?? "")") }
+            case .text:
+                let value = node.value ?? node.title ?? ""
+                lines.append(value.hasPrefix("• ") ? "- " + value.dropFirst(2).description : value)
+            case .emptyState:
+                lines.append("_\(node.title ?? node.value ?? "")_")
+            case .divider:
+                lines.append("---")
+            case .taskList, .button, .form, .textField, .picker, .toggle, .spacer:
+                break
+            }
+            for child in node.children ?? [] { walk(child) }
+        }
+        walk(document.page)
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    private func exportDateString() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
+
+    private func readableMessage(for error: Error) -> String {
+        switch error {
+        case AgentCredentialStoreError.missingConfiguration:
+            return "尚未設定 Agent Endpoint。請先到設定填入 Base URL、API Key 與 Model。"
+        default:
+            return error.localizedDescription
         }
     }
 }

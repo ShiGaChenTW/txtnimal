@@ -216,6 +216,7 @@ final class TaskStore: ObservableObject {
     @Published var view: AppView = .list
     @Published private(set) var agentState: AgentState = .idle
     @Published var cursor: Int? = nil          // index into `lines`
+    @Published var reportSelection: Set<String> = []
     @Published var focusMode = false
     @Published var scratch = ""
     @Published var tagFilter: String? = nil   // "+project" 或 "@context";nil = 不篩選
@@ -777,6 +778,59 @@ final class TaskStore: ObservableObject {
     private func documentStoreSnapshot() -> TaskDocumentSnapshot {
         TaskDocumentSnapshot(lines: lines, scratch: scratch, archiveLines: archiveLines, generation: generation,
                              tasksText: TasksDocument.serialize(lines))
+    }
+
+    func reportCandidateTasks() -> [PluginTaskSnapshot] {
+        (try? PluginSnapshotBuilder.build(from: documentStoreSnapshot()))?.tasks ?? []
+    }
+
+    func toggleReportSelection(_ id: String) {
+        if reportSelection.contains(id) { reportSelection.remove(id) }
+        else { reportSelection.insert(id) }
+    }
+
+    func clearReportSelection() { reportSelection.removeAll() }
+
+    enum TaskReportPluginError: LocalizedError {
+        case sourceUnavailable
+        var errorDescription: String? {
+            switch self {
+            case .sourceUnavailable: return "找不到 task-report plugin 的程式碼。"
+            }
+        }
+    }
+
+    /// Runs the deterministic first-party task-report plugin in-process and returns
+    /// its declarative page document. Uses the FULL task snapshot, not the report
+    /// selection — the plugin aggregates across everything.
+    func taskReportPluginPage(reportType: String) throws -> PluginPageDocument {
+        let source = try loadTaskReportSource()
+        let snapshot = try PluginSnapshotBuilder.build(from: documentStoreSnapshot())
+        return try ReportPluginRunner().run(source: source, reportType: reportType,
+                                            snapshot: snapshot, todayYMD: Self.todayYMD())
+    }
+
+    private func loadTaskReportSource() throws -> String {
+        let pluginID = "app.txtnimal.task-report"
+        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
+            let entry = package.url.appendingPathComponent(package.manifest.entry)
+            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
+        }
+        let candidates = [
+            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "task-report"),
+            Bundle.main.url(forResource: "main", withExtension: "js"),
+        ]
+        for case let url? in candidates {
+            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
+        }
+        throw TaskReportPluginError.sourceUnavailable
+    }
+
+    static func todayYMD() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
     }
 
     func removeInstalledPlugin(_ package: InstalledPluginPackage) {

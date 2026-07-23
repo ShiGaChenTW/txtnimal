@@ -21,6 +21,7 @@ targets:
       - App
     resources:
       - path: App/Resources
+      - path: PluginFixtures/task-report
     dependencies:
       - package: txtnimalCore
         product: txtnimalCore
