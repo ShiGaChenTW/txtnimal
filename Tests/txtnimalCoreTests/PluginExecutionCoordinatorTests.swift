@@ -17,6 +17,7 @@ final class PluginExecutionCoordinatorTests: XCTestCase {
         XCTAssertEqual(intent.command, .rescheduleOverdue)
         let records = await coordinator.executionRecords()
         XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records.first?.status, .applied)
     }
 
     func testCoordinatorRejectsDuplicateResponseKeys() async throws {
@@ -30,5 +31,6 @@ final class PluginExecutionCoordinatorTests: XCTestCase {
         } catch { XCTAssertTrue(error is PluginJSONError) }
         let records = await coordinator.executionRecords()
         XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records.first?.status, .failed)
     }
 }

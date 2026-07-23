@@ -30,6 +30,8 @@ struct ContentView: View {
                     QuadrantView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if store.view == .dash {
                     DashboardView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if store.view == .agent {
+                    AgentWorkspaceView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView { body(for: store.view).frame(maxWidth: .infinity, alignment: .leading) }
                         .frame(maxHeight: .infinity)
@@ -164,7 +166,7 @@ struct ContentView: View {
         switch v {
         case .list: ListView()
         case .grid: QuadrantView()
-        case .pad:  ScratchView()
+        case .agent: AgentWorkspaceView()
         case .dash: DashboardView()
         case .settings: SettingsView()
         }
@@ -202,7 +204,7 @@ struct ContentView: View {
             // 寬度夠 → 整排頁籤;太窄一行放不下 → 自動收成主題化下拉選單。
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
-                    tab("⌘1 清單", .list); tab("⌘2 象限", .grid); tab("⌘3 便箋", .pad)
+                    tab("⌘1 清單", .list); tab("⌘2 象限", .grid); tab("⌘3 Agent", .agent)
                     tab("⌘4 統計", .dash); tab("⌘5 設定", .settings)
                 }
                 tabMenu
@@ -212,7 +214,7 @@ struct ContentView: View {
     }
 
     private static let headerTabs: [(String, AppView)] = [
-        ("⌘1 清單", .list), ("⌘2 象限", .grid), ("⌘3 便箋", .pad), ("⌘4 統計", .dash), ("⌘5 設定", .settings)
+        ("⌘1 清單", .list), ("⌘2 象限", .grid), ("⌘3 Agent", .agent), ("⌘4 統計", .dash), ("⌘5 設定", .settings)
     ]
     /// 窄版下拉選單:按鈕顯示目前頁面,展開的清單用 Theme 配色,與頁籤視覺一致。
     private var tabMenu: some View {
@@ -305,7 +307,7 @@ struct ContentView: View {
             switch store.view {
             case .list: return "↑↓ Move   ⌘E Edit   x Done   f Focus   n Add   / Search   ⌘K Commands"
             case .grid: return "1–4 Assign   0 Unassign   f Focus   z Zen   ⌘K Commands   ⌘1 List"
-            case .pad: return "Plain-text scratchpad · scratch.txt   ⌘1 Back to list"
+            case .agent: return "Agent · review every proposal before applying   ⌘1 Back to list"
             case .dash: return "Read-only stats · calculated from done: dates   esc / ⌘1 Back to list"
             case .settings: return "Settings · applied instantly   esc / ⌘1 Back to list"
             }
@@ -313,7 +315,7 @@ struct ContentView: View {
         switch store.view {
         case .list: return "↑↓ 移動   ⌘E 編輯   x 完成   f Focus   n 新增   / 搜尋   ⌘K 指令"
         case .grid: return "1–4 指派   0 回池   f Focus   z 專注   ⌘K 指令   ⌘1 清單"
-        case .pad:  return "純文字便箋 · scratch.txt   ⌘1 回清單"
+        case .agent: return "Agent · 提議一律先審後套   ⌘1 回清單"
         case .dash: return "唯讀統計 · 依 done: 日期計算   esc / ⌘1 回清單"
         case .settings: return "設定 · 即時生效   esc / ⌘1 回清單"
         }
@@ -765,7 +767,7 @@ struct ContentView: View {
             .init(name: "行距更緊", alias: "density compact tighter", keys: "[", run: { store.cycleDensity(-1) }),
             .init(name: "行距更鬆", alias: "density relaxed looser", keys: "]", run: { store.cycleDensity(1) }),
             .init(name: "清單視圖", alias: "list view", keys: "⌘1", run: { store.view = .list; store.ensureCursor() }),
-            .init(name: "便箋", alias: "scratch pad notes", keys: "⌘3", run: { store.view = .pad }),
+            .init(name: "Agent", alias: "agent ai reschedule", keys: "⌘3", run: { store.view = .agent }),
             .init(name: "象限視圖", alias: "quadrant grid matrix", keys: "⌘2", run: { store.view = .grid; store.ensureCursor() }),
             .init(name: "統計", alias: "stats dashboard charts", keys: "⌘4", run: { store.view = .dash }),
             .init(name: "深 / 淺主題", alias: "theme dark light appearance", keys: "⌘⇧T", run: { store.cycleAppearance() }),
@@ -905,14 +907,14 @@ struct ContentView: View {
         if showingCapture || showingAddProject { return e }
         // NSTextField 的 field editor 也是 NSTextView，且切頁後可能短暫保留；只在確實
         // 顯示文字輸入介面時放行，避免它吞掉清單的 n/e/x 等單鍵命令。
-        if store.inlineAddActive || store.view == .pad || store.view == .settings || store.searchActive { return e }
+        if store.inlineAddActive || store.view == .agent || store.view == .settings || store.searchActive { return e }
         let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)
         let chars = e.charactersIgnoringModifiers ?? ""
         if cmd {
             switch chars.lowercased() {
             case "1": store.view = .list; store.ensureCursor(); return nil
             case "2": store.view = .grid; store.ensureCursor(); return nil
-            case "3": store.view = .pad; return nil
+            case "3": store.view = .agent; return nil
             case "4": store.view = .dash; return nil
             case ",", "5": store.view = .settings; return nil
             case "b": store.view = .list; store.requestInlineAdd = true; return nil

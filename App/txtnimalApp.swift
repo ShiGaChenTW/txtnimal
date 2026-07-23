@@ -19,7 +19,7 @@ struct txtnimalApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("切到清單") { store.view = .list; store.ensureCursor() }.keyboardShortcut("1", modifiers: .command)
                 Button("切到象限") { store.view = .grid; store.ensureCursor() }.keyboardShortcut("4", modifiers: .command)
-                Button("切到便箋") { store.view = .pad }.keyboardShortcut("3", modifiers: .command)
+                Button("切到 Agent") { store.view = .agent }.keyboardShortcut("3", modifiers: .command)
             }
         }
 

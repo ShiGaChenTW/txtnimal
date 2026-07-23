@@ -154,6 +154,25 @@ public struct TaskLine: Equatable {
         if let id, !id.isEmpty { setValue(id, forKey: "id") } else { removeKey("id") }
     }
 
+    /// Reduce untrusted text to a safe single-line title: no line breaks, and no words that would
+    /// be reparsed as todo.txt control tokens (`x` completion, `due:`/`id:`/`done:`… keys,
+    /// `+project`, `@context`). Prevents an agent-supplied title from injecting completion, dates,
+    /// identity, tags, or extra task lines.
+    public static func sanitizedTitle(_ text: String) -> String {
+        // Split on ANY whitespace (space, tab, newline) — the tokenizer does, so space-only
+        // splitting would let a tab smuggle "x", "due:", etc. past the filter. Drop every word the
+        // tokenizer would treat as metadata: completion, +project, @context, note:"…", known key:.
+        text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+            .filter { word in
+                if word == "x" { return false }
+                if word.hasPrefix("+") || word.hasPrefix("@") || word.hasPrefix("note:\"") { return false }
+                if let colon = word.firstIndex(of: ":"), colon != word.startIndex,
+                   knownKeys.contains(String(word[..<colon])) { return false }
+                return true
+            }
+            .joined(separator: " ")
+    }
+
     /// Replace the task's title text while preserving metadata tokens (x, +project,
     /// @context, note:, known key:value). The edited line normalizes to
     /// `[x] title metadata…` (single-spaced) — only this one line changes.

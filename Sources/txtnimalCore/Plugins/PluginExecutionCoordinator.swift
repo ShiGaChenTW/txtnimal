@@ -14,16 +14,55 @@ public enum PluginExecutionError: LocalizedError, Equatable, Sendable {
     }
 }
 
+public enum PluginExecutionStatus: String, Codable, Equatable, Sendable {
+    case pending
+    case cancelled
+    case applied
+    case failed
+}
+
 public struct PluginExecutionRecord: Codable, Equatable, Sendable {
     public let pluginID: String
     public let command: String
-    public let succeeded: Bool
+    public let status: PluginExecutionStatus
     public let timestamp: Date
     public let error: String?
+    public var succeeded: Bool { status == .applied }
 
     public init(pluginID: String, command: String, succeeded: Bool, timestamp: Date = Date(), error: String? = nil) {
-        self.pluginID = pluginID; self.command = command; self.succeeded = succeeded
+        self.init(pluginID: pluginID, command: command, status: succeeded ? .applied : .failed,
+                  timestamp: timestamp, error: error)
+    }
+
+    public init(pluginID: String, command: String, status: PluginExecutionStatus,
+                timestamp: Date = Date(), error: String? = nil) {
+        self.pluginID = pluginID; self.command = command; self.status = status
         self.timestamp = timestamp; self.error = error
+    }
+
+    private enum CodingKeys: String, CodingKey { case pluginID, command, status, succeeded, timestamp, error }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        pluginID = try container.decode(String.self, forKey: .pluginID)
+        command = try container.decode(String.self, forKey: .command)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        error = try container.decodeIfPresent(String.self, forKey: .error)
+        if let decodedStatus = try container.decodeIfPresent(PluginExecutionStatus.self, forKey: .status) {
+            status = decodedStatus
+        } else {
+            status = try container.decode(Bool.self, forKey: .succeeded) ? .applied : .failed
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(pluginID, forKey: .pluginID)
+        try container.encode(command, forKey: .command)
+        try container.encode(status, forKey: .status)
+        try container.encode(succeeded, forKey: .succeeded)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encodeIfPresent(error, forKey: .error)
     }
 }
 
@@ -51,10 +90,10 @@ public actor PluginExecutionCoordinator {
             let intent = try PluginValidator.validate(action: action, manifest: manifest,
                                                       taskRevisions: taskRevisions,
                                                       documentRevision: documentRevision)
-            append(PluginExecutionRecord(pluginID: manifest.id, command: intent.command.rawValue, succeeded: true))
+            append(PluginExecutionRecord(pluginID: manifest.id, command: intent.command.rawValue, status: .applied))
             return intent
         } catch {
-            append(PluginExecutionRecord(pluginID: manifest.id, command: "unknown", succeeded: false,
+            append(PluginExecutionRecord(pluginID: manifest.id, command: "unknown", status: .failed,
                                          error: (error as? LocalizedError)?.errorDescription ?? String(describing: error)))
             throw error
         }

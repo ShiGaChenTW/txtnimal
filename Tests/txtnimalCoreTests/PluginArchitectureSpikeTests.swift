@@ -3,6 +3,76 @@ import XCTest
 @testable import txtnimalCore
 
 final class PluginArchitectureSpikeTests: XCTestCase {
+    func testAgentQueryCapabilityRoundTrips() throws {
+        let manifest = PluginManifest(id: "app.txtnimal.agent-test", name: "Agent Test", version: "1.0.0",
+                                      apiVersion: 1, entry: "main.js", capabilities: [.agentQuery])
+        let decoded = try JSONDecoder().decode(PluginManifest.self, from: JSONEncoder().encode(manifest))
+        XCTAssertEqual(decoded, manifest)
+        XCTAssertEqual(decoded.capabilities, [.agentQuery])
+    }
+
+    func testAgentQueryActionDecodesWithoutBreakingLegacyAction() throws {
+        let agentData = Data(#"{"type":"agentQuery","command":"agent.query","prompt":"Schedule tasks","taskIDs":["task-1"],"resultSchema":"[{taskID,newDue}]"}"#.utf8)
+        let agentAction = try JSONDecoder().decode(PluginAction.self, from: agentData)
+        XCTAssertEqual(agentAction.type, .agentQuery)
+        XCTAssertEqual(agentAction.prompt, "Schedule tasks")
+        XCTAssertEqual(agentAction.taskIDs, ["task-1"])
+        XCTAssertEqual(agentAction.resultSchema, "[{taskID,newDue}]")
+
+        let legacyData = Data(#"{"type":"hostCommand","command":"tasks.rescheduleOverdue","expectedRevision":"doc"}"#.utf8)
+        let legacyAction = try JSONDecoder().decode(PluginAction.self, from: legacyData)
+        XCTAssertEqual(legacyAction.type, .hostCommand)
+        XCTAssertNil(legacyAction.prompt)
+        XCTAssertNil(legacyAction.resultSchema)
+    }
+
+    func testCreateTaskActionRoundTripsWithOptionalTitle() throws {
+        let action = PluginAction(type: .hostCommand, command: PluginHostCommand.createTask.rawValue,
+                                  title: "Write launch notes", due: "2026-07-24",
+                                  documentRevision: "doc-revision")
+
+        let decoded = try JSONDecoder().decode(PluginAction.self, from: JSONEncoder().encode(action))
+
+        XCTAssertEqual(decoded, action)
+        XCTAssertEqual(decoded.title, "Write launch notes")
+
+        let legacyData = Data(#"{"type":"hostCommand","command":"tasks.rescheduleOverdue","expectedRevision":"doc"}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(PluginAction.self, from: legacyData).title)
+    }
+
+    func testCreateTaskValidationRequiresCapabilityTitleAndValidDue() throws {
+        let creator = try PluginValidator.decodeManifest(manifestJSON(capabilities: ["tasks.create"]))
+        let action = PluginAction(type: .hostCommand, command: PluginHostCommand.createTask.rawValue,
+                                  title: "  Write launch notes  ", due: "2026-07-24",
+                                  documentRevision: "doc-revision")
+
+        let intent = try PluginValidator.validate(action: action, manifest: creator,
+                                                  documentRevision: "doc-revision")
+        XCTAssertEqual(intent.command, .createTask)
+        XCTAssertEqual(intent.title, "Write launch notes")
+        XCTAssertEqual(intent.due, "2026-07-24")
+        XCTAssertTrue(intent.taskIDs.isEmpty)
+
+        let updater = try PluginValidator.decodeManifest(manifestJSON(capabilities: ["tasks.update"]))
+        assertValidationError(.missingCapability) {
+            try PluginValidator.validate(action: action, manifest: updater,
+                                         documentRevision: "doc-revision")
+        }
+        for invalid in [
+            PluginAction(type: .hostCommand, command: PluginHostCommand.createTask.rawValue,
+                         title: " \n ", documentRevision: "doc-revision"),
+            PluginAction(type: .hostCommand, command: PluginHostCommand.createTask.rawValue,
+                         title: "Write launch notes", due: "2026-02-30", documentRevision: "doc-revision"),
+            PluginAction(type: .hostCommand, command: PluginHostCommand.createTask.rawValue,
+                         taskIDs: ["task-1"], title: "Write launch notes", documentRevision: "doc-revision"),
+        ] {
+            assertValidationError(.invalidAction) {
+                try PluginValidator.validate(action: invalid, manifest: creator,
+                                             documentRevision: "doc-revision")
+            }
+        }
+    }
+
     func testApprovedFixturesShareManifestAndActionGate() throws {
         let commandRoot = fixture("reschedule-tomorrow")
         let commandManifest = try PluginValidator.decodeManifest(Data(contentsOf: commandRoot.appendingPathComponent("manifest.json")))

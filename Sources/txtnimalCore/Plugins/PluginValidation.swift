@@ -114,12 +114,21 @@ public enum PluginValidator {
         guard action.type == .hostCommand, let command = PluginHostCommand(rawValue: action.command) else {
             throw PluginValidationError.invalidAction
         }
-        guard Set(manifest.capabilities).contains(.tasksUpdate) else {
-            throw PluginValidationError.missingCapability
-        }
         let taskIDs = action.taskIDs ?? []
+        let title = action.title?.trimmingCharacters(in: .whitespacesAndNewlines)
         switch command {
+        case .createTask:
+            guard Set(manifest.capabilities).contains(.tasksCreate) else {
+                throw PluginValidationError.missingCapability
+            }
+            guard taskIDs.isEmpty, let title, !title.isEmpty,
+                  action.due.map(isISODate) ?? true else {
+                throw PluginValidationError.invalidAction
+            }
         case .rescheduleTask:
+            guard Set(manifest.capabilities).contains(.tasksUpdate) else {
+                throw PluginValidationError.missingCapability
+            }
             guard !taskIDs.isEmpty, taskIDs.count <= limits.maximumQueryResults,
                   Set(taskIDs).count == taskIDs.count, taskIDs.allSatisfy(isScopedIdentifier),
                   let due = action.due, isISODate(due), let expected = action.expectedRevision,
@@ -127,12 +136,59 @@ public enum PluginValidator {
                 throw PluginValidationError.invalidAction
             }
         case .rescheduleOverdue:
+            guard Set(manifest.capabilities).contains(.tasksUpdate) else {
+                throw PluginValidationError.missingCapability
+            }
             guard taskIDs.isEmpty, action.due == nil, let expected = action.expectedRevision,
                   documentRevision.map({ expected == $0 }) ?? true else { throw PluginValidationError.invalidAction }
+        case .completeTask:
+            guard Set(manifest.capabilities).contains(.tasksComplete) else {
+                throw PluginValidationError.missingCapability
+            }
+            // documentRevision required: the whole-document optimistic lock is the freshness guard
+            // for these batch mutations (mirrors reschedule requiring a revision).
+            guard !taskIDs.isEmpty, taskIDs.count <= limits.maximumQueryResults,
+                  Set(taskIDs).count == taskIDs.count, taskIDs.allSatisfy(isScopedIdentifier),
+                  action.due == nil, action.documentRevision != nil else {
+                throw PluginValidationError.invalidAction
+            }
+        case .deleteTask:
+            guard Set(manifest.capabilities).contains(.tasksDelete) else {
+                throw PluginValidationError.missingCapability
+            }
+            guard !taskIDs.isEmpty, taskIDs.count <= limits.maximumQueryResults,
+                  Set(taskIDs).count == taskIDs.count, taskIDs.allSatisfy(isScopedIdentifier),
+                  action.due == nil, action.documentRevision != nil else {
+                throw PluginValidationError.invalidAction
+            }
+        case .retitleTask:
+            guard Set(manifest.capabilities).contains(.tasksUpdate) else {
+                throw PluginValidationError.missingCapability
+            }
+            guard taskIDs.count == 1, taskIDs.allSatisfy(isScopedIdentifier),
+                  let title, !title.isEmpty, action.due == nil, action.documentRevision != nil else {
+                throw PluginValidationError.invalidAction
+            }
         }
         return ValidatedPluginIntent(pluginID: manifest.id, command: command, taskIDs: taskIDs,
-                                     due: action.due, expectedRevision: action.expectedRevision,
+                                     title: title, due: action.due, expectedRevision: action.expectedRevision,
                                      documentRevision: action.documentRevision)
+    }
+
+    public static func validateAgentQuery(action: PluginAction, manifest: PluginManifest,
+                                          limits: PluginLimits = .init()) throws {
+        guard Set(manifest.capabilities).contains(.agentQuery) else {
+            throw PluginValidationError.missingCapability
+        }
+        let taskIDs = action.taskIDs ?? []
+        guard action.type == .agentQuery, action.command == PluginCapability.agentQuery.rawValue,
+              let prompt = action.prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let schema = action.resultSchema, !schema.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let expectedRevision = action.expectedRevision, !expectedRevision.isEmpty,
+              !taskIDs.isEmpty, taskIDs.count <= limits.maximumQueryResults,
+              Set(taskIDs).count == taskIDs.count, taskIDs.allSatisfy(isScopedIdentifier) else {
+            throw PluginValidationError.invalidAction
+        }
     }
 
     private static func validateNode(_ node: PluginPageNode, depth: Int, isRoot: Bool,
@@ -203,7 +259,7 @@ public enum PluginValidator {
         }
         if node.keys.contains("action"), !(node["action"] is [String: Any]) { throw PluginValidationError.invalidNode }
         if let action = node["action"] as? [String: Any] {
-            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "due", "expectedRevision", "documentRevision"])
+            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "title", "due", "expectedRevision", "documentRevision", "prompt", "resultSchema"])
         }
         if node.keys.contains("children"), !(node["children"] is [[String: Any]]) { throw PluginValidationError.invalidNode }
         for child in node["children"] as? [[String: Any]] ?? [] { try validateNodeKeys(child) }
