@@ -147,15 +147,19 @@ public struct AgentChatClient: Sendable {
             let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
             if payload == "[DONE]" { break streamLoop }
             if payload.isEmpty { continue }
+            if payload.utf8.count > maxPending { pending = ""; continue }  // oversized single line — drop
             let candidate = pending.isEmpty ? payload : pending + "\n" + payload
-            if (try? JSONSerialization.jsonObject(with: Data(candidate.utf8))) != nil {
+            // Bound BEFORE parsing/consuming so a single oversized (even valid) payload can't be
+            // buffered or emitted.
+            if candidate.utf8.count > maxPending {
+                pending = ""                       // accumulated overflow — drop
+            } else if (try? JSONSerialization.jsonObject(with: Data(candidate.utf8))) != nil {
                 consume(candidate)
                 pending = ""
-            } else if let first = candidate.first(where: { !$0.isWhitespace }),
-                      first == "{" || first == "[", candidate.utf8.count <= maxPending {
+            } else if let first = candidate.first(where: { !$0.isWhitespace }), first == "{" || first == "[" {
                 pending = candidate               // partial JSON — keep assembling
             } else {
-                pending = ""                       // non-JSON keepalive or overflow — drop
+                pending = ""                       // non-JSON keepalive — drop
             }
         }
 

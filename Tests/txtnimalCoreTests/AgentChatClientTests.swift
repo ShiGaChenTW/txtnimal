@@ -192,6 +192,26 @@ final class AgentChatClientTests: XCTestCase {
         XCTAssertEqual(final, .text("Hi"))
     }
 
+    func testStreamDropsOversizedEventPayload() async throws {
+        // A single event payload beyond the size bound is dropped without being consumed, even
+        // though it is valid JSON.
+        let big = String(repeating: "a", count: 600_000)
+        let sse = "data: {\"choices\":[{\"delta\":{\"content\":\"\(big)\"}}]}\n\n"
+                + "data: [DONE]\n\n"
+        ChatMockURLProtocol.handler = { request in
+            (try self.response(for: request, statusCode: 200), Data(sse.utf8))
+        }
+        let (client, session) = makeClient()
+        defer { session.invalidateAndCancel() }
+
+        do {
+            for try await _ in client.stream(messages: [.init(role: .user, content: "x")]) {}
+            XCTFail("expected missingContent")
+        } catch {
+            XCTAssertEqual(error as? HTTPAgentTransportError, .missingContent)
+        }
+    }
+
     func testParsesAddAndMixedToolCalls() async throws {
         ChatMockURLProtocol.handler = { request in
             (try self.response(for: request, statusCode: 200), Data(#"""
