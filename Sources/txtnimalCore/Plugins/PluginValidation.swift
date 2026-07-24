@@ -191,6 +191,26 @@ public enum PluginValidator {
         }
     }
 
+    public static func validate(kvAction action: PluginAction, manifest: PluginManifest) throws -> ValidatedPluginKVWrite {
+        guard Set(manifest.capabilities).contains(.storageKV) else {
+            throw PluginValidationError.missingCapability
+        }
+        guard action.type == .kvSet,
+              action.command == PluginAction.kvSetCommand,
+              let key = action.key,
+              !key.isEmpty,
+              key.count <= PluginKVStore.maximumKeyLength,
+              let value = action.value,
+              value.utf8.count <= PluginKVStore.maximumValueBytes,
+              (action.taskIDs ?? []).isEmpty,
+              action.due == nil,
+              action.prompt == nil,
+              action.resultSchema == nil else {
+            throw PluginValidationError.invalidAction
+        }
+        return ValidatedPluginKVWrite(pluginID: manifest.id, key: key, value: value)
+    }
+
     private static func validateNode(_ node: PluginPageNode, depth: Int, isRoot: Bool,
                                      count: inout Int,
                                      ids: inout Set<String>, manifest: PluginManifest,
@@ -215,7 +235,13 @@ public enum PluginValidator {
             }
         }
         try validateFields(of: node)
-        if let action = node.action { _ = try validate(action: action, manifest: manifest) }
+        if let action = node.action {
+            if action.type == .kvSet {
+                _ = try validate(kvAction: action, manifest: manifest)
+            } else {
+                _ = try validate(action: action, manifest: manifest)
+            }
+        }
         let containerKinds: Set<PluginPageNode.Kind> = [.page, .section, .form]
         if !(node.children ?? []).isEmpty && !containerKinds.contains(node.type) {
             throw PluginValidationError.invalidNode
@@ -259,7 +285,7 @@ public enum PluginValidator {
         }
         if node.keys.contains("action"), !(node["action"] is [String: Any]) { throw PluginValidationError.invalidNode }
         if let action = node["action"] as? [String: Any] {
-            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "title", "due", "expectedRevision", "documentRevision", "prompt", "resultSchema"])
+            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "title", "due", "expectedRevision", "documentRevision", "prompt", "resultSchema", "key", "value"])
         }
         if node.keys.contains("children"), !(node["children"] is [[String: Any]]) { throw PluginValidationError.invalidNode }
         for child in node["children"] as? [[String: Any]] ?? [] { try validateNodeKeys(child) }

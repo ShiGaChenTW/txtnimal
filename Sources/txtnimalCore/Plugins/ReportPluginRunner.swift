@@ -54,13 +54,15 @@ public struct ReportPluginRunner {
         let reportType: String
         let tasks: [Task]
         let todayYMD: String
+        let kv: [String: String]
     }
 
     public init() {}
 
     public func run(source: String, reportType: String,
                     snapshot: PluginDocumentSnapshot, todayYMD: String,
-                    metadata: [String: TaskMetadata] = [:]) throws -> PluginPageDocument {
+                    metadata: [String: TaskMetadata] = [:],
+                    kv: [String: String] = [:]) throws -> PluginPageDocument {
         let input = Input(
             reportType: reportType,
             tasks: snapshot.tasks.map { task in
@@ -69,7 +71,8 @@ public struct ReportPluginRunner {
                                   completed: task.completed, lists: task.lists, tags: task.tags,
                                   created: meta?.created, done: meta?.done, q: meta?.quadrant)
             },
-            todayYMD: todayYMD)
+            todayYMD: todayYMD,
+            kv: kv)
 
         // Encode to a JSON string and hand it to JS via JSON.parse. This avoids the
         // Foundation<->JSValue bridging ambiguity where a Swift Bool arrives as a JS

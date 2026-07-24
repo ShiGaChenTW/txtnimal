@@ -1392,7 +1392,11 @@ struct ReportView: View {
 
             if let pluginDoc {
                 PluginPagePrototypeView(document: pluginDoc, manifest: Self.taskReportManifest,
-                                        onIntent: { _ in })
+                                        onIntent: { _ in },
+                                        onKVWrite: { write in
+                                            store.applyPluginKVWrite(write)
+                                            self.pluginDoc = try? store.taskReportPluginPage(reportType: pluginReportType)
+                                        })
                     .frame(minHeight: 260)
                     .overlay(Rectangle().stroke(Theme.border))
             }
@@ -1454,7 +1458,11 @@ struct ReportView: View {
 
             if let reviewsDoc {
                 PluginPagePrototypeView(document: reviewsDoc, manifest: Self.reviewsPackManifest,
-                                        onIntent: { _ in })
+                                        onIntent: { _ in },
+                                        onKVWrite: { write in
+                                            store.applyPluginKVWrite(write)
+                                            self.reviewsDoc = try? store.reviewsPackPluginPage(view: reviewsView)
+                                        })
                     .frame(minHeight: 260)
                     .overlay(Rectangle().stroke(Theme.border))
             }
@@ -1508,7 +1516,11 @@ struct ReportView: View {
 
             if let analyticsDoc {
                 PluginPagePrototypeView(document: analyticsDoc, manifest: Self.analyticsManifest,
-                                        onIntent: { _ in })
+                                        onIntent: { _ in },
+                                        onKVWrite: { write in
+                                            store.applyPluginKVWrite(write)
+                                            self.analyticsDoc = try? store.analyticsPluginPage()
+                                        })
                     .frame(minHeight: 260)
                     .overlay(Rectangle().stroke(Theme.border))
             }
@@ -1570,7 +1582,11 @@ struct ReportView: View {
 
             if let methodologyDoc {
                 PluginPagePrototypeView(document: methodologyDoc, manifest: Self.methodologyManifest,
-                                        onIntent: { _ in })
+                                        onIntent: { _ in },
+                                        onKVWrite: { write in
+                                            store.applyPluginKVWrite(write)
+                                            self.methodologyDoc = try? store.methodologyPluginPage(view: methodologyView)
+                                        })
                     .frame(minHeight: 260)
                     .overlay(Rectangle().stroke(Theme.border))
             }

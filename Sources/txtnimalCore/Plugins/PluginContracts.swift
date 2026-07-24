@@ -87,7 +87,10 @@ public enum PluginHostCommand: String, Codable, Equatable, Sendable {
 }
 
 public struct PluginAction: Codable, Equatable, Sendable {
-    public enum Kind: String, Codable, Sendable { case hostCommand, pluginAction, agentQuery }
+    public enum Kind: String, Codable, Sendable { case hostCommand, pluginAction, agentQuery, kvSet }
+
+    public static let kvSetCommand = "storage.kv.set"
+
     public let type: Kind
     public let command: String
     public let taskIDs: [String]?
@@ -97,14 +100,17 @@ public struct PluginAction: Codable, Equatable, Sendable {
     public let documentRevision: String?
     public let prompt: String?
     public let resultSchema: String?
+    public let key: String?
+    public let value: String?
 
     public init(type: Kind, command: String, taskIDs: [String]? = nil, title: String? = nil, due: String? = nil,
                 expectedRevision: String? = nil, documentRevision: String? = nil,
-                prompt: String? = nil, resultSchema: String? = nil) {
+                prompt: String? = nil, resultSchema: String? = nil, key: String? = nil, value: String? = nil) {
         self.type = type; self.command = command; self.taskIDs = taskIDs
         self.title = title
         self.due = due; self.expectedRevision = expectedRevision; self.documentRevision = documentRevision
         self.prompt = prompt; self.resultSchema = resultSchema
+        self.key = key; self.value = value
     }
 }
 
@@ -126,5 +132,17 @@ public struct ValidatedPluginIntent: Equatable, Sendable {
         self.due = due
         self.expectedRevision = expectedRevision
         self.documentRevision = documentRevision
+    }
+}
+
+public struct ValidatedPluginKVWrite: Equatable, Sendable {
+    public let pluginID: String
+    public let key: String
+    public let value: String
+
+    public init(pluginID: String, key: String, value: String) {
+        self.pluginID = pluginID
+        self.key = key
+        self.value = value
     }
 }

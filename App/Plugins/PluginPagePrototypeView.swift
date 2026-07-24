@@ -10,6 +10,7 @@ struct PluginPagePrototypeView: View {
     var taskRevisions: [String: String] = [:]
     var documentRevision: String?
     let onIntent: (ValidatedPluginIntent) -> Void
+    var onKVWrite: (ValidatedPluginKVWrite) -> Void = { _ in }
     var onValidationError: (Error) -> Void = { _ in }
 
     @State private var textValues: [String: String] = [:]
@@ -66,10 +67,15 @@ struct PluginPagePrototypeView: View {
             return AnyView(Button(node.title ?? "Action") {
                 guard let action = node.action else { return }
                 do {
-                    let intent = try PluginValidator.validate(action: action, manifest: manifest,
-                                                              taskRevisions: taskRevisions,
-                                                              documentRevision: documentRevision)
-                    onIntent(intent)
+                    if action.type == .kvSet {
+                        let write = try PluginValidator.validate(kvAction: action, manifest: manifest)
+                        onKVWrite(write)
+                    } else {
+                        let intent = try PluginValidator.validate(action: action, manifest: manifest,
+                                                                  taskRevisions: taskRevisions,
+                                                                  documentRevision: documentRevision)
+                        onIntent(intent)
+                    }
                 } catch {
                     onValidationError(error)
                 }

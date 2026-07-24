@@ -402,6 +402,7 @@ final class TaskStore: ObservableObject {
     private(set) var archiveURL: URL
     private var documentStore: FileSystemTaskDocumentStore
     private var pluginPackageStore: PluginPackageStore?
+    private var kvStore: PluginKVStore?
     private var pluginExecutionLogStore: PluginExecutionLogStore?
     private var generation: UInt64 = 0
     private var agentQueryTask: Task<Void, Never>?
@@ -441,6 +442,7 @@ final class TaskStore: ObservableObject {
             UserDefaults.standard.set(dir.path, forKey: "dataDir")
             UserDefaults.standard.set(documentStore.tasksURL.path, forKey: "activeTaskFile")
             fileURL = documentStore.tasksURL; scratchURL = documentStore.scratchURL; archiveURL = documentStore.archiveURL
+            kvStore = PluginKVStore(fileURL: dir.appendingPathComponent(".plugins", isDirectory: true).appendingPathComponent("kv.json"))
         } catch { report(error); return }
         bootstrapIfMissing()
         load()
@@ -458,6 +460,7 @@ final class TaskStore: ObservableObject {
         do { documentStore = try FileSystemTaskDocumentStore(directory: dir, tasksFilename: selectedFile.lastPathComponent) }
         catch { fatalError("Cannot initialize task document store: \(error)") }
         pluginPackageStore = try? PluginPackageStore(directory: dir.appendingPathComponent(".plugins", isDirectory: true))
+        kvStore = PluginKVStore(fileURL: dir.appendingPathComponent(".plugins", isDirectory: true).appendingPathComponent("kv.json"))
         pluginExecutionLogStore = try? PluginExecutionLogStore(directory: dir.appendingPathComponent(".plugins", isDirectory: true))
         refreshInstalledPlugins()
         refreshPluginExecutionRecords()
@@ -817,12 +820,14 @@ final class TaskStore: ObservableObject {
     /// its declarative page document. Uses the FULL task snapshot, not the report
     /// selection — the plugin aggregates across everything.
     func taskReportPluginPage(reportType: String) throws -> PluginPageDocument {
+        let pluginID = "app.txtnimal.task-report"
         let source = try loadTaskReportSource()
         let document = documentStoreSnapshot()
         let snapshot = try PluginSnapshotBuilder.build(from: document)
         return try ReportPluginRunner().run(source: source, reportType: reportType,
                                             snapshot: snapshot, todayYMD: Self.todayYMD(),
-                                            metadata: taskMetadataByID(document))
+                                            metadata: taskMetadataByID(document),
+                                            kv: kvStore?.namespace(for: pluginID) ?? [:])
     }
 
     private func loadTaskReportSource() throws -> String {
@@ -853,12 +858,14 @@ final class TaskStore: ObservableObject {
     /// Runs the deterministic first-party reviews-pack plugin in-process. `view` is the
     /// review selector (weekly / daily / stalled), carried on the shared reportType field.
     func reviewsPackPluginPage(view: String) throws -> PluginPageDocument {
+        let pluginID = "app.txtnimal.reviews-pack"
         let source = try loadReviewsPackSource()
         let document = documentStoreSnapshot()
         let snapshot = try PluginSnapshotBuilder.build(from: document)
         return try ReportPluginRunner().run(source: source, reportType: view,
                                             snapshot: snapshot, todayYMD: Self.todayYMD(),
-                                            metadata: taskMetadataByID(document))
+                                            metadata: taskMetadataByID(document),
+                                            kv: kvStore?.namespace(for: pluginID) ?? [:])
     }
 
     private func loadReviewsPackSource() throws -> String {
@@ -887,12 +894,14 @@ final class TaskStore: ObservableObject {
 
     /// Runs the deterministic first-party analytics plugin in-process.
     func analyticsPluginPage() throws -> PluginPageDocument {
+        let pluginID = "app.txtnimal.analytics"
         let source = try loadAnalyticsSource()
         let document = documentStoreSnapshot()
         let snapshot = try PluginSnapshotBuilder.build(from: document)
         return try ReportPluginRunner().run(source: source, reportType: "analytics",
                                             snapshot: snapshot, todayYMD: Self.todayYMD(),
-                                            metadata: taskMetadataByID(document))
+                                            metadata: taskMetadataByID(document),
+                                            kv: kvStore?.namespace(for: pluginID) ?? [:])
     }
 
     private func loadAnalyticsSource() throws -> String {
@@ -922,12 +931,27 @@ final class TaskStore: ObservableObject {
     /// Runs the deterministic first-party methodology plugin in-process. `view` is the
     /// methodology selector (eisenhower / para / gtd), carried on the shared reportType field.
     func methodologyPluginPage(view: String) throws -> PluginPageDocument {
+        let pluginID = "app.txtnimal.methodology"
         let source = try loadMethodologySource()
         let document = documentStoreSnapshot()
         let snapshot = try PluginSnapshotBuilder.build(from: document)
         return try ReportPluginRunner().run(source: source, reportType: view,
                                             snapshot: snapshot, todayYMD: Self.todayYMD(),
-                                            metadata: taskMetadataByID(document))
+                                            metadata: taskMetadataByID(document),
+                                            kv: kvStore?.namespace(for: pluginID) ?? [:])
+    }
+
+    func pluginKVNamespace(for pluginID: String) -> [String: String] {
+        kvStore?.namespace(for: pluginID) ?? [:]
+    }
+
+    func applyPluginKVWrite(_ write: ValidatedPluginKVWrite) {
+        guard let kvStore else { return }
+        do {
+            _ = try kvStore.applyWrite(write)
+        } catch {
+            report(error)
+        }
     }
 
     private func loadMethodologySource() throws -> String {
