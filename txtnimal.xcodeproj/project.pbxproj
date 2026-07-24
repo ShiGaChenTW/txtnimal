@@ -25,6 +25,7 @@
 		4CB3B67D54590C55F44EC731 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D7BE821495251F903C1400A /* Views.swift */; };
 		4EBF63D5D904F5D33E31F5F8 /* txtnimalCore in Frameworks */ = {isa = PBXBuildFile; productRef = B0EFAA1F2885CE491A83A5F1 /* txtnimalCore */; };
 		5283FA99D0C057CE9B18E112 /* txtnimal-icon-glass.png in Resources */ = {isa = PBXBuildFile; fileRef = D7857CC7C1C3E723CFB29839 /* txtnimal-icon-glass.png */; };
+		5BA0628F3E96397EE02ED11F /* nl-report in Resources */ = {isa = PBXBuildFile; fileRef = 3C66AA5412B226C8D1267873 /* nl-report */; };
 		6203FCE7F6196AE01291FE1D /* PluginRunnerXPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5EBADA571FE27D464BEEB5D /* PluginRunnerXPCProtocol.swift */; };
 		65DC76F3C171743FFB3E0FA0 /* txtnimalCore in Frameworks */ = {isa = PBXBuildFile; productRef = FECEC1DE15B60D012C1C7118 /* txtnimalCore */; };
 		7559D0C552CD69EDAB69C539 /* PluginRunnerSpikeService.xpc in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8D49C77D1CB3BE1779A38541 /* PluginRunnerSpikeService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -36,6 +37,7 @@
 		B07F30EF19EDC6792257A08F /* TerminalInputField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219CA0CE4DF8FD68D4B8568F /* TerminalInputField.swift */; };
 		D002B7EC05F0F888006ABDDE /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C38AA616E57879F425E8BE9 /* ContentView.swift */; };
 		D58AA272829FAD809D0BDE5A /* PluginRunnerSpikeService.xpc in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8D49C77D1CB3BE1779A38541 /* PluginRunnerSpikeService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		DD5AB2D40C302ECE9B984FDA /* export-pack in Resources */ = {isa = PBXBuildFile; fileRef = F2541EEF4FFB5E806B8C6406 /* export-pack */; };
 		E3447B56471317E2C713F8DE /* reviews-pack in Resources */ = {isa = PBXBuildFile; fileRef = D9F0FC9C451CE2A794BC0654 /* reviews-pack */; };
 		E7ABA4F87FB25A123F48CD28 /* PluginRunnerSpikeWorker.app in Resources */ = {isa = PBXBuildFile; fileRef = 310423B225950866ED6D3305 /* PluginRunnerSpikeWorker.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E96CD3F7F570B0698D4C0241 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 872010864B3BC1540FB2F3C2 /* Localizable.strings */; };
@@ -99,6 +101,7 @@
 		2EDD46564191FB0212C311B8 /* PluginRunnerSpikeHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PluginRunnerSpikeHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		30208CDC0896C7B20C5B2049 /* habit-tracker */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "habit-tracker"; path = "PluginFixtures/habit-tracker"; sourceTree = SOURCE_ROOT; };
 		310423B225950866ED6D3305 /* PluginRunnerSpikeWorker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PluginRunnerSpikeWorker.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3C66AA5412B226C8D1267873 /* nl-report */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "nl-report"; path = "PluginFixtures/nl-report"; sourceTree = SOURCE_ROOT; };
 		3C944F52C42BFBF12BA4BA2F /* EventKitRemindersSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventKitRemindersSource.swift; sourceTree = "<group>"; };
 		3D7BE821495251F903C1400A /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
 		42BF4B8D51ECE4F88443711C /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -127,6 +130,7 @@
 		D906BBCB857918EC5EC581F8 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		D9F0FC9C451CE2A794BC0654 /* reviews-pack */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "reviews-pack"; path = "PluginFixtures/reviews-pack"; sourceTree = SOURCE_ROOT; };
 		EC4B51654C0253094C5E5EFE /* methodology */ = {isa = PBXFileReference; lastKnownFileType = folder; name = methodology; path = PluginFixtures/methodology; sourceTree = SOURCE_ROOT; };
+		F2541EEF4FFB5E806B8C6406 /* export-pack */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "export-pack"; path = "PluginFixtures/export-pack"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -205,8 +209,10 @@
 			children = (
 				8AC60192D7BFD727E360A886 /* analytics */,
 				8336E28299055F85E391048D /* brain-dump */,
+				F2541EEF4FFB5E806B8C6406 /* export-pack */,
 				30208CDC0896C7B20C5B2049 /* habit-tracker */,
 				EC4B51654C0253094C5E5EFE /* methodology */,
+				3C66AA5412B226C8D1267873 /* nl-report */,
 				D9F0FC9C451CE2A794BC0654 /* reviews-pack */,
 				5D324614D2E965F0FAC63692 /* smart-triage */,
 				60FA87DE7F9834AE69676A84 /* task-report */,
@@ -428,8 +434,10 @@
 				E96CD3F7F570B0698D4C0241 /* Localizable.strings in Resources */,
 				9C31E0263E49A6D61B6BB229 /* analytics in Resources */,
 				1C685CDEBEED82FDDE355AC8 /* brain-dump in Resources */,
+				DD5AB2D40C302ECE9B984FDA /* export-pack in Resources */,
 				F22C07CA3C1A9A224F25AA45 /* habit-tracker in Resources */,
 				34F6680E2FFB4E88F68C7D79 /* methodology in Resources */,
+				5BA0628F3E96397EE02ED11F /* nl-report in Resources */,
 				E3447B56471317E2C713F8DE /* reviews-pack in Resources */,
 				1DE8F139E12ACC8835CDE867 /* smart-triage in Resources */,
 				01DD209FFC3196F4225E59AD /* task-report in Resources */,

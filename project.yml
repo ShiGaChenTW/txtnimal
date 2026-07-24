@@ -44,6 +44,12 @@ targets:
       - path: PluginFixtures/methodology
         buildPhase: resources
         type: folder
+      - path: PluginFixtures/nl-report
+        buildPhase: resources
+        type: folder
+      - path: PluginFixtures/export-pack
+        buildPhase: resources
+        type: folder
     resources:
       - path: App/Resources
     dependencies:

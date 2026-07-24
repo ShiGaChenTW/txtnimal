@@ -1,0 +1,10 @@
+{
+  "id": "app.txtnimal.export-pack",
+  "name": "Export Pack",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "entry": "main.js",
+  "capabilities": ["tasks.all.read", "ui.page", "export.write"],
+  "commands": [],
+  "pages": [{"id": "export-pack", "title": "Export Pack", "entryFunction": "run"}]
+}

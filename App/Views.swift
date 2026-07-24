@@ -1102,6 +1102,9 @@ struct ReportView: View {
     @State private var methodologyError: String?
     @State private var habitDoc: PluginPageDocument?
     @State private var habitError: String?
+    @State private var nlReportView = "weekly"
+    @State private var exportPackDoc: PluginPageDocument?
+    @State private var exportPackError: String?
 
     private static let taskReportManifest = PluginManifest(
         id: "app.txtnimal.task-report", name: "Task Report", version: "0.1.0",
@@ -1131,6 +1134,14 @@ struct ReportView: View {
         id: "app.txtnimal.smart-triage", name: "Smart Triage", version: "0.1.0",
         apiVersion: 1, entry: "main.js", capabilities: [.agentQuery, .tasksAllRead, .uiPage],
         pages: [PluginPageDeclaration(id: "smart-triage", title: "Smart Triage", entryFunction: "run")])
+    private static let nlReportManifest = PluginManifest(
+        id: "app.txtnimal.nl-report", name: "NL Report", version: "0.1.0",
+        apiVersion: 1, entry: "main.js", capabilities: [.agentQuery, .tasksAllRead, .uiPage, .exportWrite],
+        pages: [PluginPageDeclaration(id: "nl-report", title: "NL Report", entryFunction: "run")])
+    private static let exportPackManifest = PluginManifest(
+        id: "app.txtnimal.export-pack", name: "Export Pack", version: "0.1.0",
+        apiVersion: 1, entry: "main.js", capabilities: [.tasksAllRead, .uiPage, .exportWrite],
+        pages: [PluginPageDeclaration(id: "export-pack", title: "Export Pack", entryFunction: "run")])
 
     var body: some View {
         let tasks = store.reportCandidateTasks()
@@ -1156,6 +1167,10 @@ struct ReportView: View {
             brainDumpSection
             Divider().background(Theme.border)
             smartTriageSection
+            Divider().background(Theme.border)
+            nlReportSection
+            Divider().background(Theme.border)
+            exportPackSection
         }
         .padding(.horizontal, 24).padding(.vertical, 22)
         .frame(maxWidth: 760, minHeight: 420, alignment: .topLeading)
@@ -1789,6 +1804,114 @@ struct ReportView: View {
                     .frame(minHeight: 260)
                     .overlay(Rectangle().stroke(Theme.border))
             }
+        }
+    }
+
+    private var nlReportSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("自然語言報告").font(Theme.monoSmall).tracking(1.8).foregroundColor(Theme.dim)
+                Rectangle().fill(Theme.border).frame(height: 1)
+                Text("LLM").font(Theme.monoSmall).foregroundColor(Theme.green)
+            }
+
+            Picker("", selection: $nlReportView) {
+                Text("週報").tag("weekly")
+                Text("進度摘要").tag("progress")
+                Text("分類統計").tag("category")
+                Text("站會日報").tag("standup")
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+
+            HStack {
+                Spacer()
+                reportButton("產生報告", color: Theme.cyan) { store.generateNlReportInput(view: nlReportView) }
+            }
+
+            if store.nlReportLoading {
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text("正在請 AI 產生報告…").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                }
+            }
+
+            if let message = store.nlReportError {
+                Text(message)
+                    .font(Theme.monoSmall)
+                    .foregroundColor(Theme.red)
+                    .textSelection(.enabled)
+            }
+
+            if let doc = store.nlReportDoc {
+                PluginPagePrototypeView(document: doc, manifest: Self.nlReportManifest,
+                                        onIntent: { _ in },
+                                        onExport: { export in
+                                            switch exportArtifact(export) {
+                                            case .cancelled:
+                                                break
+                                            case .saved:
+                                                store.nlReportError = nil
+                                            case .failed(let message):
+                                                store.nlReportError = message
+                                            }
+                                        },
+                                        onAgentQuery: { query in
+                                            Task { await store.applyPluginNlReportQuery(query, view: nlReportView) }
+                                        },
+                                        onValidationError: { store.nlReportError = readableMessage(for: $0) })
+                    .frame(minHeight: 260)
+                    .overlay(Rectangle().stroke(Theme.border))
+            }
+        }
+    }
+
+    private var exportPackSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("匯出套件").font(Theme.monoSmall).tracking(1.8).foregroundColor(Theme.dim)
+                Rectangle().fill(Theme.border).frame(height: 1)
+                Text("ICS · CSV · MD").font(Theme.monoSmall).foregroundColor(Theme.green)
+            }
+
+            HStack {
+                Spacer()
+                reportButton("產生匯出套件", color: Theme.cyan) { generateExportPack() }
+            }
+
+            if let exportPackError {
+                Text(exportPackError)
+                    .font(Theme.monoSmall)
+                    .foregroundColor(Theme.red)
+                    .textSelection(.enabled)
+            }
+
+            if let exportPackDoc {
+                PluginPagePrototypeView(document: exportPackDoc, manifest: Self.exportPackManifest,
+                                        onIntent: { _ in },
+                                        onExport: { export in
+                                            switch exportArtifact(export) {
+                                            case .cancelled:
+                                                break
+                                            case .saved:
+                                                exportPackError = nil
+                                            case .failed(let message):
+                                                exportPackError = message
+                                            }
+                                        })
+                    .frame(minHeight: 260)
+                    .overlay(Rectangle().stroke(Theme.border))
+            }
+        }
+    }
+
+    private func generateExportPack() {
+        do {
+            exportPackDoc = try store.exportPackPluginPage()
+            exportPackError = nil
+        } catch {
+            exportPackDoc = nil
+            exportPackError = readableMessage(for: error)
         }
     }
 

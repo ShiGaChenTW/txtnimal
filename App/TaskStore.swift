@@ -220,6 +220,9 @@ final class TaskStore: ObservableObject {
     @Published private(set) var smartTriageDoc: PluginPageDocument?
     @Published var smartTriageError: String?
     @Published private(set) var smartTriageLoading = false
+    @Published private(set) var nlReportDoc: PluginPageDocument?
+    @Published var nlReportError: String?
+    @Published private(set) var nlReportLoading = false
     @Published var cursor: Int? = nil          // index into `lines`
     @Published var reportSelection: Set<String> = []
     @Published var focusMode = false
@@ -923,6 +926,43 @@ final class TaskStore: ObservableObject {
         throw ReviewsPackPluginError.sourceUnavailable
     }
 
+    enum ExportPackPluginError: LocalizedError {
+        case sourceUnavailable
+        var errorDescription: String? {
+            switch self {
+            case .sourceUnavailable: return "找不到 export-pack plugin 的程式碼。"
+            }
+        }
+    }
+
+    /// Runs the deterministic first-party export-pack plugin in-process. Produces a page whose
+    /// buttons carry export.write actions (.ics/.csv/.md to file or share); no agent.query.
+    func exportPackPluginPage() throws -> PluginPageDocument {
+        let pluginID = "app.txtnimal.export-pack"
+        let source = try loadExportPackSource()
+        let document = documentStoreSnapshot()
+        let snapshot = try PluginSnapshotBuilder.build(from: document)
+        return try ReportPluginRunner().run(source: source, reportType: "export-pack",
+                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
+                                            metadata: taskMetadataByID(document),
+                                            kv: kvStore?.namespace(for: pluginID) ?? [:])
+    }
+
+    private func loadExportPackSource() throws -> String {
+        let pluginID = "app.txtnimal.export-pack"
+        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
+            let entry = package.url.appendingPathComponent(package.manifest.entry)
+            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
+        }
+        let candidates = [
+            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "export-pack"),
+        ]
+        for case let url? in candidates {
+            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
+        }
+        throw ExportPackPluginError.sourceUnavailable
+    }
+
     enum AnalyticsPluginError: LocalizedError {
         case sourceUnavailable
         var errorDescription: String? {
@@ -1013,6 +1053,15 @@ final class TaskStore: ObservableObject {
         }
     }
 
+    enum NlReportPluginError: LocalizedError {
+        case sourceUnavailable
+        var errorDescription: String? {
+            switch self {
+            case .sourceUnavailable: return "找不到 nl-report plugin 的程式碼。"
+            }
+        }
+    }
+
     private static func brainDumpManifest() -> PluginManifest {
         PluginManifest(
             id: "app.txtnimal.brain-dump",
@@ -1037,6 +1086,18 @@ final class TaskStore: ObservableObject {
         )
     }
 
+    private static func nlReportManifest() -> PluginManifest {
+        PluginManifest(
+            id: "app.txtnimal.nl-report",
+            name: "NL Report",
+            version: "0.1.0",
+            apiVersion: 1,
+            entry: "main.js",
+            capabilities: [.agentQuery, .tasksAllRead, .uiPage, .exportWrite],
+            pages: [PluginPageDeclaration(id: "nl-report", title: "NL Report", entryFunction: "run")]
+        )
+    }
+
     func brainDumpPluginPage(agentResult: String? = nil) throws -> PluginPageDocument {
         let source = try loadBrainDumpSource()
         let document = documentStoreSnapshot()
@@ -1051,6 +1112,15 @@ final class TaskStore: ObservableObject {
         let document = documentStoreSnapshot()
         let snapshot = try PluginSnapshotBuilder.build(from: document)
         return try ReportPluginRunner().run(source: source, reportType: "smart-triage",
+                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
+                                            agentResult: agentResult)
+    }
+
+    func nlReportPluginPage(view: String, agentResult: String? = nil) throws -> PluginPageDocument {
+        let source = try loadNlReportSource()
+        let document = documentStoreSnapshot()
+        let snapshot = try PluginSnapshotBuilder.build(from: document)
+        return try ReportPluginRunner().run(source: source, reportType: view,
                                             snapshot: snapshot, todayYMD: Self.todayYMD(),
                                             agentResult: agentResult)
     }
@@ -1085,6 +1155,21 @@ final class TaskStore: ObservableObject {
         throw SmartTriagePluginError.sourceUnavailable
     }
 
+    private func loadNlReportSource() throws -> String {
+        let pluginID = "app.txtnimal.nl-report"
+        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
+            let entry = package.url.appendingPathComponent(package.manifest.entry)
+            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
+        }
+        let candidates = [
+            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "nl-report"),
+        ]
+        for case let url? in candidates {
+            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
+        }
+        throw NlReportPluginError.sourceUnavailable
+    }
+
     func generateBrainDumpInput() {
         brainDumpDoc = try? brainDumpPluginPage(agentResult: nil)
         brainDumpError = nil
@@ -1093,6 +1178,11 @@ final class TaskStore: ObservableObject {
     func generateSmartTriageInput() {
         smartTriageDoc = try? smartTriagePluginPage(agentResult: nil)
         smartTriageError = nil
+    }
+
+    func generateNlReportInput(view: String) {
+        nlReportDoc = try? nlReportPluginPage(view: view, agentResult: nil)
+        nlReportError = nil
     }
 
     @MainActor
@@ -1132,6 +1222,22 @@ final class TaskStore: ObservableObject {
             smartTriageDoc = try smartTriagePluginPage(agentResult: result.text)
         } catch {
             smartTriageError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    func applyPluginNlReportQuery(_ query: ValidatedAgentQuery, view: String) async {
+        nlReportLoading = true
+        nlReportError = nil
+        defer { nlReportLoading = false }
+
+        do {
+            let manifest = Self.nlReportManifest()
+            let broker = AgentQueryBroker(credentialStore: KeychainAgentCredentialStore())
+            let result = try await broker.query(prompt: query.prompt, resultSchema: query.resultSchema, manifest: manifest)
+            nlReportDoc = try nlReportPluginPage(view: view, agentResult: result.text)
+        } catch {
+            nlReportError = error.localizedDescription
         }
     }
 
