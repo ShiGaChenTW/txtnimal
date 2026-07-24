@@ -59,7 +59,15 @@ public enum PluginIntentApplier {
                     lines[i].setDue(todayYMD)
                 }
             case .completeTask:
-                for id in intent.taskIDs { lines[try index(for: id)].setDone(true, date: todayYMD) }
+                // Mirror TaskWorkspace.toggleDone: an open→done transition on a rec: line spawns one
+                // successor, so agent/plugin completion recurs like user completion. Capture the
+                // successor from the pre-done line; append (doesn't shift existing indices).
+                for id in intent.taskIDs {
+                    let i = try index(for: id)
+                    let successor = lines[i].isDone ? nil : lines[i].recurringSuccessor(completionYMD: todayYMD)
+                    lines[i].setDone(true, date: todayYMD)
+                    if let successor { lines.append(successor) }
+                }
             case .deleteTask:
                 for id in intent.taskIDs { deleteIndices.insert(try index(for: id)) }
             case .retitleTask:

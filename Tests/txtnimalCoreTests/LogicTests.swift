@@ -96,6 +96,14 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(out, "Call bank due:2026-07-10 +personal created:2026-07-09")
     }
 
+    // Quick capture accepts a rec: token and writes it through verbatim while still
+    // normalizing due: and stamping created:.
+    func testCaptureAcceptsRecToken() {
+        XCTAssertEqual(
+            Capture.makeTaskLine(from: "澆花 due:fri rec:1w", today: today, createdYMD: "2026-07-09", calendar: cal),
+            "澆花 due:2026-07-10 rec:1w created:2026-07-09")
+    }
+
     func testCaptureKeepsUnparseableDueAndPlainLine() {
         XCTAssertEqual(
             Capture.makeTaskLine(from: "Just a task", today: today, createdYMD: "2026-07-09", calendar: cal),

@@ -17,7 +17,7 @@ public struct TaskLine: Equatable {
     /// whitespace) reproduces `raw` exactly.
     private struct Segment { var ws: String; var word: String }
 
-    private static let knownKeys: Set<String> = ["due", "q", "focus", "created", "done", "id"]
+    private static let knownKeys: Set<String> = ["due", "q", "focus", "created", "done", "id", "rec"]
 
     private func tokenize() -> (segs: [Segment], trailing: String) {
         var segs: [Segment] = []
@@ -233,6 +233,23 @@ public struct TaskLine: Equatable {
             raw = Self.render(segs, trailing)
             removeKey("done")
         }
+    }
+
+    public func recurringSuccessor(completionYMD: String, calendar: Calendar = .current) -> TaskLine? {
+        guard let recValue = value(forKey: "rec"), let rule = RecurrenceRule.parse(recValue) else { return nil }
+        guard let nextDue = Recurrence.nextDue(base: due, rule: rule, completionYMD: completionYMD, calendar: calendar) else {
+            return nil
+        }
+
+        var words = title.split(separator: " ").map(String.init)
+        words.append(contentsOf: projects.map { "+" + $0 })
+        words.append(contentsOf: contexts.map { "@" + $0 })
+        words.append("due:\(nextDue)")
+        if let quadrant, (1...4).contains(quadrant) { words.append("q:\(quadrant)") }
+        words.append("rec:\(recValue)")
+        words.append("created:\(completionYMD)")
+        if let note { words.append("note:\"\(note)\"") }
+        return TaskLine(words.joined(separator: " "))
     }
 }
 

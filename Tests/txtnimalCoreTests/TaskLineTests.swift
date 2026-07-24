@@ -132,4 +132,22 @@ final class TaskLineTests: XCTestCase {
         XCTAssertEqual(task.quadrant, 1)
         XCTAssertEqual(task.raw, text)
     }
+
+    // `rec:` is a known token: valid forms are stripped from the title like due:/q:.
+    func testValidRecStrippedFromTitle() {
+        XCTAssertEqual(TaskLine("倒垃圾 due:2026-07-20 rec:3d").title, "倒垃圾")
+        XCTAssertEqual(TaskLine("週會 rec:+1w").title, "週會")
+    }
+
+    // Both valid and malformed rec: tokens round-trip byte-identical (the tokenizer preserves
+    // every word verbatim), and only well-formed values parse into a rule.
+    func testRecTokensRoundTripAndParse() {
+        let text = "a rec:1w\nb rec:+2d\nc rec:3x\nd rec:0d"
+        XCTAssertEqual(TasksDocument.serialize(TasksDocument.parse(text)), text)
+
+        XCTAssertEqual(RecurrenceRule.parse("1w"), RecurrenceRule(strict: false, count: 1, unit: .week))
+        XCTAssertEqual(RecurrenceRule.parse("+2d"), RecurrenceRule(strict: true, count: 2, unit: .day))
+        XCTAssertNil(RecurrenceRule.parse("3x"))
+        XCTAssertNil(RecurrenceRule.parse("0d"))
+    }
 }

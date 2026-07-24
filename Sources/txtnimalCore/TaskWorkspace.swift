@@ -24,7 +24,12 @@ public enum TaskWorkspaceError: LocalizedError, Equatable {
 }
 
 public enum TaskWorkspace {
-    public static func apply(_ command: TaskCommand, to snapshot: TaskDocumentSnapshot, todayYMD: String) throws -> [TaskLine] {
+    public static func apply(
+        _ command: TaskCommand,
+        to snapshot: TaskDocumentSnapshot,
+        todayYMD: String,
+        calendar: Calendar = .current
+    ) throws -> [TaskLine] {
         var lines = snapshot.lines
         func index(_ handle: TaskHandle) throws -> Int {
             guard handle.generation == snapshot.generation else { throw TaskWorkspaceError.staleHandle }
@@ -33,7 +38,13 @@ public enum TaskWorkspace {
         }
         switch command {
         case .toggleDone(let handle):
-            let i = try index(handle); lines[i].setDone(!lines[i].isDone, date: todayYMD)
+            let i = try index(handle)
+            let source = lines[i]
+            let wasOpen = !source.isDone
+            lines[i].setDone(wasOpen, date: todayYMD)
+            if wasOpen, let successor = source.recurringSuccessor(completionYMD: todayYMD, calendar: calendar) {
+                lines.append(successor)
+            }
         case .toggleFocus(let handle):
             let i = try index(handle)
             lines = TasksDocument.setFocus(lines, onIndex: lines[i].isFocused ? nil : i)

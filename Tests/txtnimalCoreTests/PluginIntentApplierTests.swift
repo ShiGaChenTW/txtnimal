@@ -11,6 +11,30 @@ final class PluginIntentApplierTests: XCTestCase {
         XCTAssertEqual(result.map(\.due), ["2026-07-22", "2026-07-20"])
     }
 
+    func testCompleteRecurringTaskViaAgentSpawnsSuccessor() throws {
+        // Agent/plugin completion must recur like user completion (TaskWorkspace.toggleDone).
+        let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("澆水 due:2026-07-20 rec:3d id:water-1"))
+        let intent = ValidatedPluginIntent(pluginID: "t", command: .completeTask, taskIDs: ["water-1"],
+                                           due: nil, expectedRevision: nil, documentRevision: snapshot.documentRevision)
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-24")
+        XCTAssertEqual(result.count, 2)                       // completed + one successor
+        XCTAssertTrue(result[0].isDone)
+        let successor = result[1]
+        XCTAssertFalse(successor.isDone)
+        XCTAssertEqual(successor.due, "2026-07-27")           // non-strict: completion 07-24 + 3d
+        XCTAssertTrue(successor.raw.contains("rec:3d"))
+        XCTAssertEqual(successor.title, "澆水")
+    }
+
+    func testCompleteNonRecurringTaskSpawnsNoSuccessor() throws {
+        let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("一次性 due:2026-07-20 id:once-1"))
+        let intent = ValidatedPluginIntent(pluginID: "t", command: .completeTask, taskIDs: ["once-1"],
+                                           due: nil, expectedRevision: nil, documentRevision: snapshot.documentRevision)
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-24")
+        XCTAssertEqual(result.count, 1)                       // no recurrence
+        XCTAssertTrue(result[0].isDone)
+    }
+
     func testRescheduleResolvesLegacyRowWithoutStampingID() throws {
         let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("Legacy task due:2026-07-20"))
         // The builder assigns a deterministic legacy id; reschedule must resolve it by identity
