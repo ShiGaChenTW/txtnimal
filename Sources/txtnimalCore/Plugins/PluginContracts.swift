@@ -146,3 +146,18 @@ public struct ValidatedPluginKVWrite: Equatable, Sendable {
         self.value = value
     }
 }
+
+/// A validated plugin-facing `agent.query`. Carries only the prompt and the requested result schema
+/// — never any credential or endpoint config. The host broker turns this into a network call; the
+/// plugin never sees the key or URL.
+public struct ValidatedAgentQuery: Equatable, Sendable {
+    public let pluginID: String
+    public let prompt: String
+    public let resultSchema: String
+
+    public init(pluginID: String, prompt: String, resultSchema: String) {
+        self.pluginID = pluginID
+        self.prompt = prompt
+        self.resultSchema = resultSchema
+    }
+}

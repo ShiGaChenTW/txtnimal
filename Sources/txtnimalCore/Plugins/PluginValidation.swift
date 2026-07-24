@@ -211,6 +211,32 @@ public enum PluginValidator {
         return ValidatedPluginKVWrite(pluginID: manifest.id, key: key, value: value)
     }
 
+    /// Validates a plugin-facing `agent.query` action (prompt + resultSchema) for the host broker.
+    /// Mirrors `validate(kvAction:)`: refuses when the `agent.query` capability is absent, requires the
+    /// right kind/command and non-empty prompt/schema, and forbids smuggling task-mutation fields.
+    /// This is the GENERIC broker path — distinct from `validateAgentQuery(action:manifest:limits:)`,
+    /// which validates the task-mutation agentQuery (with taskIDs + revision) used by `AgentRunner`.
+    public static func validate(agentQueryAction action: PluginAction, manifest: PluginManifest) throws -> ValidatedAgentQuery {
+        guard Set(manifest.capabilities).contains(.agentQuery) else {
+            throw PluginValidationError.missingCapability
+        }
+        guard action.type == .agentQuery,
+              action.command == PluginCapability.agentQuery.rawValue,
+              let prompt = action.prompt,
+              !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let resultSchema = action.resultSchema,
+              !resultSchema.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              (action.taskIDs ?? []).isEmpty,
+              action.due == nil,
+              action.expectedRevision == nil,
+              action.documentRevision == nil,
+              action.key == nil,
+              action.value == nil else {
+            throw PluginValidationError.invalidAction
+        }
+        return ValidatedAgentQuery(pluginID: manifest.id, prompt: prompt, resultSchema: resultSchema)
+    }
+
     private static func validateNode(_ node: PluginPageNode, depth: Int, isRoot: Bool,
                                      count: inout Int,
                                      ids: inout Set<String>, manifest: PluginManifest,

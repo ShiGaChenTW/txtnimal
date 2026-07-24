@@ -66,6 +66,22 @@ public struct AgentChatClient: Sendable {
         return try decodeReply(first.data)
     }
 
+    /// Sends the full conversation as a text-only completion without task tools.
+    public func complete(messages: [AgentChatMessage]) async throws -> String {
+        let config = try credentialStore.endpointConfig()
+        try AgentEndpointSecurity.assertSecure(config.baseURL)
+
+        let response = try await perform(config: config, messages: messages, includesTools: false)
+        guard (200..<300).contains(response.statusCode) else {
+            throw HTTPAgentTransportError.httpStatus(response.statusCode)
+        }
+        let reply = try decodeReply(response.data)
+        guard case .text(let content) = reply else { throw HTTPAgentTransportError.missingContent }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw HTTPAgentTransportError.missingContent }
+        return trimmed
+    }
+
     /// Streaming variant: yields text deltas as they arrive, then a single `.completed` event with
     /// the final reply (assembled text, or reviewed tool actions). tool_calls are accumulated across
     /// SSE chunks by index. Endpoints that reject `tools` are retried once as a text-only stream.
