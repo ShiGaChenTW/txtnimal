@@ -87,15 +87,21 @@ struct PluginPagePrototypeView: View {
                         let export = try PluginValidator.validate(exportAction: action, manifest: manifest)
                         onExport(export)
                     } else if action.type == .agentQuery {
-                        let userText = textValues.values
-                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                            .filter { !$0.isEmpty }
-                            .joined(separator: "\n")
-                        guard !userText.isEmpty else {
-                            onValidationError(BrainDumpInputError.emptyText)
-                            return
+                        let rawPrompt = action.prompt ?? ""
+                        let filled: String
+                        if rawPrompt.contains("{{input}}") {
+                            let userText = textValues.values
+                                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                                .filter { !$0.isEmpty }
+                                .joined(separator: "\n")
+                            guard !userText.isEmpty else {
+                                onValidationError(BrainDumpInputError.emptyText)
+                                return
+                            }
+                            filled = rawPrompt.replacingOccurrences(of: "{{input}}", with: userText)
+                        } else {
+                            filled = rawPrompt
                         }
-                        let filled = (action.prompt ?? "").replacingOccurrences(of: "{{input}}", with: userText)
                         let query = try PluginValidator.validate(agentQueryAction: PluginAction(
                             type: .agentQuery,
                             command: action.command,

@@ -1127,6 +1127,10 @@ struct ReportView: View {
         id: "app.txtnimal.brain-dump", name: "Brain Dump", version: "0.1.0",
         apiVersion: 1, entry: "main.js", capabilities: [.agentQuery, .tasksCreate, .uiPage],
         pages: [PluginPageDeclaration(id: "brain-dump", title: "Brain Dump", entryFunction: "run")])
+    private static let smartTriageManifest = PluginManifest(
+        id: "app.txtnimal.smart-triage", name: "Smart Triage", version: "0.1.0",
+        apiVersion: 1, entry: "main.js", capabilities: [.agentQuery, .tasksAllRead, .uiPage],
+        pages: [PluginPageDeclaration(id: "smart-triage", title: "Smart Triage", entryFunction: "run")])
 
     var body: some View {
         let tasks = store.reportCandidateTasks()
@@ -1150,6 +1154,8 @@ struct ReportView: View {
             habitTrackerSection
             Divider().background(Theme.border)
             brainDumpSection
+            Divider().background(Theme.border)
+            smartTriageSection
         }
         .padding(.horizontal, 24).padding(.vertical, 22)
         .frame(maxWidth: 760, minHeight: 420, alignment: .topLeading)
@@ -1740,6 +1746,46 @@ struct ReportView: View {
                                             Task { await store.applyPluginBrainDumpQuery(query) }
                                         },
                                         onValidationError: { store.brainDumpError = readableMessage(for: $0) })
+                    .frame(minHeight: 260)
+                    .overlay(Rectangle().stroke(Theme.border))
+            }
+        }
+    }
+
+    private var smartTriageSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("智慧分流").font(Theme.monoSmall).tracking(1.8).foregroundColor(Theme.dim)
+                Rectangle().fill(Theme.border).frame(height: 1)
+                Text("排序").font(Theme.monoSmall).foregroundColor(Theme.green)
+            }
+
+            HStack {
+                Spacer()
+                reportButton("開始分流", color: Theme.cyan) { store.generateSmartTriageInput() }
+            }
+
+            if store.smartTriageLoading {
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text("正在請 AI 排序…").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                }
+            }
+
+            if let message = store.smartTriageError {
+                Text(message)
+                    .font(Theme.monoSmall)
+                    .foregroundColor(Theme.red)
+                    .textSelection(.enabled)
+            }
+
+            if let doc = store.smartTriageDoc {
+                PluginPagePrototypeView(document: doc, manifest: Self.smartTriageManifest,
+                                        onIntent: { _ in },
+                                        onAgentQuery: { query in
+                                            Task { await store.applyPluginSmartTriageQuery(query) }
+                                        },
+                                        onValidationError: { store.smartTriageError = readableMessage(for: $0) })
                     .frame(minHeight: 260)
                     .overlay(Rectangle().stroke(Theme.border))
             }

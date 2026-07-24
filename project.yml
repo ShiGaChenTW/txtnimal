@@ -38,6 +38,9 @@ targets:
       - path: PluginFixtures/brain-dump
         buildPhase: resources
         type: folder
+      - path: PluginFixtures/smart-triage
+        buildPhase: resources
+        type: folder
       - path: PluginFixtures/methodology
         buildPhase: resources
         type: folder

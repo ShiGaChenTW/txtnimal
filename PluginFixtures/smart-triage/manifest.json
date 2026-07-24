@@ -1,0 +1,10 @@
+{
+  "id": "app.txtnimal.smart-triage",
+  "name": "Smart Triage",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "entry": "main.js",
+  "capabilities": ["agent.query", "tasks.all.read", "ui.page"],
+  "commands": [],
+  "pages": [{"id": "smart-triage", "title": "Smart Triage", "entryFunction": "run"}]
+}

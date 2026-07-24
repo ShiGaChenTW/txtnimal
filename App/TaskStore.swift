@@ -217,6 +217,9 @@ final class TaskStore: ObservableObject {
     @Published private(set) var brainDumpDoc: PluginPageDocument?
     @Published var brainDumpError: String?
     @Published private(set) var brainDumpLoading = false
+    @Published private(set) var smartTriageDoc: PluginPageDocument?
+    @Published var smartTriageError: String?
+    @Published private(set) var smartTriageLoading = false
     @Published var cursor: Int? = nil          // index into `lines`
     @Published var reportSelection: Set<String> = []
     @Published var focusMode = false
@@ -1001,6 +1004,15 @@ final class TaskStore: ObservableObject {
         }
     }
 
+    enum SmartTriagePluginError: LocalizedError {
+        case sourceUnavailable
+        var errorDescription: String? {
+            switch self {
+            case .sourceUnavailable: return "找不到 smart-triage plugin 的程式碼。"
+            }
+        }
+    }
+
     private static func brainDumpManifest() -> PluginManifest {
         PluginManifest(
             id: "app.txtnimal.brain-dump",
@@ -1013,11 +1025,32 @@ final class TaskStore: ObservableObject {
         )
     }
 
+    private static func smartTriageManifest() -> PluginManifest {
+        PluginManifest(
+            id: "app.txtnimal.smart-triage",
+            name: "Smart Triage",
+            version: "0.1.0",
+            apiVersion: 1,
+            entry: "main.js",
+            capabilities: [.agentQuery, .tasksAllRead, .uiPage],
+            pages: [PluginPageDeclaration(id: "smart-triage", title: "Smart Triage", entryFunction: "run")]
+        )
+    }
+
     func brainDumpPluginPage(agentResult: String? = nil) throws -> PluginPageDocument {
         let source = try loadBrainDumpSource()
         let document = documentStoreSnapshot()
         let snapshot = try PluginSnapshotBuilder.build(from: document)
         return try ReportPluginRunner().run(source: source, reportType: "brain-dump",
+                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
+                                            agentResult: agentResult)
+    }
+
+    func smartTriagePluginPage(agentResult: String? = nil) throws -> PluginPageDocument {
+        let source = try loadSmartTriageSource()
+        let document = documentStoreSnapshot()
+        let snapshot = try PluginSnapshotBuilder.build(from: document)
+        return try ReportPluginRunner().run(source: source, reportType: "smart-triage",
                                             snapshot: snapshot, todayYMD: Self.todayYMD(),
                                             agentResult: agentResult)
     }
@@ -1037,9 +1070,29 @@ final class TaskStore: ObservableObject {
         throw BrainDumpPluginError.sourceUnavailable
     }
 
+    private func loadSmartTriageSource() throws -> String {
+        let pluginID = "app.txtnimal.smart-triage"
+        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
+            let entry = package.url.appendingPathComponent(package.manifest.entry)
+            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
+        }
+        let candidates = [
+            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "smart-triage"),
+        ]
+        for case let url? in candidates {
+            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
+        }
+        throw SmartTriagePluginError.sourceUnavailable
+    }
+
     func generateBrainDumpInput() {
         brainDumpDoc = try? brainDumpPluginPage(agentResult: nil)
         brainDumpError = nil
+    }
+
+    func generateSmartTriageInput() {
+        smartTriageDoc = try? smartTriagePluginPage(agentResult: nil)
+        smartTriageError = nil
     }
 
     @MainActor
@@ -1063,6 +1116,22 @@ final class TaskStore: ObservableObject {
             prepareAgentReview(intents)
         } catch {
             brainDumpError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    func applyPluginSmartTriageQuery(_ query: ValidatedAgentQuery) async {
+        smartTriageLoading = true
+        smartTriageError = nil
+        defer { smartTriageLoading = false }
+
+        do {
+            let manifest = Self.smartTriageManifest()
+            let broker = AgentQueryBroker(credentialStore: KeychainAgentCredentialStore())
+            let result = try await broker.query(prompt: query.prompt, resultSchema: query.resultSchema, manifest: manifest)
+            smartTriageDoc = try smartTriagePluginPage(agentResult: result.text)
+        } catch {
+            smartTriageError = error.localizedDescription
         }
     }
 
