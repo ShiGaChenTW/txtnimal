@@ -25,6 +25,7 @@
 		65DC76F3C171743FFB3E0FA0 /* txtnimalCore in Frameworks */ = {isa = PBXBuildFile; productRef = FECEC1DE15B60D012C1C7118 /* txtnimalCore */; };
 		7559D0C552CD69EDAB69C539 /* PluginRunnerSpikeService.xpc in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8D49C77D1CB3BE1779A38541 /* PluginRunnerSpikeService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		896504E5394E7BFE84DA5182 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 222BB1F05B96A3C8737A37FD /* Theme.swift */; };
+		9C31E0263E49A6D61B6BB229 /* analytics in Resources */ = {isa = PBXBuildFile; fileRef = 8AC60192D7BFD727E360A886 /* analytics */; };
 		9C9D007F6EC87E3290D8100A /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D906BBCB857918EC5EC581F8 /* WelcomeView.swift */; };
 		A2F38F194E2266B2ADBBC28E /* TaskFileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A2F40506DB1D415F559833 /* TaskFileBrowserView.swift */; };
 		AF44C1BB72B56D1C72476069 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42BF4B8D51ECE4F88443711C /* main.swift */; };
@@ -103,6 +104,7 @@
 		7D96B82095534EFEDA16F614 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8163C377B5331E6AD154137D /* txtnimal-icon-crt.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "txtnimal-icon-crt.png"; sourceTree = "<group>"; };
 		872010864B3BC1540FB2F3C2 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		8AC60192D7BFD727E360A886 /* analytics */ = {isa = PBXFileReference; lastKnownFileType = folder; name = analytics; path = PluginFixtures/analytics; sourceTree = SOURCE_ROOT; };
 		8D49C77D1CB3BE1779A38541 /* PluginRunnerSpikeService.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = PluginRunnerSpikeService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		93A2F40506DB1D415F559833 /* TaskFileBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskFileBrowserView.swift; sourceTree = "<group>"; };
 		97A0FE3DECEF2406BCDD875E /* txtnimal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = txtnimal.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -190,6 +192,7 @@
 		554CA5DA2D73C557C0B77E08 /* PluginFixtures */ = {
 			isa = PBXGroup;
 			children = (
+				8AC60192D7BFD727E360A886 /* analytics */,
 				D9F0FC9C451CE2A794BC0654 /* reviews-pack */,
 				60FA87DE7F9834AE69676A84 /* task-report */,
 			);
@@ -408,6 +411,7 @@
 			files = (
 				35465FF88456848FDA088208 /* Assets.xcassets in Resources */,
 				E96CD3F7F570B0698D4C0241 /* Localizable.strings in Resources */,
+				9C31E0263E49A6D61B6BB229 /* analytics in Resources */,
 				E3447B56471317E2C713F8DE /* reviews-pack in Resources */,
 				01DD209FFC3196F4225E59AD /* task-report in Resources */,
 				49F073F33178B3BC136B59B0 /* txtnimal-icon-crt.png in Resources */,

@@ -876,6 +876,40 @@ final class TaskStore: ObservableObject {
         throw ReviewsPackPluginError.sourceUnavailable
     }
 
+    enum AnalyticsPluginError: LocalizedError {
+        case sourceUnavailable
+        var errorDescription: String? {
+            switch self {
+            case .sourceUnavailable: return "找不到 analytics plugin 的程式碼。"
+            }
+        }
+    }
+
+    /// Runs the deterministic first-party analytics plugin in-process.
+    func analyticsPluginPage() throws -> PluginPageDocument {
+        let source = try loadAnalyticsSource()
+        let document = documentStoreSnapshot()
+        let snapshot = try PluginSnapshotBuilder.build(from: document)
+        return try ReportPluginRunner().run(source: source, reportType: "analytics",
+                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
+                                            metadata: taskMetadataByID(document))
+    }
+
+    private func loadAnalyticsSource() throws -> String {
+        let pluginID = "app.txtnimal.analytics"
+        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
+            let entry = package.url.appendingPathComponent(package.manifest.entry)
+            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
+        }
+        let candidates = [
+            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "analytics"),
+        ]
+        for case let url? in candidates {
+            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
+        }
+        throw AnalyticsPluginError.sourceUnavailable
+    }
+
     static func todayYMD() -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

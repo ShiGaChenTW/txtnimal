@@ -1088,6 +1088,8 @@ struct ReportView: View {
     @State private var reviewsView = "weekly"
     @State private var reviewsDoc: PluginPageDocument?
     @State private var reviewsError: String?
+    @State private var analyticsDoc: PluginPageDocument?
+    @State private var analyticsError: String?
 
     private static let taskReportManifest = PluginManifest(
         id: "app.txtnimal.task-report", name: "Task Report", version: "0.1.0",
@@ -1097,6 +1099,10 @@ struct ReportView: View {
         id: "app.txtnimal.reviews-pack", name: "Reviews Pack", version: "0.1.0",
         apiVersion: 1, entry: "main.js", capabilities: [.tasksAllRead, .uiPage],
         pages: [PluginPageDeclaration(id: "reviews-pack", title: "Reviews Pack", entryFunction: "run")])
+    private static let analyticsManifest = PluginManifest(
+        id: "app.txtnimal.analytics", name: "Analytics", version: "0.1.0",
+        apiVersion: 1, entry: "main.js", capabilities: [.tasksAllRead, .uiPage],
+        pages: [PluginPageDeclaration(id: "analytics", title: "Analytics", entryFunction: "run")])
 
     var body: some View {
         let tasks = store.reportCandidateTasks()
@@ -1112,6 +1118,8 @@ struct ReportView: View {
             pluginSection
             Divider().background(Theme.border)
             reviewsPackSection
+            Divider().background(Theme.border)
+            analyticsSection
         }
         .padding(.horizontal, 24).padding(.vertical, 22)
         .frame(maxWidth: 760, minHeight: 420, alignment: .topLeading)
@@ -1463,6 +1471,60 @@ struct ReportView: View {
         case .cancelled: break
         case .saved: reviewsError = nil
         case .failed(let message): reviewsError = message
+        }
+    }
+
+    private var analyticsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("ANALYTICS").font(Theme.monoSmall).tracking(1.8).foregroundColor(Theme.dim)
+                Rectangle().fill(Theme.border).frame(height: 1)
+                Text("METRICS").font(Theme.monoSmall).foregroundColor(Theme.green)
+            }
+
+            HStack {
+                Spacer()
+                reportButton("產生分析", color: Theme.cyan) { generateAnalytics() }
+                reportButton("匯出 .md", color: Theme.yellow) { exportAnalytics() }
+                    .disabled(analyticsDoc == nil)
+                    .opacity(analyticsDoc == nil ? 0.4 : 1)
+            }
+
+            if let analyticsError {
+                Text(analyticsError)
+                    .font(Theme.monoSmall)
+                    .foregroundColor(Theme.red)
+                    .textSelection(.enabled)
+            }
+
+            if let analyticsDoc {
+                PluginPagePrototypeView(document: analyticsDoc, manifest: Self.analyticsManifest,
+                                        onIntent: { _ in })
+                    .frame(minHeight: 260)
+                    .overlay(Rectangle().stroke(Theme.border))
+            }
+        }
+    }
+
+    private func generateAnalytics() {
+        do {
+            analyticsDoc = try store.analyticsPluginPage()
+            analyticsError = nil
+        } catch {
+            analyticsDoc = nil
+            analyticsError = readableMessage(for: error)
+        }
+    }
+
+    private func exportAnalytics() {
+        guard let analyticsDoc else {
+            analyticsError = "請先產生分析。"
+            return
+        }
+        switch saveMarkdown(pluginMarkdown(from: analyticsDoc), reportType: "analytics") {
+        case .cancelled: break
+        case .saved: analyticsError = nil
+        case .failed(let message): analyticsError = message
         }
     }
 

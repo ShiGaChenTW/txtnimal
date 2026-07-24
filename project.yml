@@ -29,6 +29,9 @@ targets:
       - path: PluginFixtures/reviews-pack
         buildPhase: resources
         type: folder
+      - path: PluginFixtures/analytics
+        buildPhase: resources
+        type: folder
     resources:
       - path: App/Resources
     dependencies:
