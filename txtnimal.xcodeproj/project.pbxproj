@@ -38,6 +38,7 @@
 		E7ABA4F87FB25A123F48CD28 /* PluginRunnerSpikeWorker.app in Resources */ = {isa = PBXBuildFile; fileRef = 310423B225950866ED6D3305 /* PluginRunnerSpikeWorker.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E96CD3F7F570B0698D4C0241 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 872010864B3BC1540FB2F3C2 /* Localizable.strings */; };
 		E9DB8B6082F4A85569443779 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C4BECBC7F1E608EE42DE9D /* main.swift */; };
+		F22C07CA3C1A9A224F25AA45 /* habit-tracker in Resources */ = {isa = PBXBuildFile; fileRef = 30208CDC0896C7B20C5B2049 /* habit-tracker */; };
 		F81B9535EEF400CF668A74D8 /* PluginRunnerXPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5EBADA571FE27D464BEEB5D /* PluginRunnerXPCProtocol.swift */; };
 		FA5A8A504275457049E426D8 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 434D01CD265E5A2ED23A2AC6 /* DashboardView.swift */; };
 /* End PBXBuildFile section */
@@ -94,6 +95,7 @@
 		219CA0CE4DF8FD68D4B8568F /* TerminalInputField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInputField.swift; sourceTree = "<group>"; };
 		222BB1F05B96A3C8737A37FD /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		2EDD46564191FB0212C311B8 /* PluginRunnerSpikeHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PluginRunnerSpikeHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		30208CDC0896C7B20C5B2049 /* habit-tracker */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "habit-tracker"; path = "PluginFixtures/habit-tracker"; sourceTree = SOURCE_ROOT; };
 		310423B225950866ED6D3305 /* PluginRunnerSpikeWorker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PluginRunnerSpikeWorker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3C944F52C42BFBF12BA4BA2F /* EventKitRemindersSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventKitRemindersSource.swift; sourceTree = "<group>"; };
 		3D7BE821495251F903C1400A /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
@@ -198,6 +200,7 @@
 			isa = PBXGroup;
 			children = (
 				8AC60192D7BFD727E360A886 /* analytics */,
+				30208CDC0896C7B20C5B2049 /* habit-tracker */,
 				EC4B51654C0253094C5E5EFE /* methodology */,
 				D9F0FC9C451CE2A794BC0654 /* reviews-pack */,
 				60FA87DE7F9834AE69676A84 /* task-report */,
@@ -418,6 +421,7 @@
 				35465FF88456848FDA088208 /* Assets.xcassets in Resources */,
 				E96CD3F7F570B0698D4C0241 /* Localizable.strings in Resources */,
 				9C31E0263E49A6D61B6BB229 /* analytics in Resources */,
+				F22C07CA3C1A9A224F25AA45 /* habit-tracker in Resources */,
 				34F6680E2FFB4E88F68C7D79 /* methodology in Resources */,
 				E3447B56471317E2C713F8DE /* reviews-pack in Resources */,
 				01DD209FFC3196F4225E59AD /* task-report in Resources */,

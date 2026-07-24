@@ -964,6 +964,42 @@ final class TaskStore: ObservableObject {
         throw AnalyticsPluginError.sourceUnavailable
     }
 
+    enum HabitTrackerPluginError: LocalizedError {
+        case sourceUnavailable
+        var errorDescription: String? {
+            switch self {
+            case .sourceUnavailable: return "找不到 habit-tracker plugin 的程式碼。"
+            }
+        }
+    }
+
+    /// Runs the deterministic first-party habit-tracker plugin in-process.
+    func habitTrackerPluginPage() throws -> PluginPageDocument {
+        let pluginID = "app.txtnimal.habit-tracker"
+        let source = try loadHabitTrackerSource()
+        let document = documentStoreSnapshot()
+        let snapshot = try PluginSnapshotBuilder.build(from: document)
+        return try ReportPluginRunner().run(source: source, reportType: "habit-tracker",
+                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
+                                            metadata: taskMetadataByID(document),
+                                            kv: kvStore?.namespace(for: pluginID) ?? [:])
+    }
+
+    private func loadHabitTrackerSource() throws -> String {
+        let pluginID = "app.txtnimal.habit-tracker"
+        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
+            let entry = package.url.appendingPathComponent(package.manifest.entry)
+            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
+        }
+        let candidates = [
+            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "habit-tracker"),
+        ]
+        for case let url? in candidates {
+            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
+        }
+        throw HabitTrackerPluginError.sourceUnavailable
+    }
+
     enum MethodologyPluginError: LocalizedError {
         case sourceUnavailable
         var errorDescription: String? {

@@ -32,6 +32,9 @@ targets:
       - path: PluginFixtures/analytics
         buildPhase: resources
         type: folder
+      - path: PluginFixtures/habit-tracker
+        buildPhase: resources
+        type: folder
       - path: PluginFixtures/methodology
         buildPhase: resources
         type: folder

@@ -1,0 +1,10 @@
+{
+  "id": "app.txtnimal.habit-tracker",
+  "name": "Habit Tracker",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "entry": "main.js",
+  "capabilities": ["storage.kv", "ui.page"],
+  "commands": [],
+  "pages": [{"id": "habit-tracker", "title": "Habit Tracker", "entryFunction": "run"}]
+}

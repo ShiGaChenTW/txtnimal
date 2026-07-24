@@ -1093,6 +1093,8 @@ struct ReportView: View {
     @State private var methodologyView = "gtd"
     @State private var methodologyDoc: PluginPageDocument?
     @State private var methodologyError: String?
+    @State private var habitDoc: PluginPageDocument?
+    @State private var habitError: String?
 
     private static let taskReportManifest = PluginManifest(
         id: "app.txtnimal.task-report", name: "Task Report", version: "0.1.0",
@@ -1106,6 +1108,10 @@ struct ReportView: View {
         id: "app.txtnimal.analytics", name: "Analytics", version: "0.1.0",
         apiVersion: 1, entry: "main.js", capabilities: [.tasksAllRead, .uiPage],
         pages: [PluginPageDeclaration(id: "analytics", title: "Analytics", entryFunction: "run")])
+    private static let habitTrackerManifest = PluginManifest(
+        id: "app.txtnimal.habit-tracker", name: "Habit Tracker", version: "0.1.0",
+        apiVersion: 1, entry: "main.js", capabilities: [.storageKV, .uiPage],
+        pages: [PluginPageDeclaration(id: "habit-tracker", title: "Habit Tracker", entryFunction: "run")])
     private static let methodologyManifest = PluginManifest(
         id: "app.txtnimal.methodology", name: "Methodology", version: "0.1.0",
         apiVersion: 1, entry: "main.js", capabilities: [.tasksAllRead, .uiPage],
@@ -1129,6 +1135,8 @@ struct ReportView: View {
             analyticsSection
             Divider().background(Theme.border)
             methodologySection
+            Divider().background(Theme.border)
+            habitTrackerSection
         }
         .padding(.horizontal, 24).padding(.vertical, 22)
         .frame(maxWidth: 760, minHeight: 420, alignment: .topLeading)
@@ -1614,6 +1622,74 @@ struct ReportView: View {
         case .cancelled: break
         case .saved: analyticsError = nil
         case .failed(let message): analyticsError = message
+        }
+    }
+
+    private var habitTrackerSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("習慣").font(Theme.monoSmall).tracking(1.8).foregroundColor(Theme.dim)
+                Rectangle().fill(Theme.border).frame(height: 1)
+                Text("打卡").font(Theme.monoSmall).foregroundColor(Theme.green)
+            }
+
+            HStack {
+                Spacer()
+                reportButton("產生習慣追蹤", color: Theme.cyan) { generateHabitTracker() }
+                reportButton("匯出 .md", color: Theme.yellow) { exportHabitTracker() }
+                    .disabled(habitDoc == nil)
+                    .opacity(habitDoc == nil ? 0.4 : 1)
+            }
+
+            if let habitError {
+                Text(habitError)
+                    .font(Theme.monoSmall)
+                    .foregroundColor(Theme.red)
+                    .textSelection(.enabled)
+            }
+
+            if let habitDoc {
+                PluginPagePrototypeView(document: habitDoc, manifest: Self.habitTrackerManifest,
+                                        onIntent: { _ in },
+                                        onKVWrite: { write in
+                                            store.applyPluginKVWrite(write)
+                                            self.habitDoc = try? store.habitTrackerPluginPage()
+                                        },
+                                        onExport: { export in
+                                            switch exportArtifact(export) {
+                                            case .cancelled:
+                                                break
+                                            case .saved:
+                                                habitError = nil
+                                            case .failed(let message):
+                                                habitError = message
+                                            }
+                                        })
+                    .frame(minHeight: 260)
+                    .overlay(Rectangle().stroke(Theme.border))
+            }
+        }
+    }
+
+    private func generateHabitTracker() {
+        do {
+            habitDoc = try store.habitTrackerPluginPage()
+            habitError = nil
+        } catch {
+            habitDoc = nil
+            habitError = readableMessage(for: error)
+        }
+    }
+
+    private func exportHabitTracker() {
+        guard let habitDoc else {
+            habitError = "請先產生習慣追蹤。"
+            return
+        }
+        switch saveMarkdown(pluginMarkdown(from: habitDoc), reportType: "habit-tracker") {
+        case .cancelled: break
+        case .saved: habitError = nil
+        case .failed(let message): habitError = message
         }
     }
 
