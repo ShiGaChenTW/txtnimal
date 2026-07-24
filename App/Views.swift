@@ -1331,19 +1331,57 @@ struct ReportView: View {
 
     private enum ExportOutcome { case cancelled, saved, failed(String) }
 
-    /// Shared NSSavePanel .md export. Callers route the outcome into their own
-    /// error state so the LLM report and the plugin page stay independent.
-    private func saveMarkdown(_ content: String, reportType: String) -> ExportOutcome {
+    private func saveArtifactToFile(_ artifact: PluginExportArtifact) -> ExportOutcome {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "report-\(exportDateString())-\(reportType).md"
-        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText, .plainText]
+        panel.nameFieldStringValue = artifact.filename
+        let ext = (artifact.filename as NSString).pathExtension
+        let type = UTType(filenameExtension: ext) ?? UTType(mimeType: artifact.mimeType) ?? .plainText
+        panel.allowedContentTypes = [type, .plainText]
         guard panel.runModal() == .OK else { return .cancelled }
         guard let url = panel.url else { return .failed("無法取得匯出位置。") }
         do {
-            try content.write(to: url, atomically: true, encoding: .utf8)
+            try artifact.content.write(to: url, atomically: true, encoding: .utf8)
             return .saved
         } catch {
             return .failed(readableMessage(for: error))
+        }
+    }
+
+    /// Shared NSSavePanel .md export. Callers route the outcome into their own
+    /// error state so the LLM report and the plugin page stay independent.
+    private func saveMarkdown(_ content: String, reportType: String) -> ExportOutcome {
+        saveArtifactToFile(PluginExportArtifact(
+            filename: "report-\(exportDateString())-\(reportType).md",
+            mimeType: "text/markdown",
+            content: content))
+    }
+
+    private func shareArtifact(_ export: ValidatedPluginExport) -> ExportOutcome {
+        guard let contentView = NSApp.keyWindow?.contentView else {
+            return .failed("目前沒有可用視窗，無法開啟分享選單。")
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent(export.artifact.filename)
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
+            try export.artifact.content.write(to: url, atomically: true, encoding: .utf8)
+            NSSharingServicePicker(items: [url]).show(relativeTo: contentView.bounds,
+                                                      of: contentView,
+                                                      preferredEdge: .minY)
+            return .saved
+        } catch {
+            return .failed(readableMessage(for: error))
+        }
+    }
+
+    private func exportArtifact(_ export: ValidatedPluginExport) -> ExportOutcome {
+        switch export.destination {
+        case .file:
+            return saveArtifactToFile(export.artifact)
+        case .share:
+            return shareArtifact(export)
         }
     }
 
@@ -1396,6 +1434,16 @@ struct ReportView: View {
                                         onKVWrite: { write in
                                             store.applyPluginKVWrite(write)
                                             self.pluginDoc = try? store.taskReportPluginPage(reportType: pluginReportType)
+                                        },
+                                        onExport: { export in
+                                            switch exportArtifact(export) {
+                                            case .cancelled:
+                                                break
+                                            case .saved:
+                                                pluginError = nil
+                                            case .failed(let message):
+                                                pluginError = message
+                                            }
                                         })
                     .frame(minHeight: 260)
                     .overlay(Rectangle().stroke(Theme.border))
@@ -1462,6 +1510,16 @@ struct ReportView: View {
                                         onKVWrite: { write in
                                             store.applyPluginKVWrite(write)
                                             self.reviewsDoc = try? store.reviewsPackPluginPage(view: reviewsView)
+                                        },
+                                        onExport: { export in
+                                            switch exportArtifact(export) {
+                                            case .cancelled:
+                                                break
+                                            case .saved:
+                                                reviewsError = nil
+                                            case .failed(let message):
+                                                reviewsError = message
+                                            }
                                         })
                     .frame(minHeight: 260)
                     .overlay(Rectangle().stroke(Theme.border))
@@ -1520,6 +1578,16 @@ struct ReportView: View {
                                         onKVWrite: { write in
                                             store.applyPluginKVWrite(write)
                                             self.analyticsDoc = try? store.analyticsPluginPage()
+                                        },
+                                        onExport: { export in
+                                            switch exportArtifact(export) {
+                                            case .cancelled:
+                                                break
+                                            case .saved:
+                                                analyticsError = nil
+                                            case .failed(let message):
+                                                analyticsError = message
+                                            }
                                         })
                     .frame(minHeight: 260)
                     .overlay(Rectangle().stroke(Theme.border))
@@ -1586,6 +1654,16 @@ struct ReportView: View {
                                         onKVWrite: { write in
                                             store.applyPluginKVWrite(write)
                                             self.methodologyDoc = try? store.methodologyPluginPage(view: methodologyView)
+                                        },
+                                        onExport: { export in
+                                            switch exportArtifact(export) {
+                                            case .cancelled:
+                                                break
+                                            case .saved:
+                                                methodologyError = nil
+                                            case .failed(let message):
+                                                methodologyError = message
+                                            }
                                         })
                     .frame(minHeight: 260)
                     .overlay(Rectangle().stroke(Theme.border))

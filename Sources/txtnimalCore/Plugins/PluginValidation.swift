@@ -211,6 +211,39 @@ public enum PluginValidator {
         return ValidatedPluginKVWrite(pluginID: manifest.id, key: key, value: value)
     }
 
+    /// Validates a plugin-facing `export.write` action (an artifact to write/route).
+    /// Mirrors `validate(kvAction:)`: refuses when the `export.write` capability is absent, requires the
+    /// right kind/command, a path-safe filename, non-empty mimeType, bounded content, and forbids
+    /// smuggling task-mutation or kv/agent fields. pluginID is taken from the manifest.
+    public static func validate(exportAction action: PluginAction, manifest: PluginManifest) throws -> ValidatedPluginExport {
+        guard Set(manifest.capabilities).contains(.exportWrite) else {
+            throw PluginValidationError.missingCapability
+        }
+        guard action.type == .exportWrite,
+              action.command == PluginAction.exportWriteCommand,
+              let filename = action.filename,
+              isSafeExportFilename(filename),
+              let mimeType = action.mimeType,
+              !mimeType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              mimeType.count <= PluginExportArtifact.maximumFilenameLength,
+              let content = action.content,
+              content.utf8.count <= PluginExportArtifact.maximumContentBytes,
+              let destination = action.destination,
+              (action.taskIDs ?? []).isEmpty,
+              action.due == nil,
+              action.expectedRevision == nil,
+              action.documentRevision == nil,
+              action.prompt == nil,
+              action.resultSchema == nil,
+              action.key == nil,
+              action.value == nil else {
+            throw PluginValidationError.invalidAction
+        }
+        return ValidatedPluginExport(pluginID: manifest.id,
+                                     artifact: PluginExportArtifact(filename: filename, mimeType: mimeType, content: content),
+                                     destination: destination)
+    }
+
     /// Validates a plugin-facing `agent.query` action (prompt + resultSchema) for the host broker.
     /// Mirrors `validate(kvAction:)`: refuses when the `agent.query` capability is absent, requires the
     /// right kind/command and non-empty prompt/schema, and forbids smuggling task-mutation fields.
@@ -262,9 +295,12 @@ public enum PluginValidator {
         }
         try validateFields(of: node)
         if let action = node.action {
-            if action.type == .kvSet {
+            switch action.type {
+            case .kvSet:
                 _ = try validate(kvAction: action, manifest: manifest)
-            } else {
+            case .exportWrite:
+                _ = try validate(exportAction: action, manifest: manifest)
+            default:
                 _ = try validate(action: action, manifest: manifest)
             }
         }
@@ -311,7 +347,7 @@ public enum PluginValidator {
         }
         if node.keys.contains("action"), !(node["action"] is [String: Any]) { throw PluginValidationError.invalidNode }
         if let action = node["action"] as? [String: Any] {
-            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "title", "due", "expectedRevision", "documentRevision", "prompt", "resultSchema", "key", "value"])
+            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "title", "due", "expectedRevision", "documentRevision", "prompt", "resultSchema", "key", "value", "filename", "mimeType", "content", "destination"])
         }
         if node.keys.contains("children"), !(node["children"] is [[String: Any]]) { throw PluginValidationError.invalidNode }
         for child in node["children"] as? [[String: Any]] ?? [] { try validateNodeKeys(child) }
@@ -338,6 +374,16 @@ public enum PluginValidator {
     private static func isSafeRelativeEntry(_ value: String) -> Bool {
         guard !value.isEmpty, !NSString(string: value).isAbsolutePath else { return false }
         return !value.split(separator: "/", omittingEmptySubsequences: false).contains("..")
+    }
+
+    /// An export filename must be a plain leaf name: no path separators, no `..` traversal token,
+    /// no absolute path, no NUL, within a sane length bound.
+    private static func isSafeExportFilename(_ value: String) -> Bool {
+        guard !value.isEmpty, value.count <= PluginExportArtifact.maximumFilenameLength else { return false }
+        guard !value.contains("/"), !value.contains("\\"), !value.contains("\0") else { return false }
+        guard !value.contains("..") else { return false }
+        guard !NSString(string: value).isAbsolutePath else { return false }
+        return true
     }
 
     private static func isSemanticVersion(_ value: String) -> Bool {

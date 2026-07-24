@@ -87,9 +87,10 @@ public enum PluginHostCommand: String, Codable, Equatable, Sendable {
 }
 
 public struct PluginAction: Codable, Equatable, Sendable {
-    public enum Kind: String, Codable, Sendable { case hostCommand, pluginAction, agentQuery, kvSet }
+    public enum Kind: String, Codable, Sendable { case hostCommand, pluginAction, agentQuery, kvSet, exportWrite }
 
     public static let kvSetCommand = "storage.kv.set"
+    public static let exportWriteCommand = "export.write"
 
     public let type: Kind
     public let command: String
@@ -102,15 +103,22 @@ public struct PluginAction: Codable, Equatable, Sendable {
     public let resultSchema: String?
     public let key: String?
     public let value: String?
+    public let filename: String?
+    public let mimeType: String?
+    public let content: String?
+    public let destination: PluginExportDestination?
 
     public init(type: Kind, command: String, taskIDs: [String]? = nil, title: String? = nil, due: String? = nil,
                 expectedRevision: String? = nil, documentRevision: String? = nil,
-                prompt: String? = nil, resultSchema: String? = nil, key: String? = nil, value: String? = nil) {
+                prompt: String? = nil, resultSchema: String? = nil, key: String? = nil, value: String? = nil,
+                filename: String? = nil, mimeType: String? = nil, content: String? = nil,
+                destination: PluginExportDestination? = nil) {
         self.type = type; self.command = command; self.taskIDs = taskIDs
         self.title = title
         self.due = due; self.expectedRevision = expectedRevision; self.documentRevision = documentRevision
         self.prompt = prompt; self.resultSchema = resultSchema
         self.key = key; self.value = value
+        self.filename = filename; self.mimeType = mimeType; self.content = content; self.destination = destination
     }
 }
 
@@ -144,6 +152,37 @@ public struct ValidatedPluginKVWrite: Equatable, Sendable {
         self.pluginID = pluginID
         self.key = key
         self.value = value
+    }
+}
+
+public struct PluginExportArtifact: Codable, Equatable, Sendable {
+    public static let maximumContentBytes = 256 * 1024
+    public static let maximumFilenameLength = 255
+    public let filename: String
+    public let mimeType: String
+    public let content: String
+
+    public init(filename: String, mimeType: String, content: String) {
+        self.filename = filename
+        self.mimeType = mimeType
+        self.content = content
+    }
+}
+
+public enum PluginExportDestination: String, Codable, Equatable, Sendable {
+    case file
+    case share
+}
+
+public struct ValidatedPluginExport: Equatable, Sendable {
+    public let pluginID: String
+    public let artifact: PluginExportArtifact
+    public let destination: PluginExportDestination
+
+    public init(pluginID: String, artifact: PluginExportArtifact, destination: PluginExportDestination) {
+        self.pluginID = pluginID
+        self.artifact = artifact
+        self.destination = destination
     }
 }
 

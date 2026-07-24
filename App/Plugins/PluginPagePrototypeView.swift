@@ -11,6 +11,7 @@ struct PluginPagePrototypeView: View {
     var documentRevision: String?
     let onIntent: (ValidatedPluginIntent) -> Void
     var onKVWrite: (ValidatedPluginKVWrite) -> Void = { _ in }
+    var onExport: (ValidatedPluginExport) -> Void = { _ in }
     var onValidationError: (Error) -> Void = { _ in }
 
     @State private var textValues: [String: String] = [:]
@@ -70,6 +71,9 @@ struct PluginPagePrototypeView: View {
                     if action.type == .kvSet {
                         let write = try PluginValidator.validate(kvAction: action, manifest: manifest)
                         onKVWrite(write)
+                    } else if action.type == .exportWrite {
+                        let export = try PluginValidator.validate(exportAction: action, manifest: manifest)
+                        onExport(export)
                     } else {
                         let intent = try PluginValidator.validate(action: action, manifest: manifest,
                                                                   taskRevisions: taskRevisions,
