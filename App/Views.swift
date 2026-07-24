@@ -846,8 +846,8 @@ struct AgentView: View {
             idleView
         case .running:
             runningView
-        case .review(let changes, _):
-            reviewView(changes)
+        case .review(let items):
+            reviewView(items)
         case .error(let message):
             errorView(message)
         }
@@ -904,33 +904,40 @@ struct AgentView: View {
         .overlay(Rectangle().stroke(Theme.border))
     }
 
-    private func reviewView(_ changes: [AgentReviewChange]) -> some View {
+    private func reviewView(_ items: [AgentReviewItem]) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("檢查提議變更").foregroundColor(Theme.fg)
                 Spacer()
-                Text("\(changes.count) CHANGES").font(Theme.monoSmall).foregroundColor(Theme.yellow)
+                Text("\(items.count) CHANGES").font(Theme.monoSmall).foregroundColor(Theme.yellow)
             }
             Text("只有按下「套用」才會寫入 tasks.txt。")
                 .font(Theme.monoSmall).foregroundColor(Theme.dim)
 
-            if changes.isEmpty {
-                Text("Agent 沒有提議任何變更。")
+            if items.isEmpty {
+                Text("沒有可審核的提議。")
                     .foregroundColor(Theme.dim)
                     .padding(.vertical, 12)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(changes) { change in
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(change.title).foregroundColor(Theme.fg)
-                            HStack(spacing: 8) {
-                                Text(change.oldDue ?? "—").foregroundColor(Theme.dim)
-                                Text("→").foregroundColor(Theme.yellow)
-                                Text(change.newDue).foregroundColor(Theme.green)
-                                Spacer()
-                                Text(change.taskID).font(Theme.monoSmall).foregroundColor(Theme.dim.opacity(0.7))
-                                    .lineLimit(1).truncationMode(.middle)
+                    ForEach(items) { item in
+                        HStack(alignment: .top, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(item.title).foregroundColor(Theme.fg)
+                                HStack(spacing: 8) {
+                                    Text(item.oldDue ?? "—").foregroundColor(Theme.dim)
+                                    Text("→").foregroundColor(Theme.yellow)
+                                    Text(item.newDue).foregroundColor(Theme.green)
+                                    Spacer()
+                                    Text(item.taskID).font(Theme.monoSmall).foregroundColor(Theme.dim.opacity(0.7))
+                                        .lineLimit(1).truncationMode(.middle)
+                                }
                             }
+                            Button(action: { store.removeAgentReviewChange(id: item.id) }) {
+                                Text("✕").foregroundColor(Theme.red)
+                            }
+                            .buttonStyle(.plain)
+                            .help("移除這筆")
                         }
                         .padding(.horizontal, 12).padding(.vertical, 10)
                         .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
@@ -944,8 +951,8 @@ struct AgentView: View {
                 Spacer()
                 agentButton("捨棄", color: Theme.dim) { store.discardAgentReview() }
                 agentButton("套用", color: Theme.green) { store.applyAgentReview() }
-                    .disabled(changes.isEmpty)
-                    .opacity(changes.isEmpty ? 0.4 : 1)
+                    .disabled(items.isEmpty)
+                    .opacity(items.isEmpty ? 0.4 : 1)
             }
         }
     }
@@ -1116,6 +1123,10 @@ struct ReportView: View {
         id: "app.txtnimal.methodology", name: "Methodology", version: "0.1.0",
         apiVersion: 1, entry: "main.js", capabilities: [.tasksAllRead, .uiPage],
         pages: [PluginPageDeclaration(id: "methodology", title: "Methodology", entryFunction: "run")])
+    private static let brainDumpManifest = PluginManifest(
+        id: "app.txtnimal.brain-dump", name: "Brain Dump", version: "0.1.0",
+        apiVersion: 1, entry: "main.js", capabilities: [.agentQuery, .tasksCreate, .uiPage],
+        pages: [PluginPageDeclaration(id: "brain-dump", title: "Brain Dump", entryFunction: "run")])
 
     var body: some View {
         let tasks = store.reportCandidateTasks()
@@ -1137,6 +1148,8 @@ struct ReportView: View {
             methodologySection
             Divider().background(Theme.border)
             habitTrackerSection
+            Divider().background(Theme.border)
+            brainDumpSection
         }
         .padding(.horizontal, 24).padding(.vertical, 22)
         .frame(maxWidth: 760, minHeight: 420, alignment: .topLeading)
@@ -1690,6 +1703,46 @@ struct ReportView: View {
         case .cancelled: break
         case .saved: habitError = nil
         case .failed(let message): habitError = message
+        }
+    }
+
+    private var brainDumpSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("腦力傾倒").font(Theme.monoSmall).tracking(1.8).foregroundColor(Theme.dim)
+                Rectangle().fill(Theme.border).frame(height: 1)
+                Text("拆解").font(Theme.monoSmall).foregroundColor(Theme.green)
+            }
+
+            HStack {
+                Spacer()
+                reportButton("開始腦力傾倒", color: Theme.cyan) { store.generateBrainDumpInput() }
+            }
+
+            if store.brainDumpLoading {
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text("正在請 AI 拆解…").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                }
+            }
+
+            if let message = store.brainDumpError {
+                Text(message)
+                    .font(Theme.monoSmall)
+                    .foregroundColor(Theme.red)
+                    .textSelection(.enabled)
+            }
+
+            if let doc = store.brainDumpDoc {
+                PluginPagePrototypeView(document: doc, manifest: Self.brainDumpManifest,
+                                        onIntent: { _ in },
+                                        onAgentQuery: { query in
+                                            Task { await store.applyPluginBrainDumpQuery(query) }
+                                        },
+                                        onValidationError: { store.brainDumpError = readableMessage(for: $0) })
+                    .frame(minHeight: 260)
+                    .overlay(Rectangle().stroke(Theme.border))
+            }
         }
     }
 

@@ -1,6 +1,17 @@
 import SwiftUI
 import txtnimalCore
 
+private enum BrainDumpInputError: LocalizedError {
+    case emptyText
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyText:
+            return "請先貼上要拆解的文字"
+        }
+    }
+}
+
 /// Phase 0 renderer spike. It is intentionally not connected to App navigation.
 /// Production code must call `PluginValidator.validate` before constructing this view.
 struct PluginPagePrototypeView: View {
@@ -12,6 +23,7 @@ struct PluginPagePrototypeView: View {
     let onIntent: (ValidatedPluginIntent) -> Void
     var onKVWrite: (ValidatedPluginKVWrite) -> Void = { _ in }
     var onExport: (ValidatedPluginExport) -> Void = { _ in }
+    var onAgentQuery: (ValidatedAgentQuery) -> Void = { _ in }
     var onValidationError: (Error) -> Void = { _ in }
 
     @State private var textValues: [String: String] = [:]
@@ -74,6 +86,23 @@ struct PluginPagePrototypeView: View {
                     } else if action.type == .exportWrite {
                         let export = try PluginValidator.validate(exportAction: action, manifest: manifest)
                         onExport(export)
+                    } else if action.type == .agentQuery {
+                        let userText = textValues.values
+                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty }
+                            .joined(separator: "\n")
+                        guard !userText.isEmpty else {
+                            onValidationError(BrainDumpInputError.emptyText)
+                            return
+                        }
+                        let filled = (action.prompt ?? "").replacingOccurrences(of: "{{input}}", with: userText)
+                        let query = try PluginValidator.validate(agentQueryAction: PluginAction(
+                            type: .agentQuery,
+                            command: action.command,
+                            prompt: filled,
+                            resultSchema: action.resultSchema
+                        ), manifest: manifest)
+                        onAgentQuery(query)
                     } else {
                         let intent = try PluginValidator.validate(action: action, manifest: manifest,
                                                                   taskRevisions: taskRevisions,

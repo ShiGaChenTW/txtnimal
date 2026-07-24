@@ -101,6 +101,8 @@ public struct PluginAction: Codable, Equatable, Sendable {
     public let documentRevision: String?
     public let prompt: String?
     public let resultSchema: String?
+    public let lists: [String]?
+    public let tags: [String]?
     public let key: String?
     public let value: String?
     public let filename: String?
@@ -110,13 +112,15 @@ public struct PluginAction: Codable, Equatable, Sendable {
 
     public init(type: Kind, command: String, taskIDs: [String]? = nil, title: String? = nil, due: String? = nil,
                 expectedRevision: String? = nil, documentRevision: String? = nil,
-                prompt: String? = nil, resultSchema: String? = nil, key: String? = nil, value: String? = nil,
+                prompt: String? = nil, resultSchema: String? = nil, lists: [String]? = nil, tags: [String]? = nil,
+                key: String? = nil, value: String? = nil,
                 filename: String? = nil, mimeType: String? = nil, content: String? = nil,
                 destination: PluginExportDestination? = nil) {
         self.type = type; self.command = command; self.taskIDs = taskIDs
         self.title = title
         self.due = due; self.expectedRevision = expectedRevision; self.documentRevision = documentRevision
         self.prompt = prompt; self.resultSchema = resultSchema
+        self.lists = lists; self.tags = tags
         self.key = key; self.value = value
         self.filename = filename; self.mimeType = mimeType; self.content = content; self.destination = destination
     }
@@ -130,9 +134,12 @@ public struct ValidatedPluginIntent: Equatable, Sendable {
     public let due: String?
     public let expectedRevision: String?
     public let documentRevision: String?
+    public let lists: [String]
+    public let tags: [String]
 
     public init(pluginID: String, command: PluginHostCommand, taskIDs: [String], title: String? = nil,
-                due: String?, expectedRevision: String?, documentRevision: String?) {
+                due: String?, expectedRevision: String?, documentRevision: String?,
+                lists: [String] = [], tags: [String] = []) {
         self.pluginID = pluginID
         self.command = command
         self.taskIDs = taskIDs
@@ -140,6 +147,8 @@ public struct ValidatedPluginIntent: Equatable, Sendable {
         self.due = due
         self.expectedRevision = expectedRevision
         self.documentRevision = documentRevision
+        self.lists = lists
+        self.tags = tags
     }
 }
 

@@ -22,19 +22,10 @@ struct AgentChatContext {
     let generation: UInt64
 }
 
-struct AgentReviewChange: Identifiable {
-    let taskID: String
-    let title: String
-    let oldDue: String?
-    let newDue: String
-
-    var id: String { taskID }
-}
-
 enum AgentState {
     case idle
     case running
-    case review(changes: [AgentReviewChange], intents: [ValidatedPluginIntent])
+    case review([AgentReviewItem])
     case error(String)
 }
 
@@ -223,6 +214,9 @@ final class TaskStore: ObservableObject {
     @Published var view: AppView = .list
     @Published private(set) var agentState: AgentState = .idle
     @Published private(set) var importReview: ImportReviewState = .idle
+    @Published private(set) var brainDumpDoc: PluginPageDocument?
+    @Published var brainDumpError: String?
+    @Published private(set) var brainDumpLoading = false
     @Published var cursor: Int? = nil          // index into `lines`
     @Published var reportSelection: Set<String> = []
     @Published var focusMode = false
@@ -778,7 +772,7 @@ final class TaskStore: ObservableObject {
     func discardImportReview() { importReview = .idle }
 
     func applyAgentReview() {
-        guard case .review(_, let intents) = agentState else { return }
+        guard case .review(let items) = agentState else { return }
         do {
             let original = documentStoreSnapshot()
             // Apply the whole batch against one snapshot: identity resolves once, so legacy IDs
@@ -790,7 +784,7 @@ final class TaskStore: ObservableObject {
                 generation: generation,
                 tasksText: original.tasksText
             )
-            let lines = try PluginIntentApplier.applyBatch(intents, to: snapshot,
+            let lines = try PluginIntentApplier.applyBatch(items.map(\.intent), to: snapshot,
                                                            todayYMD: RelativeDate.todayYMD())
             self.apply(try documentStore.save(lines: lines, expectedGeneration: generation))
             refreshPluginExecutionRecords()
@@ -803,22 +797,20 @@ final class TaskStore: ObservableObject {
     private func prepareAgentReview(_ intents: [ValidatedPluginIntent]) {
         do {
             let current = try PluginSnapshotBuilder.build(from: documentStoreSnapshot())
-            let tasksByID = Dictionary(uniqueKeysWithValues: current.tasks.map { ($0.id, $0) })
-            let changes = intents.flatMap { intent in
-                intent.taskIDs.map { taskID in
-                    let task = tasksByID[taskID]
-                    return AgentReviewChange(
-                        taskID: taskID,
-                        title: task?.title ?? taskID,
-                        oldDue: task?.due,
-                        newDue: intent.due ?? RelativeDate.todayYMD()
-                    )
-                }
-            }
-            agentState = .review(changes: changes, intents: intents)
+            let items = AgentReviewPlanner.makeItems(
+                intents: intents,
+                currentTasks: current.tasks,
+                defaultDueYMD: RelativeDate.todayYMD()
+            )
+            agentState = .review(items)
         } catch {
             agentState = .error(error.localizedDescription)
         }
+    }
+
+    func removeAgentReviewChange(id: String) {
+        guard case .review(let items) = agentState else { return }
+        agentState = .review(AgentReviewPlanner.removeItem(id: id, from: items))
     }
 
     private struct PluginRequestEnvelope: Codable { let source: String; let inputJSON: String }
@@ -998,6 +990,93 @@ final class TaskStore: ObservableObject {
             if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
         }
         throw HabitTrackerPluginError.sourceUnavailable
+    }
+
+    enum BrainDumpPluginError: LocalizedError {
+        case sourceUnavailable
+        var errorDescription: String? {
+            switch self {
+            case .sourceUnavailable: return "找不到 brain-dump plugin 的程式碼。"
+            }
+        }
+    }
+
+    private static func brainDumpManifest() -> PluginManifest {
+        PluginManifest(
+            id: "app.txtnimal.brain-dump",
+            name: "Brain Dump",
+            version: "0.1.0",
+            apiVersion: 1,
+            entry: "main.js",
+            capabilities: [.agentQuery, .tasksCreate, .uiPage],
+            pages: [PluginPageDeclaration(id: "brain-dump", title: "Brain Dump", entryFunction: "run")]
+        )
+    }
+
+    func brainDumpPluginPage(agentResult: String? = nil) throws -> PluginPageDocument {
+        let source = try loadBrainDumpSource()
+        let document = documentStoreSnapshot()
+        let snapshot = try PluginSnapshotBuilder.build(from: document)
+        return try ReportPluginRunner().run(source: source, reportType: "brain-dump",
+                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
+                                            agentResult: agentResult)
+    }
+
+    private func loadBrainDumpSource() throws -> String {
+        let pluginID = "app.txtnimal.brain-dump"
+        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
+            let entry = package.url.appendingPathComponent(package.manifest.entry)
+            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
+        }
+        let candidates = [
+            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "brain-dump"),
+        ]
+        for case let url? in candidates {
+            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
+        }
+        throw BrainDumpPluginError.sourceUnavailable
+    }
+
+    func generateBrainDumpInput() {
+        brainDumpDoc = try? brainDumpPluginPage(agentResult: nil)
+        brainDumpError = nil
+    }
+
+    @MainActor
+    func applyPluginBrainDumpQuery(_ query: ValidatedAgentQuery) async {
+        brainDumpLoading = true
+        brainDumpError = nil
+        defer { brainDumpLoading = false }
+
+        do {
+            let manifest = Self.brainDumpManifest()
+            let broker = AgentQueryBroker(credentialStore: KeychainAgentCredentialStore())
+            let result = try await broker.query(prompt: query.prompt, resultSchema: query.resultSchema, manifest: manifest)
+            let doc = try brainDumpPluginPage(agentResult: result.text)
+            brainDumpDoc = doc
+
+            let current = documentStoreSnapshot()
+            let actions = createTaskActions(in: doc.page)
+            let intents = try actions.map {
+                try PluginValidator.validate(action: $0, manifest: manifest, documentRevision: current.documentRevision)
+            }
+            prepareAgentReview(intents)
+        } catch {
+            brainDumpError = error.localizedDescription
+        }
+    }
+
+    private func createTaskActions(in node: PluginPageNode) -> [PluginAction] {
+        let ownAction: [PluginAction]
+        if node.type == .button,
+           let action = node.action,
+           action.type == .hostCommand,
+           action.command == PluginHostCommand.createTask.rawValue {
+            ownAction = [action]
+        } else {
+            ownAction = []
+        }
+        return ownAction + (node.children ?? []).flatMap(createTaskActions(in:))
     }
 
     enum MethodologyPluginError: LocalizedError {

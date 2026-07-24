@@ -51,6 +51,8 @@ public enum PluginIntentApplier {
                 var line = TaskLine(raw)
                 line.setValue(todayYMD, forKey: "created")
                 line.setDue(intent.due)
+                for list in intent.lists { line.addTag("+" + list) }
+                for tag in intent.tags { line.addTag("@" + tag) }
                 lines.append(line)   // append doesn't shift existing indices
             case .rescheduleTask:
                 for id in intent.taskIDs { lines[try index(for: id)].setDue(intent.due ?? todayYMD) }

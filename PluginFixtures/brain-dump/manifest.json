@@ -1,0 +1,10 @@
+{
+  "id": "app.txtnimal.brain-dump",
+  "name": "Brain Dump",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "entry": "main.js",
+  "capabilities": ["agent.query", "tasks.create", "ui.page"],
+  "commands": [],
+  "pages": [{"id": "brain-dump", "title": "Brain Dump", "entryFunction": "run"}]
+}

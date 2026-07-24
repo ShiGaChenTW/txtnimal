@@ -116,6 +116,8 @@ public enum PluginValidator {
         }
         let taskIDs = action.taskIDs ?? []
         let title = action.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lists = action.lists ?? []
+        let tags = action.tags ?? []
         switch command {
         case .createTask:
             guard Set(manifest.capabilities).contains(.tasksCreate) else {
@@ -125,6 +127,10 @@ public enum PluginValidator {
                   action.due.map(isISODate) ?? true else {
                 throw PluginValidationError.invalidAction
             }
+            let totalStructuredTags = lists.count + tags.count
+            guard totalStructuredTags <= limits.maximumQueryResults else {
+                throw PluginValidationError.invalidAction
+            }
         case .rescheduleTask:
             guard Set(manifest.capabilities).contains(.tasksUpdate) else {
                 throw PluginValidationError.missingCapability
@@ -132,6 +138,7 @@ public enum PluginValidator {
             guard !taskIDs.isEmpty, taskIDs.count <= limits.maximumQueryResults,
                   Set(taskIDs).count == taskIDs.count, taskIDs.allSatisfy(isScopedIdentifier),
                   let due = action.due, isISODate(due), let expected = action.expectedRevision,
+                  lists.isEmpty, tags.isEmpty,
                   taskRevisions.map({ revisions in taskIDs.allSatisfy { revisions[$0] == expected } }) ?? true else {
                 throw PluginValidationError.invalidAction
             }
@@ -139,7 +146,7 @@ public enum PluginValidator {
             guard Set(manifest.capabilities).contains(.tasksUpdate) else {
                 throw PluginValidationError.missingCapability
             }
-            guard taskIDs.isEmpty, action.due == nil, let expected = action.expectedRevision,
+            guard taskIDs.isEmpty, action.due == nil, lists.isEmpty, tags.isEmpty, let expected = action.expectedRevision,
                   documentRevision.map({ expected == $0 }) ?? true else { throw PluginValidationError.invalidAction }
         case .completeTask:
             guard Set(manifest.capabilities).contains(.tasksComplete) else {
@@ -149,7 +156,7 @@ public enum PluginValidator {
             // for these batch mutations (mirrors reschedule requiring a revision).
             guard !taskIDs.isEmpty, taskIDs.count <= limits.maximumQueryResults,
                   Set(taskIDs).count == taskIDs.count, taskIDs.allSatisfy(isScopedIdentifier),
-                  action.due == nil, action.documentRevision != nil else {
+                  action.due == nil, lists.isEmpty, tags.isEmpty, action.documentRevision != nil else {
                 throw PluginValidationError.invalidAction
             }
         case .deleteTask:
@@ -158,7 +165,7 @@ public enum PluginValidator {
             }
             guard !taskIDs.isEmpty, taskIDs.count <= limits.maximumQueryResults,
                   Set(taskIDs).count == taskIDs.count, taskIDs.allSatisfy(isScopedIdentifier),
-                  action.due == nil, action.documentRevision != nil else {
+                  action.due == nil, lists.isEmpty, tags.isEmpty, action.documentRevision != nil else {
                 throw PluginValidationError.invalidAction
             }
         case .retitleTask:
@@ -166,13 +173,17 @@ public enum PluginValidator {
                 throw PluginValidationError.missingCapability
             }
             guard taskIDs.count == 1, taskIDs.allSatisfy(isScopedIdentifier),
-                  let title, !title.isEmpty, action.due == nil, action.documentRevision != nil else {
+                  let title, !title.isEmpty, action.due == nil, lists.isEmpty, tags.isEmpty,
+                  action.documentRevision != nil else {
                 throw PluginValidationError.invalidAction
             }
         }
+        let validatedLists = try validateStructuredNames(lists)
+        let validatedTags = try validateStructuredNames(tags)
         return ValidatedPluginIntent(pluginID: manifest.id, command: command, taskIDs: taskIDs,
                                      title: title, due: action.due, expectedRevision: action.expectedRevision,
-                                     documentRevision: action.documentRevision)
+                                     documentRevision: action.documentRevision,
+                                     lists: validatedLists, tags: validatedTags)
     }
 
     public static func validateAgentQuery(action: PluginAction, manifest: PluginManifest,
@@ -205,7 +216,9 @@ public enum PluginValidator {
               (action.taskIDs ?? []).isEmpty,
               action.due == nil,
               action.prompt == nil,
-              action.resultSchema == nil else {
+              action.resultSchema == nil,
+              action.lists == nil,
+              action.tags == nil else {
             throw PluginValidationError.invalidAction
         }
         return ValidatedPluginKVWrite(pluginID: manifest.id, key: key, value: value)
@@ -247,6 +260,8 @@ public enum PluginValidator {
               action.documentRevision == nil,
               action.prompt == nil,
               action.resultSchema == nil,
+              action.lists == nil,
+              action.tags == nil,
               action.key == nil,
               action.value == nil else {
             throw PluginValidationError.invalidAction
@@ -275,6 +290,8 @@ public enum PluginValidator {
               action.due == nil,
               action.expectedRevision == nil,
               action.documentRevision == nil,
+              action.lists == nil,
+              action.tags == nil,
               action.key == nil,
               action.value == nil else {
             throw PluginValidationError.invalidAction
@@ -359,7 +376,7 @@ public enum PluginValidator {
         }
         if node.keys.contains("action"), !(node["action"] is [String: Any]) { throw PluginValidationError.invalidNode }
         if let action = node["action"] as? [String: Any] {
-            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "title", "due", "expectedRevision", "documentRevision", "prompt", "resultSchema", "key", "value", "filename", "mimeType", "content", "destination"])
+            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "title", "due", "expectedRevision", "documentRevision", "prompt", "resultSchema", "lists", "tags", "key", "value", "filename", "mimeType", "content", "destination"])
         }
         if node.keys.contains("children"), !(node["children"] is [[String: Any]]) { throw PluginValidationError.invalidNode }
         for child in node["children"] as? [[String: Any]] ?? [] { try validateNodeKeys(child) }
@@ -412,6 +429,20 @@ public enum PluginValidator {
         formatter.isLenient = false
         guard let date = formatter.date(from: value) else { return false }
         return formatter.string(from: date) == value
+    }
+
+    private static func validateStructuredNames(_ values: [String]) throws -> [String] {
+        try values.map { value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty,
+                  trimmed.count <= 64,
+                  !trimmed.hasPrefix("+"),
+                  !trimmed.hasPrefix("@"),
+                  !trimmed.contains(where: \.isWhitespace) else {
+                throw PluginValidationError.invalidAction
+            }
+            return trimmed
+        }
     }
 
     private static func validateFields(of node: PluginPageNode) throws {

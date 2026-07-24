@@ -35,6 +35,9 @@ targets:
       - path: PluginFixtures/habit-tracker
         buildPhase: resources
         type: folder
+      - path: PluginFixtures/brain-dump
+        buildPhase: resources
+        type: folder
       - path: PluginFixtures/methodology
         buildPhase: resources
         type: folder
