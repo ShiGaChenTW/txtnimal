@@ -11,6 +11,7 @@
 		3056FF3F9130FA9B9559A9AD /* PluginPagePrototypeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93729848FDFF0B9D971D71A /* PluginPagePrototypeView.swift */; };
 		32ABA209D555F28048792F42 /* txtnimalApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 988AB3CF23CF783135207520 /* txtnimalApp.swift */; };
 		32FD79E4C9573B8830615A88 /* PluginBrokerXPCTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E3671ABD9D348F3E335022 /* PluginBrokerXPCTransport.swift */; };
+		34F6680E2FFB4E88F68C7D79 /* methodology in Resources */ = {isa = PBXBuildFile; fileRef = EC4B51654C0253094C5E5EFE /* methodology */; };
 		35465FF88456848FDA088208 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7D96B82095534EFEDA16F614 /* Assets.xcassets */; };
 		3A6317FD9374298D43624E13 /* TaskStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14FC886CBBD039FF8370D324 /* TaskStore.swift */; };
 		3AD6F3F8DA29D965702C96C2 /* GlobalCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C63036A2C8D51ED40F089374 /* GlobalCapture.swift */; };
@@ -117,6 +118,7 @@
 		D7857CC7C1C3E723CFB29839 /* txtnimal-icon-glass.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "txtnimal-icon-glass.png"; sourceTree = "<group>"; };
 		D906BBCB857918EC5EC581F8 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		D9F0FC9C451CE2A794BC0654 /* reviews-pack */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "reviews-pack"; path = "PluginFixtures/reviews-pack"; sourceTree = SOURCE_ROOT; };
+		EC4B51654C0253094C5E5EFE /* methodology */ = {isa = PBXFileReference; lastKnownFileType = folder; name = methodology; path = PluginFixtures/methodology; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -193,6 +195,7 @@
 			isa = PBXGroup;
 			children = (
 				8AC60192D7BFD727E360A886 /* analytics */,
+				EC4B51654C0253094C5E5EFE /* methodology */,
 				D9F0FC9C451CE2A794BC0654 /* reviews-pack */,
 				60FA87DE7F9834AE69676A84 /* task-report */,
 			);
@@ -412,6 +415,7 @@
 				35465FF88456848FDA088208 /* Assets.xcassets in Resources */,
 				E96CD3F7F570B0698D4C0241 /* Localizable.strings in Resources */,
 				9C31E0263E49A6D61B6BB229 /* analytics in Resources */,
+				34F6680E2FFB4E88F68C7D79 /* methodology in Resources */,
 				E3447B56471317E2C713F8DE /* reviews-pack in Resources */,
 				01DD209FFC3196F4225E59AD /* task-report in Resources */,
 				49F073F33178B3BC136B59B0 /* txtnimal-icon-crt.png in Resources */,

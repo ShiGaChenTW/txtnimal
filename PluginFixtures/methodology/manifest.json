@@ -1,0 +1,10 @@
+{
+  "id": "app.txtnimal.methodology",
+  "name": "Methodology",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "entry": "main.js",
+  "capabilities": ["tasks.all.read", "ui.page"],
+  "commands": [],
+  "pages": [{"id": "methodology", "title": "Methodology", "entryFunction": "run"}]
+}

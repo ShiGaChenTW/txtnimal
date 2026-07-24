@@ -1090,6 +1090,9 @@ struct ReportView: View {
     @State private var reviewsError: String?
     @State private var analyticsDoc: PluginPageDocument?
     @State private var analyticsError: String?
+    @State private var methodologyView = "gtd"
+    @State private var methodologyDoc: PluginPageDocument?
+    @State private var methodologyError: String?
 
     private static let taskReportManifest = PluginManifest(
         id: "app.txtnimal.task-report", name: "Task Report", version: "0.1.0",
@@ -1103,6 +1106,10 @@ struct ReportView: View {
         id: "app.txtnimal.analytics", name: "Analytics", version: "0.1.0",
         apiVersion: 1, entry: "main.js", capabilities: [.tasksAllRead, .uiPage],
         pages: [PluginPageDeclaration(id: "analytics", title: "Analytics", entryFunction: "run")])
+    private static let methodologyManifest = PluginManifest(
+        id: "app.txtnimal.methodology", name: "Methodology", version: "0.1.0",
+        apiVersion: 1, entry: "main.js", capabilities: [.tasksAllRead, .uiPage],
+        pages: [PluginPageDeclaration(id: "methodology", title: "Methodology", entryFunction: "run")])
 
     var body: some View {
         let tasks = store.reportCandidateTasks()
@@ -1120,6 +1127,8 @@ struct ReportView: View {
             reviewsPackSection
             Divider().background(Theme.border)
             analyticsSection
+            Divider().background(Theme.border)
+            methodologySection
         }
         .padding(.horizontal, 24).padding(.vertical, 22)
         .frame(maxWidth: 760, minHeight: 420, alignment: .topLeading)
@@ -1525,6 +1534,68 @@ struct ReportView: View {
         case .cancelled: break
         case .saved: analyticsError = nil
         case .failed(let message): analyticsError = message
+        }
+    }
+
+    private var methodologySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("方法論").font(Theme.monoSmall).tracking(1.8).foregroundColor(Theme.dim)
+                Rectangle().fill(Theme.border).frame(height: 1)
+                Text("視圖").font(Theme.monoSmall).foregroundColor(Theme.green)
+            }
+
+            Picker("", selection: $methodologyView) {
+                Text("艾森豪").tag("eisenhower")
+                Text("PARA").tag("para")
+                Text("GTD").tag("gtd")
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+
+            HStack {
+                Spacer()
+                reportButton("產生方法論視圖", color: Theme.cyan) { generateMethodology() }
+                reportButton("匯出 .md", color: Theme.yellow) { exportMethodology() }
+                    .disabled(methodologyDoc == nil)
+                    .opacity(methodologyDoc == nil ? 0.4 : 1)
+            }
+
+            if let methodologyError {
+                Text(methodologyError)
+                    .font(Theme.monoSmall)
+                    .foregroundColor(Theme.red)
+                    .textSelection(.enabled)
+            }
+
+            if let methodologyDoc {
+                PluginPagePrototypeView(document: methodologyDoc, manifest: Self.methodologyManifest,
+                                        onIntent: { _ in })
+                    .frame(minHeight: 260)
+                    .overlay(Rectangle().stroke(Theme.border))
+            }
+        }
+    }
+
+    private func generateMethodology() {
+        do {
+            methodologyDoc = try store.methodologyPluginPage(view: methodologyView)
+            methodologyError = nil
+        } catch {
+            methodologyDoc = nil
+            methodologyError = readableMessage(for: error)
+        }
+    }
+
+    private func exportMethodology() {
+        guard let methodologyDoc else {
+            methodologyError = "請先產生方法論視圖。"
+            return
+        }
+        switch saveMarkdown(pluginMarkdown(from: methodologyDoc), reportType: "methodology-" + methodologyView) {
+        case .cancelled: break
+        case .saved: methodologyError = nil
+        case .failed(let message): methodologyError = message
         }
     }
 

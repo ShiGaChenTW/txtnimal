@@ -910,6 +910,41 @@ final class TaskStore: ObservableObject {
         throw AnalyticsPluginError.sourceUnavailable
     }
 
+    enum MethodologyPluginError: LocalizedError {
+        case sourceUnavailable
+        var errorDescription: String? {
+            switch self {
+            case .sourceUnavailable: return "找不到 methodology plugin 的程式碼。"
+            }
+        }
+    }
+
+    /// Runs the deterministic first-party methodology plugin in-process. `view` is the
+    /// methodology selector (eisenhower / para / gtd), carried on the shared reportType field.
+    func methodologyPluginPage(view: String) throws -> PluginPageDocument {
+        let source = try loadMethodologySource()
+        let document = documentStoreSnapshot()
+        let snapshot = try PluginSnapshotBuilder.build(from: document)
+        return try ReportPluginRunner().run(source: source, reportType: view,
+                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
+                                            metadata: taskMetadataByID(document))
+    }
+
+    private func loadMethodologySource() throws -> String {
+        let pluginID = "app.txtnimal.methodology"
+        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
+            let entry = package.url.appendingPathComponent(package.manifest.entry)
+            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
+        }
+        let candidates = [
+            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "methodology"),
+        ]
+        for case let url? in candidates {
+            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
+        }
+        throw MethodologyPluginError.sourceUnavailable
+    }
+
     static func todayYMD() -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
