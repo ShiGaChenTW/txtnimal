@@ -61,6 +61,8 @@ targets:
         CODE_SIGNING_ALLOWED: YES
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_NSRemindersUsageDescription: "txtnimal 需要讀取提醒事項，才能將它們匯入你的任務清單。"
+        INFOPLIST_KEY_NSRemindersFullAccessUsageDescription: "txtnimal 需要完整存取提醒事項，才能將它們匯入你的任務清單。"
       configs:
         Release:
           SWIFT_OPTIMIZATION_LEVEL: "-Osize"

@@ -20,6 +20,7 @@ struct txtnimalApp: App {
                 Button("切到清單") { store.view = .list; store.ensureCursor() }.keyboardShortcut("1", modifiers: .command)
                 Button("切到象限") { store.view = .grid; store.ensureCursor() }.keyboardShortcut("4", modifiers: .command)
                 Button("切到 Agent") { store.view = .agent }.keyboardShortcut("3", modifiers: .command)
+                Button("從 Reminders 匯入") { store.importFromReminders() }
             }
         }
 

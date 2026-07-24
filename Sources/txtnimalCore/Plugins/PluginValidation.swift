@@ -211,6 +211,18 @@ public enum PluginValidator {
         return ValidatedPluginKVWrite(pluginID: manifest.id, key: key, value: value)
     }
 
+    public static func validate(importSource source: String, manifest: PluginManifest) throws -> ValidatedImportRequest {
+        guard Set(manifest.capabilities).contains(.importRead) else {
+            throw PluginValidationError.missingCapability
+        }
+        let trimmedSource = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        let supportedSources: Set<String> = ["apple-reminders"]
+        guard supportedSources.contains(trimmedSource) else {
+            throw PluginValidationError.invalidAction
+        }
+        return ValidatedImportRequest(pluginID: manifest.id, source: trimmedSource)
+    }
+
     /// Validates a plugin-facing `export.write` action (an artifact to write/route).
     /// Mirrors `validate(kvAction:)`: refuses when the `export.write` capability is absent, requires the
     /// right kind/command, a path-safe filename, non-empty mimeType, bounded content, and forbids

@@ -38,6 +38,13 @@ enum AgentState {
     case error(String)
 }
 
+enum ImportReviewState {
+    case idle
+    case loading
+    case review([ImportProposal])
+    case error(String)
+}
+
 /// 視窗承載模式：一般視窗 或 常駐螢幕邊緣的滑出面板。兩者共用同一個 TaskStore。
 enum WindowMode: String, CaseIterable, Hashable {
     case window, sidebar
@@ -215,6 +222,7 @@ final class TaskStore: ObservableObject {
     }
     @Published var view: AppView = .list
     @Published private(set) var agentState: AgentState = .idle
+    @Published private(set) var importReview: ImportReviewState = .idle
     @Published var cursor: Int? = nil          // index into `lines`
     @Published var reportSelection: Set<String> = []
     @Published var focusMode = false
@@ -731,6 +739,43 @@ final class TaskStore: ObservableObject {
     func discardAgentReview() { agentState = .idle }
 
     func resetAgentState() { agentState = .idle }
+
+    func importFromReminders() {
+        importReview = .loading
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let proposals = try await RemindersImporter().plan(from: EventKitRemindersSource(), today: Date())
+                if proposals.isEmpty {
+                    self.lastError = "沒有可匯入的提醒事項。"
+                    self.importReview = .idle
+                } else {
+                    self.importReview = .review(proposals)
+                }
+            } catch {
+                self.lastError = error.localizedDescription
+                self.importReview = .error(error.localizedDescription)
+            }
+        }
+    }
+
+    func applyImportReview() {
+        guard case .review(let proposals) = importReview else { return }
+        do {
+            var newLines = lines
+            for proposal in proposals {
+                var line = TaskLine(proposal.rawLine)
+                line.setValue(todayYMD, forKey: "created")
+                newLines.append(line)
+            }
+            apply(try documentStore.save(lines: newLines, expectedGeneration: generation))
+            importReview = .idle
+        } catch {
+            report(error)
+        }
+    }
+
+    func discardImportReview() { importReview = .idle }
 
     func applyAgentReview() {
         guard case .review(_, let intents) = agentState else { return }

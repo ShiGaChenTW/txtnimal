@@ -63,6 +63,12 @@ struct ContentView: View {
         .sheet(isPresented: $showingAddProject, onDismiss: { projectText = "" }) { addProjectSheet }
         .sheet(isPresented: $showingEdit) { editSheet }
         .sheet(isPresented: Binding(
+            get: { if case .review = store.importReview { return true } else { return false } },
+            set: { if !$0 { store.discardImportReview() } }
+        )) {
+            ImportReviewSheet(proposals: importReviewProposals).environmentObject(store)
+        }
+        .sheet(isPresented: Binding(
             get: { !store.hasCompletedOnboarding },
             set: { _ in }
         )) { WelcomeView().environmentObject(store).interactiveDismissDisabled() }
@@ -101,6 +107,13 @@ struct ContentView: View {
             confirmArchive: { pendingTaskAction = .archive($0, $1) },
             confirmDelete: { pendingTaskAction = .delete($0, $1) }
         )
+    }
+
+    private var importReviewProposals: [ImportProposal] {
+        if case .review(let proposals) = store.importReview {
+            return proposals
+        }
+        return []
     }
 
     private var hline: some View { Rectangle().fill(Theme.border).frame(height: 1) }
@@ -964,6 +977,66 @@ struct ContentView: View {
         case "0": if store.view == .grid { store.setQuadrant(nil); return nil }; return e
         default: return e
         }
+    }
+}
+
+private struct ImportReviewSheet: View {
+    @EnvironmentObject var store: TaskStore
+    let proposals: [ImportProposal]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("檢查匯入內容").foregroundColor(Theme.fg)
+                Spacer()
+                Text("\(proposals.count) ITEMS").font(Theme.monoSmall).foregroundColor(Theme.yellow)
+            }
+            Text("只有按下「套用」才會寫入 tasks.txt。")
+                .font(Theme.monoSmall).foregroundColor(Theme.dim)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(proposals.enumerated()), id: \.offset) { entry in
+                        let proposal = entry.element
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(proposal.title).foregroundColor(Theme.fg)
+                            HStack(spacing: 8) {
+                                Text(proposal.due ?? "—").foregroundColor(Theme.green)
+                                Spacer()
+                            }
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
+                    }
+                }
+                .background(Theme.panel)
+                .overlay(Rectangle().stroke(Theme.border))
+            }
+
+            HStack {
+                Spacer()
+                importReviewButton("捨棄", color: Theme.dim) { store.discardImportReview() }
+                importReviewButton("套用", color: Theme.green) { store.applyImportReview() }
+                    .disabled(proposals.isEmpty)
+                    .opacity(proposals.isEmpty ? 0.4 : 1)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 520, minHeight: 320, alignment: .topLeading)
+        .background(Theme.bg)
+        .font(Theme.mono)
+    }
+
+    private func importReviewButton(_ title: LocalizedStringKey, color: Color,
+                                    action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text("[") + Text(title) + Text("]")
+        }
+        .buttonStyle(.plain)
+        .font(Theme.monoSmall)
+        .foregroundColor(color)
+        .padding(.horizontal, 5).padding(.vertical, 3)
+        .contentShape(Rectangle())
     }
 }
 

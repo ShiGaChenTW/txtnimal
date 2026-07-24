@@ -155,6 +155,16 @@ public struct ValidatedPluginKVWrite: Equatable, Sendable {
     }
 }
 
+public struct ValidatedImportRequest: Equatable, Sendable {
+    public let pluginID: String
+    public let source: String
+
+    public init(pluginID: String, source: String) {
+        self.pluginID = pluginID
+        self.source = source
+    }
+}
+
 public struct PluginExportArtifact: Codable, Equatable, Sendable {
     public static let maximumContentBytes = 256 * 1024
     public static let maximumFilenameLength = 255
