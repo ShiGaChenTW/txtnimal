@@ -23,6 +23,7 @@ struct PluginPagePrototypeView: View {
     let onIntent: (ValidatedPluginIntent) -> Void
     var onKVWrite: (ValidatedPluginKVWrite) -> Void = { _ in }
     var onExport: (ValidatedPluginExport) -> Void = { _ in }
+    var onImport: (ValidatedImportRequest) -> Void = { _ in }
     var onAgentQuery: (ValidatedAgentQuery) -> Void = { _ in }
     var onValidationError: (Error) -> Void = { _ in }
 
@@ -86,6 +87,9 @@ struct PluginPagePrototypeView: View {
                     } else if action.type == .exportWrite {
                         let export = try PluginValidator.validate(exportAction: action, manifest: manifest)
                         onExport(export)
+                    } else if action.type == .importRead {
+                        let request = try PluginValidator.validate(importAction: action, manifest: manifest)
+                        onImport(request)
                     } else if action.type == .agentQuery {
                         let rawPrompt = action.prompt ?? ""
                         let filled: String

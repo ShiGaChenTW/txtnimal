@@ -229,11 +229,43 @@ public enum PluginValidator {
             throw PluginValidationError.missingCapability
         }
         let trimmedSource = source.trimmingCharacters(in: .whitespacesAndNewlines)
-        let supportedSources: Set<String> = ["apple-reminders"]
+        let supportedSources: Set<String> = ["apple-reminders", "reminders"]
         guard supportedSources.contains(trimmedSource) else {
             throw PluginValidationError.invalidAction
         }
         return ValidatedImportRequest(pluginID: manifest.id, source: trimmedSource)
+    }
+
+    /// Validates a plugin-facing `import.read` action carried by a page button. Mirrors
+    /// `validate(exportAction:)`: refuses when the `import.read` capability is absent, requires the
+    /// right kind/command and a non-empty source, forbids smuggling task-mutation / kv / export / agent
+    /// fields, then delegates source-value checking to `validate(importSource:manifest:)`.
+    public static func validate(importAction action: PluginAction, manifest: PluginManifest) throws -> ValidatedImportRequest {
+        guard Set(manifest.capabilities).contains(.importRead) else {
+            throw PluginValidationError.missingCapability
+        }
+        guard action.type == .importRead,
+              action.command == PluginAction.importReadCommand,
+              let source = action.source,
+              !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              (action.taskIDs ?? []).isEmpty,
+              action.title == nil,
+              action.due == nil,
+              action.expectedRevision == nil,
+              action.documentRevision == nil,
+              action.prompt == nil,
+              action.resultSchema == nil,
+              action.lists == nil,
+              action.tags == nil,
+              action.key == nil,
+              action.value == nil,
+              action.filename == nil,
+              action.mimeType == nil,
+              action.content == nil,
+              action.destination == nil else {
+            throw PluginValidationError.invalidAction
+        }
+        return try validate(importSource: source, manifest: manifest)
     }
 
     /// Validates a plugin-facing `export.write` action (an artifact to write/route).
@@ -327,6 +359,8 @@ public enum PluginValidator {
             switch action.type {
             case .kvSet:
                 _ = try validate(kvAction: action, manifest: manifest)
+            case .importRead:
+                _ = try validate(importAction: action, manifest: manifest)
             case .exportWrite:
                 _ = try validate(exportAction: action, manifest: manifest)
             default:
@@ -376,7 +410,7 @@ public enum PluginValidator {
         }
         if node.keys.contains("action"), !(node["action"] is [String: Any]) { throw PluginValidationError.invalidNode }
         if let action = node["action"] as? [String: Any] {
-            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "title", "due", "expectedRevision", "documentRevision", "prompt", "resultSchema", "lists", "tags", "key", "value", "filename", "mimeType", "content", "destination"])
+            try requireOnly(Set(action.keys), allowed: ["type", "command", "taskIDs", "title", "due", "expectedRevision", "documentRevision", "prompt", "resultSchema", "lists", "tags", "key", "value", "filename", "mimeType", "content", "destination", "source"])
         }
         if node.keys.contains("children"), !(node["children"] is [[String: Any]]) { throw PluginValidationError.invalidNode }
         for child in node["children"] as? [[String: Any]] ?? [] { try validateNodeKeys(child) }

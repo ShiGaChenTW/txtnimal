@@ -963,6 +963,44 @@ final class TaskStore: ObservableObject {
         throw ExportPackPluginError.sourceUnavailable
     }
 
+    enum ImportersPluginError: LocalizedError {
+        case sourceUnavailable
+        var errorDescription: String? {
+            switch self {
+            case .sourceUnavailable: return "找不到 importers plugin 的程式碼。"
+            }
+        }
+    }
+
+    /// Runs the deterministic first-party importers plugin in-process. Produces a page whose
+    /// 「從 Reminders 匯入」 button carries an import.read action that triggers the existing host
+    /// EventKit fetch → 匯入審核 flow (`importFromReminders()`); the plugin itself performs no I/O.
+    func importersPluginPage() throws -> PluginPageDocument {
+        let pluginID = "app.txtnimal.importers"
+        let source = try loadImportersSource()
+        let document = documentStoreSnapshot()
+        let snapshot = try PluginSnapshotBuilder.build(from: document)
+        return try ReportPluginRunner().run(source: source, reportType: "importers",
+                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
+                                            metadata: taskMetadataByID(document),
+                                            kv: kvStore?.namespace(for: pluginID) ?? [:])
+    }
+
+    private func loadImportersSource() throws -> String {
+        let pluginID = "app.txtnimal.importers"
+        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
+            let entry = package.url.appendingPathComponent(package.manifest.entry)
+            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
+        }
+        let candidates = [
+            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "importers"),
+        ]
+        for case let url? in candidates {
+            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
+        }
+        throw ImportersPluginError.sourceUnavailable
+    }
+
     enum AnalyticsPluginError: LocalizedError {
         case sourceUnavailable
         var errorDescription: String? {

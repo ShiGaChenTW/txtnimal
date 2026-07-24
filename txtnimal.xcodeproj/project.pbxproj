@@ -35,6 +35,7 @@
 		A2F38F194E2266B2ADBBC28E /* TaskFileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A2F40506DB1D415F559833 /* TaskFileBrowserView.swift */; };
 		AF44C1BB72B56D1C72476069 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42BF4B8D51ECE4F88443711C /* main.swift */; };
 		B07F30EF19EDC6792257A08F /* TerminalInputField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219CA0CE4DF8FD68D4B8568F /* TerminalInputField.swift */; };
+		CC034D83221EC1850719B6AD /* importers in Resources */ = {isa = PBXBuildFile; fileRef = F9BBF3E86BE274228D744A42 /* importers */; };
 		D002B7EC05F0F888006ABDDE /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C38AA616E57879F425E8BE9 /* ContentView.swift */; };
 		D58AA272829FAD809D0BDE5A /* PluginRunnerSpikeService.xpc in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8D49C77D1CB3BE1779A38541 /* PluginRunnerSpikeService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		DD5AB2D40C302ECE9B984FDA /* export-pack in Resources */ = {isa = PBXBuildFile; fileRef = F2541EEF4FFB5E806B8C6406 /* export-pack */; };
@@ -131,6 +132,7 @@
 		D9F0FC9C451CE2A794BC0654 /* reviews-pack */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "reviews-pack"; path = "PluginFixtures/reviews-pack"; sourceTree = SOURCE_ROOT; };
 		EC4B51654C0253094C5E5EFE /* methodology */ = {isa = PBXFileReference; lastKnownFileType = folder; name = methodology; path = PluginFixtures/methodology; sourceTree = SOURCE_ROOT; };
 		F2541EEF4FFB5E806B8C6406 /* export-pack */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "export-pack"; path = "PluginFixtures/export-pack"; sourceTree = SOURCE_ROOT; };
+		F9BBF3E86BE274228D744A42 /* importers */ = {isa = PBXFileReference; lastKnownFileType = folder; name = importers; path = PluginFixtures/importers; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -211,6 +213,7 @@
 				8336E28299055F85E391048D /* brain-dump */,
 				F2541EEF4FFB5E806B8C6406 /* export-pack */,
 				30208CDC0896C7B20C5B2049 /* habit-tracker */,
+				F9BBF3E86BE274228D744A42 /* importers */,
 				EC4B51654C0253094C5E5EFE /* methodology */,
 				3C66AA5412B226C8D1267873 /* nl-report */,
 				D9F0FC9C451CE2A794BC0654 /* reviews-pack */,
@@ -436,6 +439,7 @@
 				1C685CDEBEED82FDDE355AC8 /* brain-dump in Resources */,
 				DD5AB2D40C302ECE9B984FDA /* export-pack in Resources */,
 				F22C07CA3C1A9A224F25AA45 /* habit-tracker in Resources */,
+				CC034D83221EC1850719B6AD /* importers in Resources */,
 				34F6680E2FFB4E88F68C7D79 /* methodology in Resources */,
 				5BA0628F3E96397EE02ED11F /* nl-report in Resources */,
 				E3447B56471317E2C713F8DE /* reviews-pack in Resources */,

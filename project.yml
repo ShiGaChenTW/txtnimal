@@ -50,6 +50,9 @@ targets:
       - path: PluginFixtures/export-pack
         buildPhase: resources
         type: folder
+      - path: PluginFixtures/importers
+        buildPhase: resources
+        type: folder
     resources:
       - path: App/Resources
     dependencies:

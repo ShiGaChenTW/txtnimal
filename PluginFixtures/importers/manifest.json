@@ -1,0 +1,10 @@
+{
+  "id": "app.txtnimal.importers",
+  "name": "Importers",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "entry": "main.js",
+  "capabilities": ["import.read", "tasks.create", "ui.page"],
+  "commands": [],
+  "pages": [{"id": "importers", "title": "Importers", "entryFunction": "run"}]
+}

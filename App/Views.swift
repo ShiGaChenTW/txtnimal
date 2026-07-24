@@ -1105,6 +1105,8 @@ struct ReportView: View {
     @State private var nlReportView = "weekly"
     @State private var exportPackDoc: PluginPageDocument?
     @State private var exportPackError: String?
+    @State private var importersDoc: PluginPageDocument?
+    @State private var importersError: String?
 
     private static let taskReportManifest = PluginManifest(
         id: "app.txtnimal.task-report", name: "Task Report", version: "0.1.0",
@@ -1142,6 +1144,10 @@ struct ReportView: View {
         id: "app.txtnimal.export-pack", name: "Export Pack", version: "0.1.0",
         apiVersion: 1, entry: "main.js", capabilities: [.tasksAllRead, .uiPage, .exportWrite],
         pages: [PluginPageDeclaration(id: "export-pack", title: "Export Pack", entryFunction: "run")])
+    private static let importersManifest = PluginManifest(
+        id: "app.txtnimal.importers", name: "Importers", version: "0.1.0",
+        apiVersion: 1, entry: "main.js", capabilities: [.importRead, .tasksCreate, .uiPage],
+        pages: [PluginPageDeclaration(id: "importers", title: "Importers", entryFunction: "run")])
 
     var body: some View {
         let tasks = store.reportCandidateTasks()
@@ -1171,6 +1177,8 @@ struct ReportView: View {
             nlReportSection
             Divider().background(Theme.border)
             exportPackSection
+            Divider().background(Theme.border)
+            importersSection
         }
         .padding(.horizontal, 24).padding(.vertical, 22)
         .frame(maxWidth: 760, minHeight: 420, alignment: .topLeading)
@@ -1912,6 +1920,45 @@ struct ReportView: View {
         } catch {
             exportPackDoc = nil
             exportPackError = readableMessage(for: error)
+        }
+    }
+
+    private var importersSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("匯入").font(Theme.monoSmall).tracking(1.8).foregroundColor(Theme.dim)
+                Rectangle().fill(Theme.border).frame(height: 1)
+                Text("REMINDERS").font(Theme.monoSmall).foregroundColor(Theme.green)
+            }
+            HStack {
+                Spacer()
+                reportButton("開啟匯入", color: Theme.cyan) { generateImporters() }
+            }
+            if let importersError {
+                Text(importersError)
+                    .font(Theme.monoSmall)
+                    .foregroundColor(Theme.red)
+                    .textSelection(.enabled)
+            }
+            if let importersDoc {
+                PluginPagePrototypeView(document: importersDoc, manifest: Self.importersManifest,
+                                        onIntent: { _ in },
+                                        onImport: { _ in
+                                            store.importFromReminders()
+                                        })
+                    .frame(minHeight: 200)
+                    .overlay(Rectangle().stroke(Theme.border))
+            }
+        }
+    }
+
+    private func generateImporters() {
+        do {
+            importersDoc = try store.importersPluginPage()
+            importersError = nil
+        } catch {
+            importersDoc = nil
+            importersError = readableMessage(for: error)
         }
     }
 
