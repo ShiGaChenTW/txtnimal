@@ -30,6 +30,15 @@ public enum ReportPluginRunnerError: LocalizedError, Sendable {
 /// evaluates `source`, calls the global `run(input)`, and decodes the returned
 /// JSON object into a `PluginPageDocument`.
 public struct ReportPluginRunner {
+    public struct TaskMetadata: Sendable, Equatable {
+        public let created: String?
+        public let done: String?
+        public let quadrant: Int?
+        public init(created: String? = nil, done: String? = nil, quadrant: Int? = nil) {
+            self.created = created; self.done = done; self.quadrant = quadrant
+        }
+    }
+
     private struct Input: Encodable {
         struct Task: Encodable {
             let id: String
@@ -38,6 +47,9 @@ public struct ReportPluginRunner {
             let completed: Bool
             let lists: [String]
             let tags: [String]
+            let created: String?
+            let done: String?
+            let q: Int?
         }
         let reportType: String
         let tasks: [Task]
@@ -47,12 +59,15 @@ public struct ReportPluginRunner {
     public init() {}
 
     public func run(source: String, reportType: String,
-                    snapshot: PluginDocumentSnapshot, todayYMD: String) throws -> PluginPageDocument {
+                    snapshot: PluginDocumentSnapshot, todayYMD: String,
+                    metadata: [String: TaskMetadata] = [:]) throws -> PluginPageDocument {
         let input = Input(
             reportType: reportType,
-            tasks: snapshot.tasks.map {
-                Input.Task(id: $0.id, title: $0.title, due: $0.due,
-                           completed: $0.completed, lists: $0.lists, tags: $0.tags)
+            tasks: snapshot.tasks.map { task in
+                let meta = metadata[task.id]
+                return Input.Task(id: task.id, title: task.title, due: task.due,
+                                  completed: task.completed, lists: task.lists, tags: task.tags,
+                                  created: meta?.created, done: meta?.done, q: meta?.quadrant)
             },
             todayYMD: todayYMD)
 

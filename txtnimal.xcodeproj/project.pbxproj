@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01DD209FFC3196F4225E59AD /* task-report in Resources */ = {isa = PBXBuildFile; fileRef = 60FA87DE7F9834AE69676A84 /* task-report */; };
 		3056FF3F9130FA9B9559A9AD /* PluginPagePrototypeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93729848FDFF0B9D971D71A /* PluginPagePrototypeView.swift */; };
 		32ABA209D555F28048792F42 /* txtnimalApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 988AB3CF23CF783135207520 /* txtnimalApp.swift */; };
 		32FD79E4C9573B8830615A88 /* PluginBrokerXPCTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E3671ABD9D348F3E335022 /* PluginBrokerXPCTransport.swift */; };
@@ -30,6 +31,7 @@
 		B07F30EF19EDC6792257A08F /* TerminalInputField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219CA0CE4DF8FD68D4B8568F /* TerminalInputField.swift */; };
 		D002B7EC05F0F888006ABDDE /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C38AA616E57879F425E8BE9 /* ContentView.swift */; };
 		D58AA272829FAD809D0BDE5A /* PluginRunnerSpikeService.xpc in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8D49C77D1CB3BE1779A38541 /* PluginRunnerSpikeService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E3447B56471317E2C713F8DE /* reviews-pack in Resources */ = {isa = PBXBuildFile; fileRef = D9F0FC9C451CE2A794BC0654 /* reviews-pack */; };
 		E7ABA4F87FB25A123F48CD28 /* PluginRunnerSpikeWorker.app in Resources */ = {isa = PBXBuildFile; fileRef = 310423B225950866ED6D3305 /* PluginRunnerSpikeWorker.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E96CD3F7F570B0698D4C0241 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 872010864B3BC1540FB2F3C2 /* Localizable.strings */; };
 		E9DB8B6082F4A85569443779 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C4BECBC7F1E608EE42DE9D /* main.swift */; };
@@ -94,6 +96,7 @@
 		42BF4B8D51ECE4F88443711C /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		434D01CD265E5A2ED23A2AC6 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		44BB0E917D79D58DEF4D9B66 /* Project_txtnimal */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Project_txtnimal; path = .; sourceTree = SOURCE_ROOT; };
+		60FA87DE7F9834AE69676A84 /* task-report */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "task-report"; path = "PluginFixtures/task-report"; sourceTree = SOURCE_ROOT; };
 		65E3671ABD9D348F3E335022 /* PluginBrokerXPCTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginBrokerXPCTransport.swift; sourceTree = "<group>"; };
 		7AAF2DDFF26B26E6D0E3F2C9 /* FocusHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusHUD.swift; sourceTree = "<group>"; };
 		7C38AA616E57879F425E8BE9 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -111,6 +114,7 @@
 		D5EBADA571FE27D464BEEB5D /* PluginRunnerXPCProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginRunnerXPCProtocol.swift; sourceTree = "<group>"; };
 		D7857CC7C1C3E723CFB29839 /* txtnimal-icon-glass.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "txtnimal-icon-glass.png"; sourceTree = "<group>"; };
 		D906BBCB857918EC5EC581F8 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		D9F0FC9C451CE2A794BC0654 /* reviews-pack */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "reviews-pack"; path = "PluginFixtures/reviews-pack"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -183,6 +187,15 @@
 			name = Packages;
 			sourceTree = "<group>";
 		};
+		554CA5DA2D73C557C0B77E08 /* PluginFixtures */ = {
+			isa = PBXGroup;
+			children = (
+				D9F0FC9C451CE2A794BC0654 /* reviews-pack */,
+				60FA87DE7F9834AE69676A84 /* task-report */,
+			);
+			path = PluginFixtures;
+			sourceTree = "<group>";
+		};
 		5EC1DEDF8D29020AEFCBCE1D /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -208,6 +221,7 @@
 			children = (
 				0A688E0B48FB8E0C627B3365 /* App */,
 				3D997C92112A149F71446EC9 /* Packages */,
+				554CA5DA2D73C557C0B77E08 /* PluginFixtures */,
 				0E4429D0DBF8301A790CE935 /* PluginRunnerSpike */,
 				5EC1DEDF8D29020AEFCBCE1D /* Products */,
 			);
@@ -394,6 +408,8 @@
 			files = (
 				35465FF88456848FDA088208 /* Assets.xcassets in Resources */,
 				E96CD3F7F570B0698D4C0241 /* Localizable.strings in Resources */,
+				E3447B56471317E2C713F8DE /* reviews-pack in Resources */,
+				01DD209FFC3196F4225E59AD /* task-report in Resources */,
 				49F073F33178B3BC136B59B0 /* txtnimal-icon-crt.png in Resources */,
 				5283FA99D0C057CE9B18E112 /* txtnimal-icon-glass.png in Resources */,
 			);

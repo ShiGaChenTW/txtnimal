@@ -1085,11 +1085,18 @@ struct ReportView: View {
     @State private var pluginReportType = ReportTemplate.builtIn[0].id
     @State private var pluginDoc: PluginPageDocument?
     @State private var pluginError: String?
+    @State private var reviewsView = "weekly"
+    @State private var reviewsDoc: PluginPageDocument?
+    @State private var reviewsError: String?
 
     private static let taskReportManifest = PluginManifest(
         id: "app.txtnimal.task-report", name: "Task Report", version: "0.1.0",
         apiVersion: 1, entry: "main.js", capabilities: [.tasksAllRead, .uiPage],
         pages: [PluginPageDeclaration(id: "task-report", title: "Task Report", entryFunction: "run")])
+    private static let reviewsPackManifest = PluginManifest(
+        id: "app.txtnimal.reviews-pack", name: "Reviews Pack", version: "0.1.0",
+        apiVersion: 1, entry: "main.js", capabilities: [.tasksAllRead, .uiPage],
+        pages: [PluginPageDeclaration(id: "reviews-pack", title: "Reviews Pack", entryFunction: "run")])
 
     var body: some View {
         let tasks = store.reportCandidateTasks()
@@ -1103,6 +1110,8 @@ struct ReportView: View {
             if let report { reportPanel(report) }
             Divider().background(Theme.border)
             pluginSection
+            Divider().background(Theme.border)
+            reviewsPackSection
         }
         .padding(.horizontal, 24).padding(.vertical, 22)
         .frame(maxWidth: 760, minHeight: 420, alignment: .topLeading)
@@ -1392,6 +1401,68 @@ struct ReportView: View {
         case .cancelled: break
         case .saved: pluginError = nil
         case .failed(let message): pluginError = message
+        }
+    }
+
+    private var reviewsPackSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("REVIEWS").font(Theme.monoSmall).tracking(1.8).foregroundColor(Theme.dim)
+                Rectangle().fill(Theme.border).frame(height: 1)
+                Text("GTD").font(Theme.monoSmall).foregroundColor(Theme.cyan)
+            }
+
+            Picker("", selection: $reviewsView) {
+                Text("週回顧").tag("weekly")
+                Text("日回顧").tag("daily")
+                Text("停滯偵測").tag("stalled")
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+
+            HStack {
+                Spacer()
+                reportButton("產生回顧", color: Theme.cyan) { generateReviewsPack() }
+                reportButton("匯出 .md", color: Theme.yellow) { exportReviewsPack() }
+                    .disabled(reviewsDoc == nil)
+                    .opacity(reviewsDoc == nil ? 0.4 : 1)
+            }
+
+            if let reviewsError {
+                Text(reviewsError)
+                    .font(Theme.monoSmall)
+                    .foregroundColor(Theme.red)
+                    .textSelection(.enabled)
+            }
+
+            if let reviewsDoc {
+                PluginPagePrototypeView(document: reviewsDoc, manifest: Self.reviewsPackManifest,
+                                        onIntent: { _ in })
+                    .frame(minHeight: 260)
+                    .overlay(Rectangle().stroke(Theme.border))
+            }
+        }
+    }
+
+    private func generateReviewsPack() {
+        do {
+            reviewsDoc = try store.reviewsPackPluginPage(view: reviewsView)
+            reviewsError = nil
+        } catch {
+            reviewsDoc = nil
+            reviewsError = readableMessage(for: error)
+        }
+    }
+
+    private func exportReviewsPack() {
+        guard let reviewsDoc else {
+            reviewsError = "請先產生回顧。"
+            return
+        }
+        switch saveMarkdown(pluginMarkdown(from: reviewsDoc), reportType: "reviews-" + reviewsView) {
+        case .cancelled: break
+        case .saved: reviewsError = nil
+        case .failed(let message): reviewsError = message
         }
     }
 

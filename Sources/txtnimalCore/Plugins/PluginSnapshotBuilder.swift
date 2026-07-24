@@ -30,7 +30,7 @@ public enum PluginSnapshotBuilder {
     /// Maps each non-blank line's plugin identity → its index in `lines`, using the exact scheme
     /// `build` assigns. Lets the applier resolve legacy (unpersisted) IDs without stamping them
     /// into the file — so rescheduling an ID-less row changes only its due, not its tokens.
-    static func identityMap(for lines: [TaskLine]) -> [String: Int] {
+    public static func identityMap(for lines: [TaskLine]) -> [String: Int] {
         var map: [String: Int] = [:]
         for entry in orderedIdentities(for: lines) where map[entry.id] == nil {
             map[entry.id] = entry.index

@@ -19,9 +19,18 @@ targets:
     platform: macOS
     sources:
       - App
+      # First-party plugin fixtures as folder references so main.js/manifest.json land in the
+      # bundle under their own subdirectory (the loader looks up subdirectory: "<plugin>").
+      # xcodegen has no top-level `resources:` target key — it was silently ignored, so the
+      # fixtures never reached the bundle. They must live under `sources` with a resources phase.
+      - path: PluginFixtures/task-report
+        buildPhase: resources
+        type: folder
+      - path: PluginFixtures/reviews-pack
+        buildPhase: resources
+        type: folder
     resources:
       - path: App/Resources
-      - path: PluginFixtures/task-report
     dependencies:
       - package: txtnimalCore
         product: txtnimalCore

@@ -93,6 +93,33 @@ final class ReportPluginRunnerTests: XCTestCase {
         XCTAssertEqual(titles.count, 4, "each reportType must produce a distinct page")
     }
 
+    func testNewFieldsSerializeToJS() throws {
+        let echo = """
+        function run(input) {
+          var a = input.tasks[0], b = input.tasks[1];
+          return { schemaVersion: 1, page: { type: "page", id: "root", title: "echo", children: [
+            { type: "statCard", id: "a-created", title: "c", value: String(a.created) },
+            { type: "statCard", id: "a-done",    title: "d", value: String(a.done) },
+            { type: "statCard", id: "a-q",       title: "q", value: String(a.q) },
+            { type: "statCard", id: "b-created", title: "c", value: String(b.created) }
+          ] } };
+        }
+        """
+        let snap = PluginDocumentSnapshot(documentRevision: "rev", tasks: [
+            PluginTaskSnapshot(id: "t1", title: "有中繼", due: nil, completed: false, lists: [], tags: [],
+                               revision: "r1"),
+            PluginTaskSnapshot(id: "t2", title: "無中繼", due: nil, completed: false, lists: [], tags: [],
+                               revision: "r2"),
+        ])
+        let meta = ["t1": ReportPluginRunner.TaskMetadata(created: "2026-07-01", done: "2026-07-05", quadrant: 3)]
+        let doc = try ReportPluginRunner().run(source: echo, reportType: "weekly",
+                                               snapshot: snap, todayYMD: today, metadata: meta)
+        XCTAssertEqual(node(in: doc, id: "a-created")?.value, "2026-07-01")
+        XCTAssertEqual(node(in: doc, id: "a-done")?.value, "2026-07-05")
+        XCTAssertEqual(node(in: doc, id: "a-q")?.value, "3")
+        XCTAssertEqual(node(in: doc, id: "b-created")?.value, "undefined")
+    }
+
     func testMissingRunFunctionThrows() {
         XCTAssertThrowsError(
             try ReportPluginRunner().run(source: "function notRun() { return {}; }",

@@ -800,14 +800,29 @@ final class TaskStore: ObservableObject {
         }
     }
 
+    /// Builds per-task {created, done, quadrant} keyed by the SAME plugin id scheme the
+    /// snapshot uses, so page plugins can read fields PluginTaskSnapshot doesn't carry.
+    private func taskMetadataByID(_ source: TaskDocumentSnapshot) -> [String: ReportPluginRunner.TaskMetadata] {
+        var out: [String: ReportPluginRunner.TaskMetadata] = [:]
+        for (id, index) in PluginSnapshotBuilder.identityMap(for: source.lines) {
+            let line = source.lines[index]
+            out[id] = ReportPluginRunner.TaskMetadata(created: line.created,
+                                                      done: line.completedDate,
+                                                      quadrant: line.quadrant)
+        }
+        return out
+    }
+
     /// Runs the deterministic first-party task-report plugin in-process and returns
     /// its declarative page document. Uses the FULL task snapshot, not the report
     /// selection — the plugin aggregates across everything.
     func taskReportPluginPage(reportType: String) throws -> PluginPageDocument {
         let source = try loadTaskReportSource()
-        let snapshot = try PluginSnapshotBuilder.build(from: documentStoreSnapshot())
+        let document = documentStoreSnapshot()
+        let snapshot = try PluginSnapshotBuilder.build(from: document)
         return try ReportPluginRunner().run(source: source, reportType: reportType,
-                                            snapshot: snapshot, todayYMD: Self.todayYMD())
+                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
+                                            metadata: taskMetadataByID(document))
     }
 
     private func loadTaskReportSource() throws -> String {
@@ -824,6 +839,41 @@ final class TaskStore: ObservableObject {
             if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
         }
         throw TaskReportPluginError.sourceUnavailable
+    }
+
+    enum ReviewsPackPluginError: LocalizedError {
+        case sourceUnavailable
+        var errorDescription: String? {
+            switch self {
+            case .sourceUnavailable: return "找不到 reviews-pack plugin 的程式碼。"
+            }
+        }
+    }
+
+    /// Runs the deterministic first-party reviews-pack plugin in-process. `view` is the
+    /// review selector (weekly / daily / stalled), carried on the shared reportType field.
+    func reviewsPackPluginPage(view: String) throws -> PluginPageDocument {
+        let source = try loadReviewsPackSource()
+        let document = documentStoreSnapshot()
+        let snapshot = try PluginSnapshotBuilder.build(from: document)
+        return try ReportPluginRunner().run(source: source, reportType: view,
+                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
+                                            metadata: taskMetadataByID(document))
+    }
+
+    private func loadReviewsPackSource() throws -> String {
+        let pluginID = "app.txtnimal.reviews-pack"
+        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
+            let entry = package.url.appendingPathComponent(package.manifest.entry)
+            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
+        }
+        let candidates = [
+            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "reviews-pack"),
+        ]
+        for case let url? in candidates {
+            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
+        }
+        throw ReviewsPackPluginError.sourceUnavailable
     }
 
     static func todayYMD() -> String {
