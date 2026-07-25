@@ -365,8 +365,11 @@ struct PluginPageHostView: View {
 
 // MARK: - Dynamic reports list
 
-/// Renders every page-capable plugin whose manifest places it in the `reports` surface,
+/// Renders every page-capable plugin whose effective placement is the `reports` surface,
 /// sorted by `placement.order`. Replaces the ten hand-wired plugin sections in `ReportView`.
+///
+/// SCO-175: recomputes whenever the gallery changes `disabledPluginIDs` or the placement
+/// overrides, so disabling / pinning a plugin adds or removes its host view here live.
 struct PluginReportsList: View {
     @EnvironmentObject var store: TaskStore
     @State private var entries: [PluginRegistryEntry] = []
@@ -378,6 +381,10 @@ struct PluginReportsList: View {
                 PluginPageHostView(entry: entry)
             }
         }
-        .onAppear { if entries.isEmpty { entries = store.reportPagePlugins() } }
+        .onAppear(perform: reload)
+        .onChange(of: store.disabledPluginIDs) { _ in reload() }
+        .onChange(of: store.pluginPlacementOverrides) { _ in reload() }
     }
+
+    private func reload() { entries = store.reportPagePlugins() }
 }

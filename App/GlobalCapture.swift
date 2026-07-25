@@ -1240,31 +1240,10 @@ struct SettingsView: View {
             .padding(.leading, 104)
             hint("API Key 不會回顯，只會儲存在 macOS Keychain。")
 
-            section("插件")
-            ForEach(TaskStore.bundledPlugins) { plugin in
-                HStack(spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(plugin.name).foregroundColor(Theme.fg)
-                        Text("\(plugin.id) · v\(plugin.version)").font(Theme.monoSmall).foregroundColor(Theme.dim)
-                        Text(plugin.capabilities.joined(separator: ", ")).font(Theme.monoSmall).foregroundColor(Theme.dim.opacity(0.75))
-                    }
-                    Spacer()
-                    Toggle("", isOn: Binding(get: { store.isPluginEnabled(plugin) },
-                                             set: { store.setPluginEnabled(plugin, $0) })).labelsHidden()
-                }
-                .padding(.vertical, 4)
-            }
-            hint("插件目前採內建 registry；正式公開插件前仍需簽章與權限驗證")
-            ForEach(store.installedPluginPackages, id: \.manifest.id) { package in
-                HStack {
-                    Text(package.manifest.name)
-                    Text("v\(package.manifest.version)").font(Theme.monoSmall).foregroundColor(Theme.dim)
-                    Spacer()
-                    Button("移除") { store.removeInstalledPlugin(package) }.buttonStyle(.plain)
-                }
-            }
-            Button("重新掃描已安裝插件") { store.refreshInstalledPlugins() }
-            Button("安裝插件 package…") { installPluginPackage() }
+            // SCO-175: the hardcoded two-row plugin list is replaced by the registry-driven
+            // gallery, which lists every bundled + installed plugin with enable / pin / install /
+            // remove controls. Kept the dev "run reschedule" + execution-record rows below it.
+            PluginGalleryView()
             Button("執行 Reschedule Tomorrow（目前 task）") { store.runRescheduleTomorrow() }
             HStack {
                 Text("執行紀錄").foregroundColor(Theme.dim)
@@ -1399,11 +1378,4 @@ struct SettingsView: View {
         if p.runModal() == .OK, let url = p.url { store.setDataDir(url) }
     }
 
-    private func installPluginPackage() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.prompt = store.appLanguage == .english ? "Install" : "安裝"
-        if panel.runModal() == .OK, let url = panel.url { store.installPluginPackage(from: url) }
-    }
 }

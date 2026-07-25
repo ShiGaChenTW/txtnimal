@@ -239,3 +239,20 @@
 "用 plugin 產生" = "Generate with plugin";
 "匯出 .md" = "Export .md";
 "請先用 plugin 產生報表。" = "Generate a plugin report first.";
+
+/* SCO-175 plugin gallery */
+"外掛" = "Plugins";
+"找不到任何外掛。" = "No plugins found.";
+"安裝外掛 package…" = "Install plugin package…";
+"重新掃描" = "Rescan";
+"停用會讓外掛從報表分頁與側欄消失；釘選可切換外掛出現的位置。變更即時生效。" = "Disabling removes a plugin from the Reports tab and sidebar; pinning switches where it appears. Changes apply instantly.";
+"安裝的外掛沿用既有簽章與權限審查流程；設定持久化於 App 偏好設定。" = "Installed plugins follow the existing signing and permission review flow; settings persist in the app preferences.";
+"已釘選側欄" = "Pinned to Sidebar";
+"側欄" = "Sidebar";
+"內建" = "Bundled";
+"已安裝" = "Installed";
+"位置" = "Placement";
+"移除" = "Remove";
+"已啟用" = "Enabled";
+"已停用" = "Disabled";
+"安裝" = "Install";

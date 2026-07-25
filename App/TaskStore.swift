@@ -177,6 +177,70 @@ final class TaskStore: ObservableObject {
     func setPluginEnabled(_ plugin: InstalledPlugin, _ enabled: Bool) {
         if enabled { enabledPluginIDs.insert(plugin.id) } else { enabledPluginIDs.remove(plugin.id) }
     }
+
+    // MARK: - SCO-175 plugin gallery state
+    //
+    // The unified `PluginRegistry` speaks an OPT-OUT model (`disabledIDs`), so the gallery persists
+    // a `disabledPluginIDs` set — everything discovered is enabled unless the user turns it off.
+    // (The legacy `enabledPluginIDs` opt-in set above only ever gated the two hardcoded
+    // `bundledPlugins` demo rows + the reschedule button, never a registry surface, so the two
+    // never overlap.) Placement overrides persist as pluginID → section rawValue. Both live in
+    // UserDefaults — the same settings-persistence layer every other preference uses; no new store.
+
+    @Published var disabledPluginIDs: Set<String> = {
+        Set(UserDefaults.standard.stringArray(forKey: "disabledPluginIDs") ?? [])
+    }() {
+        didSet { UserDefaults.standard.set(Array(disabledPluginIDs), forKey: "disabledPluginIDs") }
+    }
+
+    @Published var pluginPlacementOverrides: [String: String] = {
+        (UserDefaults.standard.dictionary(forKey: "pluginPlacementOverrides") as? [String: String]) ?? [:]
+    }() {
+        didSet { UserDefaults.standard.set(pluginPlacementOverrides, forKey: "pluginPlacementOverrides") }
+    }
+
+    /// The registry the gallery + surfaces share, with the user's `disabledPluginIDs` injected so a
+    /// disabled plugin's entries come back `enabled == false`.
+    private func makePluginRegistry() -> PluginRegistry {
+        PluginRegistry(bundledDirectory: Bundle.main.resourceURL,
+                       installedStore: pluginPackageStore,
+                       disabledIDs: disabledPluginIDs)
+    }
+
+    /// Placement overrides as typed sections (drops any unknown rawValues defensively).
+    private func placementOverrideSections() -> [String: PluginPlacement.Section] {
+        pluginPlacementOverrides.reduce(into: [:]) { out, pair in
+            if let section = PluginPlacement.Section(rawValue: pair.value) { out[pair.key] = section }
+        }
+    }
+
+    /// Every discovered plugin (installed overrides bundled), INCLUDING disabled ones — the gallery
+    /// must show what it can re-enable. Sorted by id for a stable list.
+    func galleryPluginEntries() -> [PluginRegistryEntry] {
+        (try? makePluginRegistry().discover()) ?? []
+    }
+
+    func isPluginEnabled(id: String) -> Bool { !disabledPluginIDs.contains(id) }
+
+    func setPluginEnabled(id: String, _ enabled: Bool) {
+        if enabled { disabledPluginIDs.remove(id) } else { disabledPluginIDs.insert(id) }
+    }
+
+    /// The plugin's effective surface (user override merged over manifest placement).
+    func effectivePluginSection(for entry: PluginRegistryEntry) -> PluginPlacement.Section? {
+        PluginSurfaceResolver.effectiveSection(for: entry, overrides: placementOverrideSections())
+    }
+
+    /// Pins a plugin to a surface (persisted as a user override).
+    func setPluginSection(id: String, _ section: PluginPlacement.Section) {
+        pluginPlacementOverrides[id] = section.rawValue
+    }
+
+    /// Page-capable, enabled plugins the manifest/override places on the `sidebar` surface.
+    func sidebarPagePlugins() -> [PluginRegistryEntry] {
+        PluginSurfaceResolver.pagePlugins(in: .sidebar, from: galleryPluginEntries(),
+                                          overrides: placementOverrideSections())
+    }
     @Published private(set) var lines: [TaskLine] = []
     @Published private(set) var archiveLines: [TaskLine] = []
     @Published var lastError: String?
@@ -899,23 +963,14 @@ final class TaskStore: ObservableObject {
         throw RunPluginPageError.pluginUnavailable(pluginId)
     }
 
-    /// SCO-174: page-capable plugins the manifest places in the `reports` surface, sorted by
-    /// `placement.order` (id as tiebreak). Drives the generic `PluginReportsList` that replaced
-    /// the ten bespoke `ReportView` sections. Uses `discover()` (not `discoverEnabled`) so the
-    /// bundled report fixtures render unconditionally, exactly as the hand-wired sections did.
+    /// SCO-174/175: page-capable plugins on the `reports` surface, sorted by `placement.order`
+    /// (id as tiebreak). Drives the generic `PluginReportsList`. SCO-175 routes this through the
+    /// registry built with the user's `disabledPluginIDs` and the shared `PluginSurfaceResolver`,
+    /// so gallery toggles (disable) and pins (reports↔sidebar override) drop out of / into this
+    /// list immediately — a disabled or sidebar-pinned plugin no longer renders here.
     func reportPagePlugins() -> [PluginRegistryEntry] {
-        let registry = PluginRegistry(bundledDirectory: Bundle.main.resourceURL,
-                                      installedStore: pluginPackageStore)
-        let all = (try? registry.discover()) ?? []
-        return all
-            .filter { $0.manifest.placement?.section == .reports }
-            .filter { $0.manifest.capabilities.contains(.uiPage) }
-            .sorted {
-                let lhs = ($0.manifest.placement?.order ?? Int.max)
-                let rhs = ($1.manifest.placement?.order ?? Int.max)
-                if lhs != rhs { return lhs < rhs }
-                return $0.manifest.id < $1.manifest.id
-            }
+        PluginSurfaceResolver.pagePlugins(in: .reports, from: galleryPluginEntries(),
+                                          overrides: placementOverrideSections())
     }
 
     /// SCO-174: generic `agent.query` runner for the plugin page host. Brokers the query with the
