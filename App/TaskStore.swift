@@ -214,15 +214,6 @@ final class TaskStore: ObservableObject {
     @Published var view: AppView = .list
     @Published private(set) var agentState: AgentState = .idle
     @Published private(set) var importReview: ImportReviewState = .idle
-    @Published private(set) var brainDumpDoc: PluginPageDocument?
-    @Published var brainDumpError: String?
-    @Published private(set) var brainDumpLoading = false
-    @Published private(set) var smartTriageDoc: PluginPageDocument?
-    @Published var smartTriageError: String?
-    @Published private(set) var smartTriageLoading = false
-    @Published private(set) var nlReportDoc: PluginPageDocument?
-    @Published var nlReportError: String?
-    @Published private(set) var nlReportLoading = false
     @Published var cursor: Int? = nil          // index into `lines`
     @Published var reportSelection: Set<String> = []
     @Published var focusMode = false
@@ -908,157 +899,54 @@ final class TaskStore: ObservableObject {
         throw RunPluginPageError.pluginUnavailable(pluginId)
     }
 
-    /// Runs the deterministic first-party task-report plugin. Thin SCO-172 wrapper.
-    func taskReportPluginPage(reportType: String) throws -> PluginPageDocument {
-        try runPluginPage(pluginId: "app.txtnimal.task-report", input: ["reportType": reportType])
-    }
-
-    /// Runs the deterministic first-party reviews-pack plugin. `view` is the review selector
-    /// (weekly / daily / stalled). Thin SCO-172 wrapper.
-    func reviewsPackPluginPage(view: String) throws -> PluginPageDocument {
-        try runPluginPage(pluginId: "app.txtnimal.reviews-pack", input: ["view": view])
-    }
-
-    /// Runs the deterministic first-party export-pack plugin (export.write buttons). Thin wrapper.
-    func exportPackPluginPage() throws -> PluginPageDocument {
-        try runPluginPage(pluginId: "app.txtnimal.export-pack")
-    }
-
-    /// Runs the deterministic first-party importers plugin (import.read → 匯入審核). Thin wrapper.
-    func importersPluginPage() throws -> PluginPageDocument {
-        try runPluginPage(pluginId: "app.txtnimal.importers")
-    }
-
-    /// Runs the deterministic first-party analytics plugin. Thin wrapper.
-    func analyticsPluginPage() throws -> PluginPageDocument {
-        try runPluginPage(pluginId: "app.txtnimal.analytics")
-    }
-
-    /// Runs the deterministic first-party habit-tracker plugin (consumes storage.kv). Thin wrapper.
-    func habitTrackerPluginPage() throws -> PluginPageDocument {
-        try runPluginPage(pluginId: "app.txtnimal.habit-tracker")
-    }
-
-    private static func brainDumpManifest() -> PluginManifest {
-        PluginManifest(
-            id: "app.txtnimal.brain-dump",
-            name: "Brain Dump",
-            version: "0.1.0",
-            apiVersion: 1,
-            entry: "main.js",
-            capabilities: [.agentQuery, .tasksCreate, .uiPage],
-            pages: [PluginPageDeclaration(id: "brain-dump", title: "Brain Dump", entryFunction: "run")]
-        )
-    }
-
-    private static func smartTriageManifest() -> PluginManifest {
-        PluginManifest(
-            id: "app.txtnimal.smart-triage",
-            name: "Smart Triage",
-            version: "0.1.0",
-            apiVersion: 1,
-            entry: "main.js",
-            capabilities: [.agentQuery, .tasksAllRead, .uiPage],
-            pages: [PluginPageDeclaration(id: "smart-triage", title: "Smart Triage", entryFunction: "run")]
-        )
-    }
-
-    private static func nlReportManifest() -> PluginManifest {
-        PluginManifest(
-            id: "app.txtnimal.nl-report",
-            name: "NL Report",
-            version: "0.1.0",
-            apiVersion: 1,
-            entry: "main.js",
-            capabilities: [.agentQuery, .tasksAllRead, .uiPage, .exportWrite],
-            pages: [PluginPageDeclaration(id: "nl-report", title: "NL Report", entryFunction: "run")]
-        )
-    }
-
-    /// Runs the first-party brain-dump plugin (agent.query → create drafts). Thin SCO-172 wrapper.
-    func brainDumpPluginPage(agentResult: String? = nil) throws -> PluginPageDocument {
-        try runPluginPage(pluginId: "app.txtnimal.brain-dump", agentResult: agentResult)
-    }
-
-    /// Runs the first-party smart-triage plugin (agent.query ranking). Thin SCO-172 wrapper.
-    func smartTriagePluginPage(agentResult: String? = nil) throws -> PluginPageDocument {
-        try runPluginPage(pluginId: "app.txtnimal.smart-triage", agentResult: agentResult)
-    }
-
-    /// Runs the first-party nl-report plugin (agent.query + export.write). `view` is the
-    /// report template selector. Thin SCO-172 wrapper.
-    func nlReportPluginPage(view: String, agentResult: String? = nil) throws -> PluginPageDocument {
-        try runPluginPage(pluginId: "app.txtnimal.nl-report", input: ["view": view], agentResult: agentResult)
-    }
-
-    func generateBrainDumpInput() {
-        brainDumpDoc = try? brainDumpPluginPage(agentResult: nil)
-        brainDumpError = nil
-    }
-
-    func generateSmartTriageInput() {
-        smartTriageDoc = try? smartTriagePluginPage(agentResult: nil)
-        smartTriageError = nil
-    }
-
-    func generateNlReportInput(view: String) {
-        nlReportDoc = try? nlReportPluginPage(view: view, agentResult: nil)
-        nlReportError = nil
-    }
-
-    @MainActor
-    func applyPluginBrainDumpQuery(_ query: ValidatedAgentQuery) async {
-        brainDumpLoading = true
-        brainDumpError = nil
-        defer { brainDumpLoading = false }
-
-        do {
-            let manifest = Self.brainDumpManifest()
-            let broker = AgentQueryBroker(credentialStore: KeychainAgentCredentialStore())
-            let result = try await broker.query(prompt: query.prompt, resultSchema: query.resultSchema, manifest: manifest)
-            let doc = try brainDumpPluginPage(agentResult: result.text)
-            brainDumpDoc = doc
-
-            let current = documentStoreSnapshot()
-            let actions = createTaskActions(in: doc.page)
-            let intents = try actions.map {
-                try PluginValidator.validate(action: $0, manifest: manifest, documentRevision: current.documentRevision)
+    /// SCO-174: page-capable plugins the manifest places in the `reports` surface, sorted by
+    /// `placement.order` (id as tiebreak). Drives the generic `PluginReportsList` that replaced
+    /// the ten bespoke `ReportView` sections. Uses `discover()` (not `discoverEnabled`) so the
+    /// bundled report fixtures render unconditionally, exactly as the hand-wired sections did.
+    func reportPagePlugins() -> [PluginRegistryEntry] {
+        let registry = PluginRegistry(bundledDirectory: Bundle.main.resourceURL,
+                                      installedStore: pluginPackageStore)
+        let all = (try? registry.discover()) ?? []
+        return all
+            .filter { $0.manifest.placement?.section == .reports }
+            .filter { $0.manifest.capabilities.contains(.uiPage) }
+            .sorted {
+                let lhs = ($0.manifest.placement?.order ?? Int.max)
+                let rhs = ($1.manifest.placement?.order ?? Int.max)
+                if lhs != rhs { return lhs < rhs }
+                return $0.manifest.id < $1.manifest.id
             }
-            prepareAgentReview(intents)
-        } catch {
-            brainDumpError = error.localizedDescription
-        }
     }
 
+    /// SCO-174: generic `agent.query` runner for the plugin page host. Brokers the query with the
+    /// plugin's own manifest (the key never leaves the host), re-runs the page with the injected
+    /// `agentResult`, and — for plugins that declare `tasks.create` (e.g. brain-dump) — routes any
+    /// createTask buttons in the rendered page into the agent-review queue, preserving the exact
+    /// behaviour of the former `applyPluginBrainDumpQuery`.
     @MainActor
-    func applyPluginSmartTriageQuery(_ query: ValidatedAgentQuery) async {
-        smartTriageLoading = true
-        smartTriageError = nil
-        defer { smartTriageLoading = false }
-
+    func runPluginPageWithAgentQuery(entry: PluginRegistryEntry,
+                                     input: [String: String],
+                                     query: ValidatedAgentQuery) async -> Result<PluginPageDocument, Error> {
         do {
-            let manifest = Self.smartTriageManifest()
+            let manifest = entry.manifest
             let broker = AgentQueryBroker(credentialStore: KeychainAgentCredentialStore())
-            let result = try await broker.query(prompt: query.prompt, resultSchema: query.resultSchema, manifest: manifest)
-            smartTriageDoc = try smartTriagePluginPage(agentResult: result.text)
-        } catch {
-            smartTriageError = error.localizedDescription
-        }
-    }
+            let result = try await broker.query(prompt: query.prompt,
+                                                resultSchema: query.resultSchema,
+                                                manifest: manifest)
+            let doc = try runPluginPage(pluginId: manifest.id, input: input, agentResult: result.text)
 
-    @MainActor
-    func applyPluginNlReportQuery(_ query: ValidatedAgentQuery, view: String) async {
-        nlReportLoading = true
-        nlReportError = nil
-        defer { nlReportLoading = false }
-
-        do {
-            let manifest = Self.nlReportManifest()
-            let broker = AgentQueryBroker(credentialStore: KeychainAgentCredentialStore())
-            let result = try await broker.query(prompt: query.prompt, resultSchema: query.resultSchema, manifest: manifest)
-            nlReportDoc = try nlReportPluginPage(view: view, agentResult: result.text)
+            if manifest.capabilities.contains(.tasksCreate) {
+                let current = documentStoreSnapshot()
+                let actions = createTaskActions(in: doc.page)
+                let intents = try actions.map {
+                    try PluginValidator.validate(action: $0, manifest: manifest,
+                                                 documentRevision: current.documentRevision)
+                }
+                prepareAgentReview(intents)
+            }
+            return .success(doc)
         } catch {
-            nlReportError = error.localizedDescription
+            return .failure(error)
         }
     }
 
@@ -1073,12 +961,6 @@ final class TaskStore: ObservableObject {
             ownAction = []
         }
         return ownAction + (node.children ?? []).flatMap(createTaskActions(in:))
-    }
-
-    /// Runs the deterministic first-party methodology plugin. `view` is the methodology
-    /// selector (eisenhower / para / gtd). Thin SCO-172 wrapper.
-    func methodologyPluginPage(view: String) throws -> PluginPageDocument {
-        try runPluginPage(pluginId: "app.txtnimal.methodology", input: ["view": view])
     }
 
     func pluginKVNamespace(for pluginID: String) -> [String: String] {

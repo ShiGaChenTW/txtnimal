@@ -29,6 +29,7 @@
 		6203FCE7F6196AE01291FE1D /* PluginRunnerXPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5EBADA571FE27D464BEEB5D /* PluginRunnerXPCProtocol.swift */; };
 		65DC76F3C171743FFB3E0FA0 /* txtnimalCore in Frameworks */ = {isa = PBXBuildFile; productRef = FECEC1DE15B60D012C1C7118 /* txtnimalCore */; };
 		7559D0C552CD69EDAB69C539 /* PluginRunnerSpikeService.xpc in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8D49C77D1CB3BE1779A38541 /* PluginRunnerSpikeService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		7A5663D0CBC4DBD56005C8BF /* PluginPageHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE8DD3E457A871595A8B4414 /* PluginPageHostView.swift */; };
 		896504E5394E7BFE84DA5182 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 222BB1F05B96A3C8737A37FD /* Theme.swift */; };
 		9C31E0263E49A6D61B6BB229 /* analytics in Resources */ = {isa = PBXBuildFile; fileRef = 8AC60192D7BFD727E360A886 /* analytics */; };
 		9C9D007F6EC87E3290D8100A /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D906BBCB857918EC5EC581F8 /* WelcomeView.swift */; };
@@ -107,7 +108,7 @@
 		3D7BE821495251F903C1400A /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
 		42BF4B8D51ECE4F88443711C /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		434D01CD265E5A2ED23A2AC6 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
-		44BB0E917D79D58DEF4D9B66 /* Project_txtnimal */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Project_txtnimal; path = .; sourceTree = SOURCE_ROOT; };
+		4E5780008B99E9592041CE72 /* agent-a02c26b9b052427f1 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "agent-a02c26b9b052427f1"; path = .; sourceTree = SOURCE_ROOT; };
 		5D324614D2E965F0FAC63692 /* smart-triage */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "smart-triage"; path = "PluginFixtures/smart-triage"; sourceTree = SOURCE_ROOT; };
 		60FA87DE7F9834AE69676A84 /* task-report */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "task-report"; path = "PluginFixtures/task-report"; sourceTree = SOURCE_ROOT; };
 		65E3671ABD9D348F3E335022 /* PluginBrokerXPCTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginBrokerXPCTransport.swift; sourceTree = "<group>"; };
@@ -126,6 +127,7 @@
 		C0C4BECBC7F1E608EE42DE9D /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		C63036A2C8D51ED40F089374 /* GlobalCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalCapture.swift; sourceTree = "<group>"; };
 		CCFA51202F6B343EE91F550A /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		CE8DD3E457A871595A8B4414 /* PluginPageHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginPageHostView.swift; sourceTree = "<group>"; };
 		D5EBADA571FE27D464BEEB5D /* PluginRunnerXPCProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginRunnerXPCProtocol.swift; sourceTree = "<group>"; };
 		D7857CC7C1C3E723CFB29839 /* txtnimal-icon-glass.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "txtnimal-icon-glass.png"; sourceTree = "<group>"; };
 		D906BBCB857918EC5EC581F8 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
@@ -201,7 +203,7 @@
 		3D997C92112A149F71446EC9 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				44BB0E917D79D58DEF4D9B66 /* Project_txtnimal */,
+				4E5780008B99E9592041CE72 /* agent-a02c26b9b052427f1 */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -266,6 +268,7 @@
 			isa = PBXGroup;
 			children = (
 				65E3671ABD9D348F3E335022 /* PluginBrokerXPCTransport.swift */,
+				CE8DD3E457A871595A8B4414 /* PluginPageHostView.swift */,
 				A93729848FDFF0B9D971D71A /* PluginPagePrototypeView.swift */,
 			);
 			path = Plugins;
@@ -463,6 +466,7 @@
 				3EE1907F9AF4A7DE8DCAEE6A /* FocusHUD.swift in Sources */,
 				3AD6F3F8DA29D965702C96C2 /* GlobalCapture.swift in Sources */,
 				32FD79E4C9573B8830615A88 /* PluginBrokerXPCTransport.swift in Sources */,
+				7A5663D0CBC4DBD56005C8BF /* PluginPageHostView.swift in Sources */,
 				3056FF3F9130FA9B9559A9AD /* PluginPagePrototypeView.swift in Sources */,
 				A2F38F194E2266B2ADBBC28E /* TaskFileBrowserView.swift in Sources */,
 				3A6317FD9374298D43624E13 /* TaskStore.swift in Sources */,
