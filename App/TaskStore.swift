@@ -837,11 +837,11 @@ final class TaskStore: ObservableObject {
 
     func clearReportSelection() { reportSelection.removeAll() }
 
-    enum TaskReportPluginError: LocalizedError {
-        case sourceUnavailable
+    enum RunPluginPageError: LocalizedError {
+        case pluginUnavailable(String)
         var errorDescription: String? {
             switch self {
-            case .sourceUnavailable: return "找不到 task-report plugin 的程式碼。"
+            case .pluginUnavailable(let id): return "找不到外掛 \(id) 的程式碼。"
             }
         }
     }
@@ -859,245 +859,84 @@ final class TaskStore: ObservableObject {
         return out
     }
 
-    /// Runs the deterministic first-party task-report plugin in-process and returns
-    /// its declarative page document. Uses the FULL task snapshot, not the report
-    /// selection — the plugin aggregates across everything.
+    /// SCO-172: the single generic page entry that replaced the ten bespoke `*PluginPage`
+    /// methods. Resolves `pluginId` → manifest + source via `PluginRegistry` (installed
+    /// packages override bundled fixtures), then delegates capability-driven context
+    /// injection + execution to the core `GenericPluginPageRunner`. `input` carries entry
+    /// control values (e.g. ["reportType": "weekly"], ["view": "stalled"]); `agentResult`
+    /// is injected only when the manifest declares `agent.query`.
+    ///
+    /// SCO-174 will call this directly from a generic host view; until then the ten thin
+    /// wrappers below preserve the exact call sites in `App/Views.swift`.
+    func runPluginPage(pluginId: String,
+                       input: [String: String] = [:],
+                       agentResult: String? = nil) throws -> PluginPageDocument {
+        let resolved = try resolvePluginEntry(pluginId: pluginId)
+        let document = documentStoreSnapshot()
+        let snapshot = try PluginSnapshotBuilder.build(from: document)
+        return try GenericPluginPageRunner().run(
+            manifest: resolved.manifest,
+            source: resolved.source,
+            snapshot: snapshot,
+            todayYMD: Self.todayYMD(),
+            metadata: taskMetadataByID(document),
+            kvNamespace: kvStore?.namespace(for: pluginId) ?? [:],
+            agentResult: agentResult,
+            input: input)
+    }
+
+    /// Resolves a plugin id to its manifest + entry source. Prefers the unified
+    /// `PluginRegistry` (installed packages override bundled fixtures); falls back to the
+    /// legacy `Bundle.main` subdirectory lookup the pre-SCO-172 loaders used.
+    private func resolvePluginEntry(pluginId: String) throws -> (manifest: PluginManifest, source: String) {
+        let registry = PluginRegistry(bundledDirectory: Bundle.main.resourceURL,
+                                      installedStore: pluginPackageStore)
+        if let entry = (try? registry.discover())?.first(where: { $0.manifest.id == pluginId }) {
+            let entryURL = entry.packageRootURL.appendingPathComponent(entry.manifest.entry)
+            if let source = try? String(contentsOf: entryURL, encoding: .utf8) {
+                return (entry.manifest, source)
+            }
+        }
+        let shortName = GenericPluginPageRunner.shortName(for: pluginId)
+        if let manifestURL = Bundle.main.url(forResource: "manifest", withExtension: "json", subdirectory: shortName),
+           let sourceURL = Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: shortName),
+           let manifestData = try? Data(contentsOf: manifestURL),
+           let manifest = try? PluginValidator.decodeManifest(manifestData),
+           let source = try? String(contentsOf: sourceURL, encoding: .utf8) {
+            return (manifest, source)
+        }
+        throw RunPluginPageError.pluginUnavailable(pluginId)
+    }
+
+    /// Runs the deterministic first-party task-report plugin. Thin SCO-172 wrapper.
     func taskReportPluginPage(reportType: String) throws -> PluginPageDocument {
-        let pluginID = "app.txtnimal.task-report"
-        let source = try loadTaskReportSource()
-        let document = documentStoreSnapshot()
-        let snapshot = try PluginSnapshotBuilder.build(from: document)
-        return try ReportPluginRunner().run(source: source, reportType: reportType,
-                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
-                                            metadata: taskMetadataByID(document),
-                                            kv: kvStore?.namespace(for: pluginID) ?? [:])
+        try runPluginPage(pluginId: "app.txtnimal.task-report", input: ["reportType": reportType])
     }
 
-    private func loadTaskReportSource() throws -> String {
-        let pluginID = "app.txtnimal.task-report"
-        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
-            let entry = package.url.appendingPathComponent(package.manifest.entry)
-            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
-        }
-        let candidates = [
-            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "task-report"),
-            Bundle.main.url(forResource: "main", withExtension: "js"),
-        ]
-        for case let url? in candidates {
-            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
-        }
-        throw TaskReportPluginError.sourceUnavailable
-    }
-
-    enum ReviewsPackPluginError: LocalizedError {
-        case sourceUnavailable
-        var errorDescription: String? {
-            switch self {
-            case .sourceUnavailable: return "找不到 reviews-pack plugin 的程式碼。"
-            }
-        }
-    }
-
-    /// Runs the deterministic first-party reviews-pack plugin in-process. `view` is the
-    /// review selector (weekly / daily / stalled), carried on the shared reportType field.
+    /// Runs the deterministic first-party reviews-pack plugin. `view` is the review selector
+    /// (weekly / daily / stalled). Thin SCO-172 wrapper.
     func reviewsPackPluginPage(view: String) throws -> PluginPageDocument {
-        let pluginID = "app.txtnimal.reviews-pack"
-        let source = try loadReviewsPackSource()
-        let document = documentStoreSnapshot()
-        let snapshot = try PluginSnapshotBuilder.build(from: document)
-        return try ReportPluginRunner().run(source: source, reportType: view,
-                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
-                                            metadata: taskMetadataByID(document),
-                                            kv: kvStore?.namespace(for: pluginID) ?? [:])
+        try runPluginPage(pluginId: "app.txtnimal.reviews-pack", input: ["view": view])
     }
 
-    private func loadReviewsPackSource() throws -> String {
-        let pluginID = "app.txtnimal.reviews-pack"
-        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
-            let entry = package.url.appendingPathComponent(package.manifest.entry)
-            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
-        }
-        let candidates = [
-            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "reviews-pack"),
-        ]
-        for case let url? in candidates {
-            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
-        }
-        throw ReviewsPackPluginError.sourceUnavailable
-    }
-
-    enum ExportPackPluginError: LocalizedError {
-        case sourceUnavailable
-        var errorDescription: String? {
-            switch self {
-            case .sourceUnavailable: return "找不到 export-pack plugin 的程式碼。"
-            }
-        }
-    }
-
-    /// Runs the deterministic first-party export-pack plugin in-process. Produces a page whose
-    /// buttons carry export.write actions (.ics/.csv/.md to file or share); no agent.query.
+    /// Runs the deterministic first-party export-pack plugin (export.write buttons). Thin wrapper.
     func exportPackPluginPage() throws -> PluginPageDocument {
-        let pluginID = "app.txtnimal.export-pack"
-        let source = try loadExportPackSource()
-        let document = documentStoreSnapshot()
-        let snapshot = try PluginSnapshotBuilder.build(from: document)
-        return try ReportPluginRunner().run(source: source, reportType: "export-pack",
-                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
-                                            metadata: taskMetadataByID(document),
-                                            kv: kvStore?.namespace(for: pluginID) ?? [:])
+        try runPluginPage(pluginId: "app.txtnimal.export-pack")
     }
 
-    private func loadExportPackSource() throws -> String {
-        let pluginID = "app.txtnimal.export-pack"
-        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
-            let entry = package.url.appendingPathComponent(package.manifest.entry)
-            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
-        }
-        let candidates = [
-            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "export-pack"),
-        ]
-        for case let url? in candidates {
-            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
-        }
-        throw ExportPackPluginError.sourceUnavailable
-    }
-
-    enum ImportersPluginError: LocalizedError {
-        case sourceUnavailable
-        var errorDescription: String? {
-            switch self {
-            case .sourceUnavailable: return "找不到 importers plugin 的程式碼。"
-            }
-        }
-    }
-
-    /// Runs the deterministic first-party importers plugin in-process. Produces a page whose
-    /// 「從 Reminders 匯入」 button carries an import.read action that triggers the existing host
-    /// EventKit fetch → 匯入審核 flow (`importFromReminders()`); the plugin itself performs no I/O.
+    /// Runs the deterministic first-party importers plugin (import.read → 匯入審核). Thin wrapper.
     func importersPluginPage() throws -> PluginPageDocument {
-        let pluginID = "app.txtnimal.importers"
-        let source = try loadImportersSource()
-        let document = documentStoreSnapshot()
-        let snapshot = try PluginSnapshotBuilder.build(from: document)
-        return try ReportPluginRunner().run(source: source, reportType: "importers",
-                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
-                                            metadata: taskMetadataByID(document),
-                                            kv: kvStore?.namespace(for: pluginID) ?? [:])
+        try runPluginPage(pluginId: "app.txtnimal.importers")
     }
 
-    private func loadImportersSource() throws -> String {
-        let pluginID = "app.txtnimal.importers"
-        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
-            let entry = package.url.appendingPathComponent(package.manifest.entry)
-            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
-        }
-        let candidates = [
-            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "importers"),
-        ]
-        for case let url? in candidates {
-            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
-        }
-        throw ImportersPluginError.sourceUnavailable
-    }
-
-    enum AnalyticsPluginError: LocalizedError {
-        case sourceUnavailable
-        var errorDescription: String? {
-            switch self {
-            case .sourceUnavailable: return "找不到 analytics plugin 的程式碼。"
-            }
-        }
-    }
-
-    /// Runs the deterministic first-party analytics plugin in-process.
+    /// Runs the deterministic first-party analytics plugin. Thin wrapper.
     func analyticsPluginPage() throws -> PluginPageDocument {
-        let pluginID = "app.txtnimal.analytics"
-        let source = try loadAnalyticsSource()
-        let document = documentStoreSnapshot()
-        let snapshot = try PluginSnapshotBuilder.build(from: document)
-        return try ReportPluginRunner().run(source: source, reportType: "analytics",
-                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
-                                            metadata: taskMetadataByID(document),
-                                            kv: kvStore?.namespace(for: pluginID) ?? [:])
+        try runPluginPage(pluginId: "app.txtnimal.analytics")
     }
 
-    private func loadAnalyticsSource() throws -> String {
-        let pluginID = "app.txtnimal.analytics"
-        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
-            let entry = package.url.appendingPathComponent(package.manifest.entry)
-            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
-        }
-        let candidates = [
-            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "analytics"),
-        ]
-        for case let url? in candidates {
-            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
-        }
-        throw AnalyticsPluginError.sourceUnavailable
-    }
-
-    enum HabitTrackerPluginError: LocalizedError {
-        case sourceUnavailable
-        var errorDescription: String? {
-            switch self {
-            case .sourceUnavailable: return "找不到 habit-tracker plugin 的程式碼。"
-            }
-        }
-    }
-
-    /// Runs the deterministic first-party habit-tracker plugin in-process.
+    /// Runs the deterministic first-party habit-tracker plugin (consumes storage.kv). Thin wrapper.
     func habitTrackerPluginPage() throws -> PluginPageDocument {
-        let pluginID = "app.txtnimal.habit-tracker"
-        let source = try loadHabitTrackerSource()
-        let document = documentStoreSnapshot()
-        let snapshot = try PluginSnapshotBuilder.build(from: document)
-        return try ReportPluginRunner().run(source: source, reportType: "habit-tracker",
-                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
-                                            metadata: taskMetadataByID(document),
-                                            kv: kvStore?.namespace(for: pluginID) ?? [:])
-    }
-
-    private func loadHabitTrackerSource() throws -> String {
-        let pluginID = "app.txtnimal.habit-tracker"
-        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
-            let entry = package.url.appendingPathComponent(package.manifest.entry)
-            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
-        }
-        let candidates = [
-            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "habit-tracker"),
-        ]
-        for case let url? in candidates {
-            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
-        }
-        throw HabitTrackerPluginError.sourceUnavailable
-    }
-
-    enum BrainDumpPluginError: LocalizedError {
-        case sourceUnavailable
-        var errorDescription: String? {
-            switch self {
-            case .sourceUnavailable: return "找不到 brain-dump plugin 的程式碼。"
-            }
-        }
-    }
-
-    enum SmartTriagePluginError: LocalizedError {
-        case sourceUnavailable
-        var errorDescription: String? {
-            switch self {
-            case .sourceUnavailable: return "找不到 smart-triage plugin 的程式碼。"
-            }
-        }
-    }
-
-    enum NlReportPluginError: LocalizedError {
-        case sourceUnavailable
-        var errorDescription: String? {
-            switch self {
-            case .sourceUnavailable: return "找不到 nl-report plugin 的程式碼。"
-            }
-        }
+        try runPluginPage(pluginId: "app.txtnimal.habit-tracker")
     }
 
     private static func brainDumpManifest() -> PluginManifest {
@@ -1136,76 +975,20 @@ final class TaskStore: ObservableObject {
         )
     }
 
+    /// Runs the first-party brain-dump plugin (agent.query → create drafts). Thin SCO-172 wrapper.
     func brainDumpPluginPage(agentResult: String? = nil) throws -> PluginPageDocument {
-        let source = try loadBrainDumpSource()
-        let document = documentStoreSnapshot()
-        let snapshot = try PluginSnapshotBuilder.build(from: document)
-        return try ReportPluginRunner().run(source: source, reportType: "brain-dump",
-                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
-                                            agentResult: agentResult)
+        try runPluginPage(pluginId: "app.txtnimal.brain-dump", agentResult: agentResult)
     }
 
+    /// Runs the first-party smart-triage plugin (agent.query ranking). Thin SCO-172 wrapper.
     func smartTriagePluginPage(agentResult: String? = nil) throws -> PluginPageDocument {
-        let source = try loadSmartTriageSource()
-        let document = documentStoreSnapshot()
-        let snapshot = try PluginSnapshotBuilder.build(from: document)
-        return try ReportPluginRunner().run(source: source, reportType: "smart-triage",
-                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
-                                            agentResult: agentResult)
+        try runPluginPage(pluginId: "app.txtnimal.smart-triage", agentResult: agentResult)
     }
 
+    /// Runs the first-party nl-report plugin (agent.query + export.write). `view` is the
+    /// report template selector. Thin SCO-172 wrapper.
     func nlReportPluginPage(view: String, agentResult: String? = nil) throws -> PluginPageDocument {
-        let source = try loadNlReportSource()
-        let document = documentStoreSnapshot()
-        let snapshot = try PluginSnapshotBuilder.build(from: document)
-        return try ReportPluginRunner().run(source: source, reportType: view,
-                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
-                                            agentResult: agentResult)
-    }
-
-    private func loadBrainDumpSource() throws -> String {
-        let pluginID = "app.txtnimal.brain-dump"
-        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
-            let entry = package.url.appendingPathComponent(package.manifest.entry)
-            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
-        }
-        let candidates = [
-            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "brain-dump"),
-        ]
-        for case let url? in candidates {
-            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
-        }
-        throw BrainDumpPluginError.sourceUnavailable
-    }
-
-    private func loadSmartTriageSource() throws -> String {
-        let pluginID = "app.txtnimal.smart-triage"
-        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
-            let entry = package.url.appendingPathComponent(package.manifest.entry)
-            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
-        }
-        let candidates = [
-            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "smart-triage"),
-        ]
-        for case let url? in candidates {
-            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
-        }
-        throw SmartTriagePluginError.sourceUnavailable
-    }
-
-    private func loadNlReportSource() throws -> String {
-        let pluginID = "app.txtnimal.nl-report"
-        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
-            let entry = package.url.appendingPathComponent(package.manifest.entry)
-            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
-        }
-        let candidates = [
-            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "nl-report"),
-        ]
-        for case let url? in candidates {
-            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
-        }
-        throw NlReportPluginError.sourceUnavailable
+        try runPluginPage(pluginId: "app.txtnimal.nl-report", input: ["view": view], agentResult: agentResult)
     }
 
     func generateBrainDumpInput() {
@@ -1292,26 +1075,10 @@ final class TaskStore: ObservableObject {
         return ownAction + (node.children ?? []).flatMap(createTaskActions(in:))
     }
 
-    enum MethodologyPluginError: LocalizedError {
-        case sourceUnavailable
-        var errorDescription: String? {
-            switch self {
-            case .sourceUnavailable: return "找不到 methodology plugin 的程式碼。"
-            }
-        }
-    }
-
-    /// Runs the deterministic first-party methodology plugin in-process. `view` is the
-    /// methodology selector (eisenhower / para / gtd), carried on the shared reportType field.
+    /// Runs the deterministic first-party methodology plugin. `view` is the methodology
+    /// selector (eisenhower / para / gtd). Thin SCO-172 wrapper.
     func methodologyPluginPage(view: String) throws -> PluginPageDocument {
-        let pluginID = "app.txtnimal.methodology"
-        let source = try loadMethodologySource()
-        let document = documentStoreSnapshot()
-        let snapshot = try PluginSnapshotBuilder.build(from: document)
-        return try ReportPluginRunner().run(source: source, reportType: view,
-                                            snapshot: snapshot, todayYMD: Self.todayYMD(),
-                                            metadata: taskMetadataByID(document),
-                                            kv: kvStore?.namespace(for: pluginID) ?? [:])
+        try runPluginPage(pluginId: "app.txtnimal.methodology", input: ["view": view])
     }
 
     func pluginKVNamespace(for pluginID: String) -> [String: String] {
@@ -1325,21 +1092,6 @@ final class TaskStore: ObservableObject {
         } catch {
             report(error)
         }
-    }
-
-    private func loadMethodologySource() throws -> String {
-        let pluginID = "app.txtnimal.methodology"
-        if let package = installedPluginPackages.first(where: { $0.manifest.id == pluginID }) {
-            let entry = package.url.appendingPathComponent(package.manifest.entry)
-            if let source = try? String(contentsOf: entry, encoding: .utf8) { return source }
-        }
-        let candidates = [
-            Bundle.main.url(forResource: "main", withExtension: "js", subdirectory: "methodology"),
-        ]
-        for case let url? in candidates {
-            if let source = try? String(contentsOf: url, encoding: .utf8) { return source }
-        }
-        throw MethodologyPluginError.sourceUnavailable
     }
 
     static func todayYMD() -> String {
