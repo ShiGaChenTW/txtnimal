@@ -28,6 +28,8 @@ public enum PluginValidationError: String, Error, Equatable, LocalizedError, Sen
     case nodeLimitExceeded
     case depthLimitExceeded
     case queryLimitExceeded
+    case invalidEntryControl
+    case invalidPlacement
 
     public var errorDescription: String? { rawValue }
 }
@@ -59,6 +61,64 @@ public enum PluginValidator {
         }
         if !manifest.pages.isEmpty && !Set(manifest.capabilities).contains(.uiPage) {
             throw PluginValidationError.missingCapability
+        }
+        try validateEntryControls(manifest.entryControls)
+        try validatePlacement(manifest.placement)
+    }
+
+    /// SCO-173: validate manifest-declared entry controls. Each control needs a scoped, unique id
+    /// and a non-empty label; `picker` controls need >=1 option with unique non-empty values and a
+    /// defaultValue (if present) drawn from those values; `toggle` defaults must be "true"/"false".
+    static func validateEntryControls(_ controls: [PluginEntryControl]?) throws {
+        guard let controls, !controls.isEmpty else { return }
+        guard controls.count <= 32 else { throw PluginValidationError.invalidEntryControl }
+        var ids = Set<String>()
+        for control in controls {
+            guard isScopedIdentifier(control.id), ids.insert(control.id).inserted else {
+                throw PluginValidationError.invalidEntryControl
+            }
+            let label = control.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !label.isEmpty, label.count <= 80 else { throw PluginValidationError.invalidEntryControl }
+            switch control.type {
+            case .picker:
+                guard let options = control.options, !options.isEmpty, options.count <= 32 else {
+                    throw PluginValidationError.invalidEntryControl
+                }
+                var values = Set<String>()
+                for option in options {
+                    let value = option.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let optionLabel = option.label.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !value.isEmpty, value.count <= 80, values.insert(value).inserted,
+                          !optionLabel.isEmpty, optionLabel.count <= 80 else {
+                        throw PluginValidationError.invalidEntryControl
+                    }
+                }
+                if let defaultValue = control.defaultValue {
+                    guard values.contains(defaultValue) else { throw PluginValidationError.invalidEntryControl }
+                }
+            case .toggle:
+                guard control.options == nil else { throw PluginValidationError.invalidEntryControl }
+                if let defaultValue = control.defaultValue {
+                    guard defaultValue == "true" || defaultValue == "false" else {
+                        throw PluginValidationError.invalidEntryControl
+                    }
+                }
+            case .textField:
+                guard control.options == nil else { throw PluginValidationError.invalidEntryControl }
+                if let defaultValue = control.defaultValue {
+                    guard defaultValue.count <= 256 else { throw PluginValidationError.invalidEntryControl }
+                }
+            }
+        }
+    }
+
+    /// SCO-173: validate manifest-declared placement. `section` is enforced by the enum at decode;
+    /// here we bound `order` and require any `icon` to be a plain SF Symbol-style token.
+    static func validatePlacement(_ placement: PluginPlacement?) throws {
+        guard let placement else { return }
+        guard (0...10_000).contains(placement.order) else { throw PluginValidationError.invalidPlacement }
+        if let icon = placement.icon {
+            guard isSafeSymbolName(icon) else { throw PluginValidationError.invalidPlacement }
         }
     }
 
@@ -381,7 +441,7 @@ public enum PluginValidator {
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw PluginValidationError.invalidNode
         }
-        try requireOnly(Set(object.keys), allowed: ["id", "name", "version", "apiVersion", "entry", "capabilities", "commands", "pages"])
+        try requireOnly(Set(object.keys), allowed: ["id", "name", "version", "apiVersion", "entry", "capabilities", "commands", "pages", "entryControls", "placement"])
         guard let commands = object["commands"] as? [[String: Any]],
               let pages = object["pages"] as? [[String: Any]],
               object["capabilities"] is [String] else { throw PluginValidationError.invalidNode }
@@ -390,6 +450,28 @@ public enum PluginValidator {
         }
         for page in pages {
             try requireOnly(Set(page.keys), allowed: ["id", "title", "entryFunction"])
+        }
+        if object.keys.contains("entryControls") {
+            guard let controls = object["entryControls"] as? [[String: Any]] else {
+                throw PluginValidationError.invalidEntryControl
+            }
+            for control in controls {
+                try requireOnly(Set(control.keys), allowed: ["id", "type", "label", "defaultValue", "options"])
+                if control.keys.contains("options") {
+                    guard let options = control["options"] as? [[String: Any]] else {
+                        throw PluginValidationError.invalidEntryControl
+                    }
+                    for option in options {
+                        try requireOnly(Set(option.keys), allowed: ["value", "label"])
+                    }
+                }
+            }
+        }
+        if object.keys.contains("placement") {
+            guard let placement = object["placement"] as? [String: Any] else {
+                throw PluginValidationError.invalidPlacement
+            }
+            try requireOnly(Set(placement.keys), allowed: ["section", "order", "icon"])
         }
     }
 
@@ -447,6 +529,16 @@ public enum PluginValidator {
         guard !value.contains("..") else { return false }
         guard !NSString(string: value).isAbsolutePath else { return false }
         return true
+    }
+
+    /// An SF Symbol name is a dotted token of lowercase letters, digits, dots and hyphens
+    /// (e.g. "chart.bar", "arrow.clockwise", "list.bullet"). No whitespace, path separators,
+    /// traversal tokens, or leading/trailing dots.
+    private static func isSafeSymbolName(_ value: String) -> Bool {
+        guard !value.isEmpty, value.count <= 80 else { return false }
+        guard !value.hasPrefix("."), !value.hasSuffix(".") else { return false }
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
+        return value.unicodeScalars.allSatisfy(allowed.contains)
     }
 
     private static func isSemanticVersion(_ value: String) -> Bool {

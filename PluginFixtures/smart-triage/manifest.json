@@ -6,5 +6,6 @@
   "entry": "main.js",
   "capabilities": ["agent.query", "tasks.all.read", "ui.page"],
   "commands": [],
-  "pages": [{"id": "smart-triage", "title": "Smart Triage", "entryFunction": "run"}]
+  "pages": [{"id": "smart-triage", "title": "Smart Triage", "entryFunction": "run"}],
+  "placement": {"section": "reports", "order": 80, "icon": "wand.and.stars"}
 }

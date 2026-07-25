@@ -6,5 +6,6 @@
   "entry": "main.js",
   "capabilities": ["storage.kv", "ui.page"],
   "commands": [],
-  "pages": [{"id": "habit-tracker", "title": "Habit Tracker", "entryFunction": "run"}]
+  "pages": [{"id": "habit-tracker", "title": "Habit Tracker", "entryFunction": "run"}],
+  "placement": {"section": "reports", "order": 50, "icon": "flame"}
 }

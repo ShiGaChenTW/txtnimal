@@ -6,5 +6,6 @@
   "entry": "main.js",
   "capabilities": ["agent.query", "tasks.create", "ui.page"],
   "commands": [],
-  "pages": [{"id": "brain-dump", "title": "Brain Dump", "entryFunction": "run"}]
+  "pages": [{"id": "brain-dump", "title": "Brain Dump", "entryFunction": "run"}],
+  "placement": {"section": "reports", "order": 60, "icon": "brain.head.profile"}
 }

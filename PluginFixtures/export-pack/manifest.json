@@ -6,5 +6,6 @@
   "entry": "main.js",
   "capabilities": ["tasks.all.read", "ui.page", "export.write"],
   "commands": [],
-  "pages": [{"id": "export-pack", "title": "Export Pack", "entryFunction": "run"}]
+  "pages": [{"id": "export-pack", "title": "Export Pack", "entryFunction": "run"}],
+  "placement": {"section": "reports", "order": 90, "icon": "square.and.arrow.up"}
 }

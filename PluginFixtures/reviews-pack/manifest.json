@@ -6,5 +6,19 @@
   "entry": "main.js",
   "capabilities": ["tasks.all.read", "ui.page"],
   "commands": [],
-  "pages": [{"id": "reviews-pack", "title": "Reviews Pack", "entryFunction": "run"}]
+  "pages": [{"id": "reviews-pack", "title": "Reviews Pack", "entryFunction": "run"}],
+  "entryControls": [
+    {
+      "id": "view",
+      "type": "picker",
+      "label": "回顧視圖",
+      "defaultValue": "weekly",
+      "options": [
+        {"value": "weekly", "label": "週回顧"},
+        {"value": "daily", "label": "日回顧"},
+        {"value": "stalled", "label": "停滯偵測"}
+      ]
+    }
+  ],
+  "placement": {"section": "reports", "order": 20, "icon": "checklist"}
 }

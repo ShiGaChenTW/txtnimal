@@ -6,5 +6,19 @@
   "entry": "main.js",
   "capabilities": ["tasks.all.read", "ui.page"],
   "commands": [],
-  "pages": [{"id": "methodology", "title": "Methodology", "entryFunction": "run"}]
+  "pages": [{"id": "methodology", "title": "Methodology", "entryFunction": "run"}],
+  "entryControls": [
+    {
+      "id": "view",
+      "type": "picker",
+      "label": "方法論視圖",
+      "defaultValue": "gtd",
+      "options": [
+        {"value": "eisenhower", "label": "艾森豪"},
+        {"value": "para", "label": "PARA"},
+        {"value": "gtd", "label": "GTD"}
+      ]
+    }
+  ],
+  "placement": {"section": "reports", "order": 40, "icon": "square.grid.2x2"}
 }
