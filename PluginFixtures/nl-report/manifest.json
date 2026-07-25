@@ -6,5 +6,20 @@
   "entry": "main.js",
   "capabilities": ["agent.query", "tasks.all.read", "ui.page", "export.write"],
   "commands": [],
-  "pages": [{"id": "nl-report", "title": "NL Report", "entryFunction": "run"}]
+  "pages": [{"id": "nl-report", "title": "NL Report", "entryFunction": "run"}],
+  "entryControls": [
+    {
+      "id": "view",
+      "type": "picker",
+      "label": "報告視圖",
+      "defaultValue": "weekly",
+      "options": [
+        {"value": "weekly", "label": "週報"},
+        {"value": "progress", "label": "進度摘要"},
+        {"value": "category", "label": "分類統計"},
+        {"value": "standup", "label": "站會日報"}
+      ]
+    }
+  ],
+  "placement": {"section": "reports", "order": 70, "icon": "text.bubble"}
 }

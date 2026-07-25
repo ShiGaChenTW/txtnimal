@@ -6,5 +6,6 @@
   "entry": "main.js",
   "capabilities": ["import.read", "tasks.create", "ui.page"],
   "commands": [],
-  "pages": [{"id": "importers", "title": "Importers", "entryFunction": "run"}]
+  "pages": [{"id": "importers", "title": "Importers", "entryFunction": "run"}],
+  "placement": {"section": "reports", "order": 100, "icon": "square.and.arrow.down"}
 }

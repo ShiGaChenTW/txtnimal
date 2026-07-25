@@ -31,6 +31,59 @@ public struct PluginPageDeclaration: Codable, Equatable, Sendable {
     }
 }
 
+/// A single selectable option for a `picker` entry control.
+/// `value` is the machine token the host passes to the plugin (e.g. "weekly");
+/// `label` is the user-facing zh-Hant string shown in the control.
+public struct PluginEntryOption: Codable, Equatable, Sendable {
+    public let value: String
+    public let label: String
+    public init(value: String, label: String) { self.value = value; self.label = label }
+}
+
+/// A manifest-declared input the host must collect BEFORE running the plugin's entry function
+/// (SCO-174 renders these; SCO-173 only declares/validates them). This abstracts the controls
+/// currently hardcoded in `App/Views.swift` — e.g. the task-report `reportType` picker or the
+/// reviews-pack `view` picker — into manifest data.
+public struct PluginEntryControl: Codable, Equatable, Sendable {
+    public enum Kind: String, Codable, Sendable {
+        case picker   // choose one of `options`
+        case toggle   // boolean; defaultValue is "true"/"false"
+        case textField // free text; defaultValue is the initial string
+    }
+
+    public let id: String
+    public let type: Kind
+    public let label: String
+    /// Optional initial value. For `picker` it must match one of `options`' values;
+    /// for `toggle` it must be "true"/"false"; for `textField` it is the seed text.
+    public let defaultValue: String?
+    /// Selectable options — required and non-empty for `picker`, forbidden otherwise.
+    public let options: [PluginEntryOption]?
+
+    public init(id: String, type: Kind, label: String,
+                defaultValue: String? = nil, options: [PluginEntryOption]? = nil) {
+        self.id = id; self.type = type; self.label = label
+        self.defaultValue = defaultValue; self.options = options
+    }
+}
+
+/// Where the host should surface the plugin in chrome, and with what icon.
+/// `section` picks the surface, `order` sorts within it (ascending), `icon` is an SF Symbol name.
+public struct PluginPlacement: Codable, Equatable, Sendable {
+    public enum Section: String, Codable, Sendable {
+        case sidebar   // left navigation / command surface
+        case reports   // the report / analysis tab
+    }
+
+    public let section: Section
+    public let order: Int
+    public let icon: String?
+
+    public init(section: Section, order: Int, icon: String? = nil) {
+        self.section = section; self.order = order; self.icon = icon
+    }
+}
+
 public struct PluginManifest: Codable, Equatable, Sendable {
     public let id: String
     public let name: String
@@ -40,12 +93,19 @@ public struct PluginManifest: Codable, Equatable, Sendable {
     public let capabilities: [PluginCapability]
     public let commands: [PluginCommandDeclaration]
     public let pages: [PluginPageDeclaration]
+    /// SCO-173 additive: inputs the host collects before running the plugin. Optional/nil for
+    /// legacy manifests so existing fixtures keep decoding unchanged.
+    public let entryControls: [PluginEntryControl]?
+    /// SCO-173 additive: where/how the host surfaces this plugin. Optional/nil for legacy manifests.
+    public let placement: PluginPlacement?
 
     public init(id: String, name: String, version: String, apiVersion: Int, entry: String,
                 capabilities: [PluginCapability], commands: [PluginCommandDeclaration] = [],
-                pages: [PluginPageDeclaration] = []) {
+                pages: [PluginPageDeclaration] = [],
+                entryControls: [PluginEntryControl]? = nil, placement: PluginPlacement? = nil) {
         self.id = id; self.name = name; self.version = version; self.apiVersion = apiVersion
         self.entry = entry; self.capabilities = capabilities; self.commands = commands; self.pages = pages
+        self.entryControls = entryControls; self.placement = placement
     }
 }
 
