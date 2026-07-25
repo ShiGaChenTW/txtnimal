@@ -87,35 +87,40 @@ public struct AgentChatClient: Sendable {
     /// SSE chunks by index. Endpoints that reject `tools` are retried once as a text-only stream.
     public func stream(messages: [AgentChatMessage]) -> AsyncThrowingStream<AgentChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            let task = Task {
+            // Do not use a task group for this race. A task group cannot leave its scope until every
+            // child has stopped, so a URLSession byte stream that is slow to react to cancellation
+            // can prevent the timeout error from ever reaching the consumer.
+            let requestTask = Task {
                 do {
                     let config = try credentialStore.endpointConfig()
                     try AgentEndpointSecurity.assertSecure(config.baseURL)
-                    // Wall-clock cap: an idle timeout can't catch a keepalive-fed stream that never
-                    // sends [DONE], so race the whole stream against a hard deadline instead.
-                    try await withThrowingTaskGroup(of: Void.self) { group in
-                        group.addTask {
-                            do {
-                                try await runStream(config: config, messages: messages,
-                                                    includesTools: true, continuation: continuation)
-                            } catch StreamControl.toolUnsupported {
-                                try await runStream(config: config, messages: messages,
-                                                    includesTools: false, continuation: continuation)
-                            }
-                        }
-                        group.addTask {
-                            try await Task.sleep(nanoseconds: streamTimeoutNanoseconds)
-                            throw AgentRunnerError.timedOut
-                        }
-                        try await group.next()
-                        group.cancelAll()
+                    do {
+                        try await runStream(config: config, messages: messages,
+                                            includesTools: true, continuation: continuation)
+                    } catch StreamControl.toolUnsupported {
+                        try await runStream(config: config, messages: messages,
+                                            includesTools: false, continuation: continuation)
                     }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            let deadlineTask = Task {
+                do {
+                    try await Task.sleep(nanoseconds: streamTimeoutNanoseconds)
+                } catch {
+                    return
+                }
+                // Finish first so UI state is released at the wall-clock deadline even when the
+                // underlying URLSession AsyncBytes sequence takes longer to observe cancellation.
+                continuation.finish(throwing: AgentRunnerError.timedOut)
+                requestTask.cancel()
+            }
+            continuation.onTermination = { _ in
+                requestTask.cancel()
+                deadlineTask.cancel()
+            }
         }
     }
 

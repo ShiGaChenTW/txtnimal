@@ -55,11 +55,14 @@ final class AgentChatClientTests: XCTestCase {
             baseURL: URL(string: "https://llm.example/v1")!, apiKey: "k", model: "model-a"))
         let client = AgentChatClient(credentialStore: credentials, session: session,
                                      streamTimeoutNanoseconds: 200_000_000)
+        let startedAt = ContinuousClock.now
         do {
             for try await _ in client.stream(messages: [AgentChatMessage(role: .user, content: "hi")]) {}
             XCTFail("expected the stream to time out")
         } catch let error as AgentRunnerError {
             XCTAssertEqual(error, .timedOut)
+            XCTAssertLessThan(ContinuousClock.now - startedAt, .milliseconds(500),
+                              "wall-clock timeout must not wait for URLSession stream cleanup")
         } catch {
             XCTFail("expected AgentRunnerError.timedOut, got \(error)")
         }
