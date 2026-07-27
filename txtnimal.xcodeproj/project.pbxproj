@@ -109,6 +109,7 @@
 		3D7BE821495251F903C1400A /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
 		42BF4B8D51ECE4F88443711C /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		434D01CD265E5A2ED23A2AC6 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		44BB0E917D79D58DEF4D9B66 /* Project_txtnimal */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Project_txtnimal; path = .; sourceTree = SOURCE_ROOT; };
 		5D324614D2E965F0FAC63692 /* smart-triage */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "smart-triage"; path = "PluginFixtures/smart-triage"; sourceTree = SOURCE_ROOT; };
 		60FA87DE7F9834AE69676A84 /* task-report */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "task-report"; path = "PluginFixtures/task-report"; sourceTree = SOURCE_ROOT; };
 		65E3671ABD9D348F3E335022 /* PluginBrokerXPCTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginBrokerXPCTransport.swift; sourceTree = "<group>"; };
@@ -125,7 +126,6 @@
 		988AB3CF23CF783135207520 /* txtnimalApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = txtnimalApp.swift; sourceTree = "<group>"; };
 		A93729848FDFF0B9D971D71A /* PluginPagePrototypeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginPagePrototypeView.swift; sourceTree = "<group>"; };
 		C0C4BECBC7F1E608EE42DE9D /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
-		C4511CBC820612D9FFAA50DE /* agent-a2643e48894d313ed */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "agent-a2643e48894d313ed"; path = .; sourceTree = SOURCE_ROOT; };
 		C63036A2C8D51ED40F089374 /* GlobalCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalCapture.swift; sourceTree = "<group>"; };
 		CCFA51202F6B343EE91F550A /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		CE8DD3E457A871595A8B4414 /* PluginPageHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginPageHostView.swift; sourceTree = "<group>"; };
@@ -205,7 +205,7 @@
 		3D997C92112A149F71446EC9 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				C4511CBC820612D9FFAA50DE /* agent-a2643e48894d313ed */,
+				44BB0E917D79D58DEF4D9B66 /* Project_txtnimal */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -618,7 +618,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -630,7 +630,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.txtnimal.txtnimal;
 				PRODUCT_NAME = txtnimal;
 				SDKROOT = macosx;
@@ -788,7 +788,7 @@
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
@@ -801,7 +801,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.txtnimal.txtnimal;
 				PRODUCT_NAME = txtnimal;
 				SDKROOT = macosx;

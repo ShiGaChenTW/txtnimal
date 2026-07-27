@@ -66,8 +66,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.txtnimal.txtnimal
         PRODUCT_NAME: txtnimal
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "2"
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: "5.0"
         # 自用 + 作品集：不進 sandbox，才能讀 ~/Documents/txtnimal；本機 ad-hoc 簽章即可跑
