@@ -22,6 +22,7 @@ txtnimal 是一款原生 macOS 任務管理工具。它將每項任務保存為�
 - **單一 Focus**：一次聚焦一項任務，並提供專注模式與置頂 HUD。
 - **四象限**：以 `q:1`～`q:4` 手動安排任務，不替使用者猜測重要性。
 - **便箋與統計**：內建純文字便箋、完成趨勢與活動統計。
+- **外掛生態**：內建 registry 統一管理外掛——在設定裡啟用／停用、pin 到側邊欄、安裝 package。隨附習慣追蹤、智慧分類、自然語言週報、報表與匯入／匯出等外掛，也能自行開發（宣告 `manifest` 能力即可）。
 - **自訂體驗**：支援中英文介面、深淺色、強調色、行距、中英文字體、文字大小及三款 App Icon。
 - **本機運作**：不需帳號、雲端服務或遙測。
 
@@ -232,6 +233,7 @@ txtnimal is a native macOS task manager that stores every task as a line of ordi
 - **Single Focus:** Keep one active task, with a focus mode and always-on-top HUD.
 - **Four quadrants:** Assign tasks manually with `q:1` through `q:4`; the app does not guess their importance.
 - **Scratchpad and statistics:** Keep quick notes and review completion activity.
+- **Plugin ecosystem:** A built-in registry manages plugins—enable/disable, pin to the sidebar, and install packages from Settings. Ships with habit tracking, smart triage, natural-language reports, analytics, and import/export plugins, and you can build your own by declaring capabilities in a `manifest`.
 - **Customizable:** Choose Chinese or English, appearance, accent color, spacing, separate Latin and Chinese fonts, text sizes, and one of three app icons.
 - **Local by design:** No account, cloud backend, or telemetry.
 
