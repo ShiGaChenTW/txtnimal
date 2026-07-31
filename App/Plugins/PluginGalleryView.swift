@@ -84,6 +84,10 @@ struct PluginGalleryView: View {
 
     /// Pin control (報表 / 側欄) plus a remove button for installed packages. Page-capable plugins
     /// only — plugins without `ui.page` never render on a surface, so pinning them is meaningless.
+    ///
+    /// The picker's displayed section now always matches where the plugin actually renders:
+    /// `effectivePluginSection` defaults a placement-less page-capable plugin to `.reports`, so the
+    /// `?? .reports` below is unreachable here and only satisfies the non-optional `Binding`.
     @ViewBuilder
     private func placementControls(_ entry: PluginRegistryEntry) -> some View {
         let manifest = entry.manifest

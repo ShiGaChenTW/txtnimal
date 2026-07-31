@@ -36,9 +36,49 @@ final class PluginSurfaceResolverTests: XCTestCase {
         XCTAssertEqual(PluginSurfaceResolver.effectiveSection(for: reportsEntry, overrides: overrides), .sidebar)
     }
 
-    func testEffectiveSectionNilWhenNoPlacementAndNoOverride() {
+    /// A page-capable plugin that declares no placement (typical of an installed third-party
+    /// package) defaults to the reports surface rather than rendering nowhere.
+    func testEffectiveSectionDefaultsToReportsForPlacelessPageCapablePlugin() {
         let placeless = entry(id: "a", section: nil)
+        XCTAssertEqual(PluginSurfaceResolver.effectiveSection(for: placeless, overrides: [:]), .reports)
+    }
+
+    func testEffectiveSectionOverrideWinsOverReportsFallback() {
+        let placeless = entry(id: "a", section: nil)
+        let overrides: [String: PluginPlacement.Section] = ["a": .sidebar]
+        XCTAssertEqual(PluginSurfaceResolver.effectiveSection(for: placeless, overrides: overrides), .sidebar)
+    }
+
+    func testEffectiveSectionNilWhenNoPlacementAndNotPageCapable() {
+        let placeless = entry(id: "a", section: nil, pageCapable: false)
         XCTAssertNil(PluginSurfaceResolver.effectiveSection(for: placeless, overrides: [:]))
+    }
+
+    // MARK: pagePlugins — placeless fallback
+
+    func testPlacelessPageCapablePluginRendersOnReportsSurfaceOnly() {
+        let entries = [entry(id: "a", section: nil)]
+        let reports = PluginSurfaceResolver.pagePlugins(in: .reports, from: entries, overrides: [:])
+        let sidebar = PluginSurfaceResolver.pagePlugins(in: .sidebar, from: entries, overrides: [:])
+        XCTAssertEqual(reports.map(\.manifest.id), ["a"])
+        XCTAssertTrue(sidebar.isEmpty)
+    }
+
+    func testPinningPlacelessPluginToSidebarMovesItOffReports() {
+        let entries = [entry(id: "a", section: nil)]
+        let overrides: [String: PluginPlacement.Section] = ["a": .sidebar]
+        let reports = PluginSurfaceResolver.pagePlugins(in: .reports, from: entries, overrides: overrides)
+        let sidebar = PluginSurfaceResolver.pagePlugins(in: .sidebar, from: entries, overrides: overrides)
+        XCTAssertTrue(reports.isEmpty)
+        XCTAssertEqual(sidebar.map(\.manifest.id), ["a"])
+    }
+
+    func testPlacelessNonPageCapablePluginRendersOnNoSurface() {
+        let entries = [entry(id: "a", section: nil, pageCapable: false)]
+        let reports = PluginSurfaceResolver.pagePlugins(in: .reports, from: entries, overrides: [:])
+        let sidebar = PluginSurfaceResolver.pagePlugins(in: .sidebar, from: entries, overrides: [:])
+        XCTAssertTrue(reports.isEmpty)
+        XCTAssertTrue(sidebar.isEmpty)
     }
 
     // MARK: pagePlugins — reports surface

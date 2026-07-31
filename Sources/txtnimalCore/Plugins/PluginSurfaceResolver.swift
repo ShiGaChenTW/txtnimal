@@ -11,12 +11,20 @@ import Foundation
 public enum PluginSurfaceResolver {
 
     /// The section a plugin effectively belongs to: a user override (from the gallery's "pin"
-    /// control) wins over the manifest's declared placement; `nil` when neither is present.
+    /// control) wins over the manifest's declared placement.
+    ///
+    /// When neither is present, a **page-capable** plugin falls back to `.reports` — a plugin that
+    /// renders a page but declares no home still has to land on the default surface, otherwise it
+    /// renders nowhere while the gallery's pin control claims it is on 報表. Plugins without
+    /// `ui.page` stay `nil`: they never render a host view, so pinning them is meaningless.
     public static func effectiveSection(
         for entry: PluginRegistryEntry,
         overrides: [String: PluginPlacement.Section]
     ) -> PluginPlacement.Section? {
-        overrides[entry.manifest.id] ?? entry.manifest.placement?.section
+        if let declared = overrides[entry.manifest.id] ?? entry.manifest.placement?.section {
+            return declared
+        }
+        return entry.manifest.capabilities.contains(.uiPage) ? .reports : nil
     }
 
     /// The page-capable plugins a surface should render, in display order.
@@ -24,7 +32,8 @@ public enum PluginSurfaceResolver {
     /// - Excludes disabled entries (unless `includeDisabled`) so a gallery toggle immediately
     ///   removes a plugin from its surface.
     /// - Requires `ui.page` — only page-capable plugins render a host view.
-    /// - Matches the *effective* section (manifest placement merged with the user override).
+    /// - Matches the *effective* section (manifest placement merged with the user override, with
+    ///   page-capable plugins that declare neither defaulting to `.reports`).
     /// - Sorts by `placement.order` ascending, then by id as a stable tiebreak.
     public static func pagePlugins(
         in section: PluginPlacement.Section,

@@ -172,8 +172,10 @@ struct PluginPageHostView: View {
         }
     }
 
+    /// Reflects where the plugin ACTUALLY renders, so the header cannot contradict the surface:
+    /// a user pin (placement override) wins over the manifest, same as `PluginSurfaceResolver`.
     private var sectionTag: String {
-        switch manifest.placement?.section {
+        switch store.effectivePluginSection(for: entry) {
         case .sidebar: return "SIDEBAR"
         case .reports, .none: return "PLUGIN"
         }
@@ -368,8 +370,9 @@ struct PluginPageHostView: View {
 /// Renders every page-capable plugin whose effective placement is the `reports` surface,
 /// sorted by `placement.order`. Replaces the ten hand-wired plugin sections in `ReportView`.
 ///
-/// SCO-175: recomputes whenever the gallery changes `disabledPluginIDs` or the placement
-/// overrides, so disabling / pinning a plugin adds or removes its host view here live.
+/// SCO-175: recomputes whenever the gallery changes `disabledPluginIDs`, the placement overrides,
+/// or the set of installed packages — so disabling / pinning / installing / removing a plugin adds
+/// or removes its host view here live, without an app relaunch.
 struct PluginReportsList: View {
     @EnvironmentObject var store: TaskStore
     @State private var entries: [PluginRegistryEntry] = []
@@ -384,6 +387,7 @@ struct PluginReportsList: View {
         .onAppear(perform: reload)
         .onChange(of: store.disabledPluginIDs) { _ in reload() }
         .onChange(of: store.pluginPlacementOverrides) { _ in reload() }
+        .onChange(of: store.installedPluginPackages.map(\.manifest.id)) { _ in reload() }
     }
 
     private func reload() { entries = store.reportPagePlugins() }
