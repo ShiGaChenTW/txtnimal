@@ -17,6 +17,21 @@ public struct PluginRegistryEntry: Equatable, Sendable {
         self.packageRootURL = packageRootURL.standardizedFileURL
         self.enabled = enabled
     }
+
+    /// The entry file for this plugin, resolved through the containment guard.
+    ///
+    /// `PluginValidator.decodeManifest` only rejects *literal* `..` / absolute entry paths
+    /// (`isSafeRelativeEntry`); it does not resolve symlinks. Consumers must therefore never build
+    /// the entry URL themselves with `packageRootURL.appendingPathComponent(manifest.entry)` — a
+    /// symlinked entry inside an installed third-party package would escape the package root and
+    /// its target would be loaded as plugin source. Routing every consumer through this helper is
+    /// what keeps the guard unskippable from the registry path (the SCO-172 bypass).
+    ///
+    /// - Throws: `PluginValidationError.invalidEntryPath` when the resolved path escapes
+    ///   `packageRootURL`, does not exist, or is not a regular file.
+    public func resolvedEntryURL(fileManager: FileManager = .default) throws -> URL {
+        try PluginValidator.resolveEntry(manifest.entry, in: packageRootURL, fileManager: fileManager)
+    }
 }
 
 public final class PluginRegistry {

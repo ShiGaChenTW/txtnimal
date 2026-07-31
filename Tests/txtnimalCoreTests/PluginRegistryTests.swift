@@ -111,6 +111,68 @@ final class PluginRegistryTests: XCTestCase {
         XCTAssertEqual(try registry.discoverEnabled(), entries)
     }
 
+    // MARK: - Entry containment (SCO-172 bypass regression)
+
+    /// A package whose `entry` is a symlink pointing outside the package root must be rejected.
+    /// `PluginValidator.decodeManifest` accepts `"main.js"` because `isSafeRelativeEntry` only rejects
+    /// literal `..`/absolute paths — the escape only shows up once the symlink is resolved, which is
+    /// exactly what `resolvedEntryURL()` does and what the raw `appendingPathComponent` path did not.
+    func testResolvedEntryURLRejectsEntrySymlinkedOutsidePackageRoot() throws {
+        let root = temporaryRoot()
+        defer { try? fileManager.removeItem(at: root) }
+
+        let outside = root.appendingPathComponent("outside", isDirectory: true)
+        try fileManager.createDirectory(at: outside, withIntermediateDirectories: true)
+        let secretURL = outside.appendingPathComponent("secret.js")
+        let secretSource = "function run() { return 'exfiltrated'; }"
+        try Data(secretSource.utf8).write(to: secretURL)
+
+        let bundled = root.appendingPathComponent("bundled", isDirectory: true)
+        let packageRoot = bundled.appendingPathComponent("escaping-plugin", isDirectory: true)
+        try writePluginPackage(at: packageRoot, id: "app.txtnimal.escaping-plugin")
+        // Replace the real entry file with a symlink that escapes the package root.
+        let entryURL = packageRoot.appendingPathComponent("main.js")
+        try fileManager.removeItem(at: entryURL)
+        try fileManager.createSymbolicLink(at: entryURL, withDestinationURL: secretURL)
+
+        // Discovery still surfaces the entry — the manifest itself is well-formed.
+        let registry = PluginRegistry(bundledDirectory: bundled, installedStore: nil)
+        let entry = try XCTUnwrap(try registry.discover()
+            .first { $0.manifest.id == "app.txtnimal.escaping-plugin" })
+        XCTAssertEqual(entry.manifest.entry, "main.js")
+
+        // …but resolving the entry through the guard must fail, and must not yield the outside file.
+        XCTAssertThrowsError(try entry.resolvedEntryURL()) { error in
+            XCTAssertEqual(error as? PluginValidationError, .invalidEntryPath)
+        }
+
+        // Guard against a regression that "fixes" containment by silently returning a different file:
+        // the pre-fix expression is still readable and still yields the escaped contents, which is the
+        // precise behaviour the guard exists to prevent from reaching plugin source loading.
+        let unguardedURL = entry.packageRootURL.appendingPathComponent(entry.manifest.entry)
+        XCTAssertEqual(try String(contentsOf: unguardedURL, encoding: .utf8), secretSource)
+    }
+
+    func testResolvedEntryURLResolvesNormalPackageEntry() throws {
+        let root = temporaryRoot()
+        defer { try? fileManager.removeItem(at: root) }
+
+        let bundled = root.appendingPathComponent("bundled", isDirectory: true)
+        let packageRoot = bundled.appendingPathComponent("normal-plugin", isDirectory: true)
+        try writePluginPackage(at: packageRoot, id: "app.txtnimal.normal-plugin")
+
+        let registry = PluginRegistry(bundledDirectory: bundled, installedStore: nil)
+        let entry = try XCTUnwrap(try registry.discover()
+            .first { $0.manifest.id == "app.txtnimal.normal-plugin" })
+
+        let resolved = try entry.resolvedEntryURL()
+        XCTAssertEqual(resolved,
+                       packageRoot.appendingPathComponent("main.js")
+                           .standardizedFileURL.resolvingSymlinksInPath())
+        XCTAssertEqual(try String(contentsOf: resolved, encoding: .utf8),
+                       "function run(input) { return input; }")
+    }
+
     private func pluginFixturesDirectory() -> URL {
         repoRoot().appendingPathComponent("PluginFixtures", isDirectory: true)
     }

@@ -947,10 +947,12 @@ final class TaskStore: ObservableObject {
         let registry = PluginRegistry(bundledDirectory: Bundle.main.resourceURL,
                                       installedStore: pluginPackageStore)
         if let entry = (try? registry.discover())?.first(where: { $0.manifest.id == pluginId }) {
-            let entryURL = entry.packageRootURL.appendingPathComponent(entry.manifest.entry)
-            if let source = try? String(contentsOf: entryURL, encoding: .utf8) {
-                return (entry.manifest, source)
-            }
+            // Fails CLOSED: `resolvedEntryURL()` applies the symlink-resolving containment guard, and a
+            // rejection must not fall through to the legacy lookup below — doing so would silently
+            // downgrade a security rejection into a success, and for an installed package would serve a
+            // *different* (bundled) plugin's source under the attacker-supplied manifest id.
+            let entryURL = try entry.resolvedEntryURL()
+            return (entry.manifest, try String(contentsOf: entryURL, encoding: .utf8))
         }
         let shortName = GenericPluginPageRunner.shortName(for: pluginId)
         if let manifestURL = Bundle.main.url(forResource: "manifest", withExtension: "json", subdirectory: shortName),
