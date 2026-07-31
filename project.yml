@@ -53,6 +53,12 @@ targets:
       - path: PluginFixtures/importers
         buildPhase: resources
         type: folder
+      - path: PluginFixtures/weekly-review
+        buildPhase: resources
+        type: folder
+      - path: PluginFixtures/reschedule-tomorrow
+        buildPhase: resources
+        type: folder
     resources:
       - path: App/Resources
     dependencies:
