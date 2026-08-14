@@ -302,6 +302,22 @@ struct PluginPageHostView: View {
     // MARK: run + callbacks
 
     private func generate() {
+        if entry.source == .installed {
+            agentLoading = true
+            errorMessage = nil
+            let requestedInput = input
+            Task { @MainActor in
+                defer { agentLoading = false }
+                do {
+                    document = try await store.runPluginPage(entry: entry, input: requestedInput)
+                    errorMessage = nil
+                } catch {
+                    document = nil
+                    errorMessage = PluginPageExport.readableMessage(for: error)
+                }
+            }
+            return
+        }
         do {
             document = try store.runPluginPage(pluginId: manifest.id, input: input)
             errorMessage = nil

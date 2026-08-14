@@ -585,7 +585,8 @@ final class TaskStore: ObservableObject {
         }
         Task { [weak self] in
             guard let self else { return }
-            let coordinator = PluginExecutionCoordinator(transport: PluginBrokerXPCTransport())
+            let transport = LimitedPluginExecutionTransport(base: PluginBrokerXPCTransport())
+            let coordinator = PluginExecutionCoordinator(transport: transport)
             do {
                 let intent = try await coordinator.execute(manifest: package.manifest, request: request,
                                                            taskRevisions: [taskID: taskRevision], documentRevision: snapshot.documentRevision)
@@ -939,9 +940,11 @@ final class TaskStore: ObservableObject {
 
     enum RunPluginPageError: LocalizedError {
         case pluginUnavailable(String)
+        case installedRequiresAsync
         var errorDescription: String? {
             switch self {
             case .pluginUnavailable(let id): return "找不到外掛 \(id) 的程式碼。"
+            case .installedRequiresAsync: return "已安裝外掛必須透過隔離 transport 非同步執行。"
             }
         }
     }
@@ -972,10 +975,13 @@ final class TaskStore: ObservableObject {
                        input: [String: String] = [:],
                        agentResult: String? = nil) throws -> PluginPageDocument {
         let resolved = try resolvePluginEntry(pluginId: pluginId)
+        guard resolved.entry.source == .bundled else {
+            throw RunPluginPageError.installedRequiresAsync
+        }
         let document = documentStoreSnapshot()
         let snapshot = try PluginSnapshotBuilder.build(from: document)
         return try GenericPluginPageRunner().run(
-            manifest: resolved.manifest,
+            manifest: resolved.entry.manifest,
             source: resolved.source,
             snapshot: snapshot,
             todayYMD: Self.todayYMD(),
@@ -985,10 +991,32 @@ final class TaskStore: ObservableObject {
             input: input)
     }
 
+    /// Installed page plugins cross the XPC boundary. The core runner decodes and validates the
+    /// response before this method returns a document to the App/UI process.
+    func runPluginPage(entry: PluginRegistryEntry,
+                       input: [String: String] = [:],
+                       agentResult: String? = nil) async throws -> PluginPageDocument {
+        let document = documentStoreSnapshot()
+        let snapshot = try PluginSnapshotBuilder.build(from: document)
+        let sourceURL = try entry.resolvedEntryURL()
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let transport = LimitedPluginExecutionTransport(base: PluginBrokerXPCTransport())
+        return try await GenericPluginPageRunner().run(
+            entry: entry,
+            source: source,
+            snapshot: snapshot,
+            todayYMD: Self.todayYMD(),
+            metadata: taskMetadataByID(document),
+            kvNamespace: kvStore?.namespace(for: entry.manifest.id) ?? [:],
+            agentResult: agentResult,
+            input: input,
+            transport: transport)
+    }
+
     /// Resolves a plugin id to its manifest + entry source. Prefers the unified
     /// `PluginRegistry` (installed packages override bundled fixtures); falls back to the
     /// legacy `Bundle.main` subdirectory lookup the pre-SCO-172 loaders used.
-    private func resolvePluginEntry(pluginId: String) throws -> (manifest: PluginManifest, source: String) {
+    private func resolvePluginEntry(pluginId: String) throws -> (entry: PluginRegistryEntry, source: String) {
         let registry = PluginRegistry(bundledDirectory: Bundle.main.resourceURL,
                                       installedStore: pluginPackageStore)
         if let entry = (try? registry.discover())?.first(where: { $0.manifest.id == pluginId }) {
@@ -997,7 +1025,7 @@ final class TaskStore: ObservableObject {
             // downgrade a security rejection into a success, and for an installed package would serve a
             // *different* (bundled) plugin's source under the attacker-supplied manifest id.
             let entryURL = try entry.resolvedEntryURL()
-            return (entry.manifest, try String(contentsOf: entryURL, encoding: .utf8))
+            return (entry: entry, source: try String(contentsOf: entryURL, encoding: .utf8))
         }
         let shortName = GenericPluginPageRunner.shortName(for: pluginId)
         if let manifestURL = Bundle.main.url(forResource: "manifest", withExtension: "json", subdirectory: shortName),
@@ -1005,7 +1033,9 @@ final class TaskStore: ObservableObject {
            let manifestData = try? Data(contentsOf: manifestURL),
            let manifest = try? PluginValidator.decodeManifest(manifestData),
            let source = try? String(contentsOf: sourceURL, encoding: .utf8) {
-            return (manifest, source)
+            return (entry: PluginRegistryEntry(manifest: manifest, source: .bundled,
+                                               packageRootURL: sourceURL.deletingLastPathComponent(),
+                                               enabled: true), source: source)
         }
         throw RunPluginPageError.pluginUnavailable(pluginId)
     }
@@ -1035,7 +1065,12 @@ final class TaskStore: ObservableObject {
             let result = try await broker.query(prompt: query.prompt,
                                                 resultSchema: query.resultSchema,
                                                 manifest: manifest)
-            let doc = try runPluginPage(pluginId: manifest.id, input: input, agentResult: result.text)
+            let doc: PluginPageDocument
+            if entry.source == .installed {
+                doc = try await runPluginPage(entry: entry, input: input, agentResult: result.text)
+            } else {
+                doc = try runPluginPage(pluginId: manifest.id, input: input, agentResult: result.text)
+            }
 
             if manifest.capabilities.contains(.tasksCreate) {
                 let current = documentStoreSnapshot()
