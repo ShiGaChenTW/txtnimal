@@ -19,7 +19,7 @@ final class PluginRegistryTests: XCTestCase {
         }
     }
 
-    func testInstalledEntryOverridesBundledEntryWithSameIdentifier() throws {
+    func testBundledEntryWinsWhenInstalledStoreContainsHistoricalCollision() throws {
         let root = temporaryRoot()
         defer { try? fileManager.removeItem(at: root) }
 
@@ -35,10 +35,10 @@ final class PluginRegistryTests: XCTestCase {
         let entries = try registry.discover()
         let habitTrackerEntry = try XCTUnwrap(entries.first { $0.manifest.id == "app.txtnimal.habit-tracker" })
 
-        XCTAssertEqual(habitTrackerEntry.source, .installed)
-        XCTAssertEqual(habitTrackerEntry.manifest.name, "Installed Habit Tracker")
-        XCTAssertEqual(habitTrackerEntry.manifest.version, "9.9.9")
-        XCTAssertEqual(habitTrackerEntry.packageRootURL, installed.url.standardizedFileURL)
+        XCTAssertEqual(habitTrackerEntry.source, .bundled)
+        XCTAssertNotEqual(habitTrackerEntry.manifest.name, "Installed Habit Tracker")
+        XCTAssertNotEqual(habitTrackerEntry.manifest.version, "9.9.9")
+        XCTAssertNotEqual(habitTrackerEntry.packageRootURL, installed.url.standardizedFileURL)
         XCTAssertEqual(entries.filter { $0.manifest.id == "app.txtnimal.habit-tracker" }.count, 1)
         XCTAssertEqual(entries.count, try fixtureManifests().count)
     }

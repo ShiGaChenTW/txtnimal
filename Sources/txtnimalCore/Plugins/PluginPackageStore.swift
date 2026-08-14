@@ -5,6 +5,7 @@ public enum PluginPackageStoreError: LocalizedError, Equatable, Sendable {
     case packageExists
     case packageNotFound
     case packageCopyFailed
+    case bundledIDConflict(String)
 
     public var errorDescription: String? {
         switch self {
@@ -12,6 +13,7 @@ public enum PluginPackageStoreError: LocalizedError, Equatable, Sendable {
         case .packageExists: return "plugin package already exists"
         case .packageNotFound: return "plugin package not found"
         case .packageCopyFailed: return "plugin package copy failed"
+        case .bundledIDConflict(let id): return "plugin id conflicts with bundled plugin: \(id)"
         }
     }
 }
@@ -26,11 +28,15 @@ public final class PluginPackageStore {
     public let directory: URL
     private let fileManager: FileManager
     private let securityPolicy: PluginSecurityPolicy
+    private let bundledPluginIDs: Set<String>
 
-    public init(directory: URL, fileManager: FileManager = .default, securityPolicy: PluginSecurityPolicy = .init()) throws {
+    public init(directory: URL, fileManager: FileManager = .default,
+                securityPolicy: PluginSecurityPolicy = .init(),
+                bundledPluginIDs: Set<String> = []) throws {
         self.directory = directory.standardizedFileURL
         self.fileManager = fileManager
         self.securityPolicy = securityPolicy
+        self.bundledPluginIDs = bundledPluginIDs
         do { try fileManager.createDirectory(at: self.directory, withIntermediateDirectories: true) }
         catch { throw PluginPackageStoreError.packageCopyFailed }
     }
@@ -44,13 +50,16 @@ public final class PluginPackageStore {
     }
 
     @discardableResult
-    public func install(from sourceURL: URL) throws -> InstalledPluginPackage {
+    public func install(from sourceURL: URL, bundledPluginIDs: Set<String>? = nil) throws -> InstalledPluginPackage {
         let source = sourceURL.standardizedFileURL.resolvingSymlinksInPath()
         guard source.path.hasPrefix(sourceURL.standardizedFileURL.path),
               (try? source.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
             throw PluginPackageStoreError.invalidPackage
         }
         let manifest = try loadManifest(at: source)
+        if (bundledPluginIDs ?? self.bundledPluginIDs).contains(manifest.id) {
+            throw PluginPackageStoreError.bundledIDConflict(manifest.id)
+        }
         let signature = try loadSignatureIfRequired(manifest, packageURL: source)
         try securityPolicy.validate(manifest, signerTeamID: signature?.teamID)
         try validateSignatureIfRequired(signature, manifest: manifest, packageURL: source)

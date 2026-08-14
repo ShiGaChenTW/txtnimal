@@ -4,12 +4,16 @@ public enum PluginExecutionError: LocalizedError, Equatable, Sendable {
     case transport(String)
     case invalidResponse
     case disabled
+    case timedOut
+    case responseTooLarge(Int)
 
     public var errorDescription: String? {
         switch self {
         case .transport(let message): return "plugin transport failed: \(message)"
         case .invalidResponse: return "plugin returned an invalid action"
         case .disabled: return "plugin is disabled"
+        case .timedOut: return "plugin transport timed out"
+        case .responseTooLarge(let bytes): return "plugin transport response exceeded payload limit (\(bytes) bytes)"
         }
     }
 }
@@ -70,6 +74,64 @@ public protocol PluginExecutionTransport: Sendable {
     func execute(pluginID: String, request: Data) async throws -> Data
 }
 
+/// Core-level resource guard for every XPC/plugin transport call.
+/// The timeout race intentionally returns immediately and cancels the underlying task;
+/// an XPC implementation should invalidate its connection when it observes cancellation.
+public struct LimitedPluginExecutionTransport: PluginExecutionTransport {
+    public let base: any PluginExecutionTransport
+    public let timeoutNanoseconds: UInt64
+    public let limits: PluginLimits
+
+    public init(base: any PluginExecutionTransport,
+                timeoutNanoseconds: UInt64 = 10_000_000_000,
+                limits: PluginLimits = .init()) {
+        self.base = base
+        self.timeoutNanoseconds = timeoutNanoseconds
+        self.limits = limits
+    }
+
+    public func execute(pluginID: String, request: Data) async throws -> Data {
+        let base = self.base
+        let timeout = timeoutNanoseconds
+        let maxBytes = limits.maximumPayloadBytes
+        return try await withCheckedThrowingContinuation { continuation in
+            let state = TransportRaceState()
+            let operation = Task {
+                do {
+                    let response = try await base.execute(pluginID: pluginID, request: request)
+                    guard state.complete() else { return }
+                    guard response.count <= maxBytes else {
+                        continuation.resume(throwing: PluginExecutionError.responseTooLarge(response.count))
+                        return
+                    }
+                    continuation.resume(returning: response)
+                } catch {
+                    guard state.complete() else { return }
+                    continuation.resume(throwing: error)
+                }
+            }
+            Task {
+                do { try await Task.sleep(nanoseconds: timeout) } catch { return }
+                guard state.complete() else { return }
+                operation.cancel()
+                continuation.resume(throwing: PluginExecutionError.timedOut)
+            }
+        }
+    }
+}
+
+private final class TransportRaceState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finished = false
+
+    func complete() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !finished else { return false }
+        finished = true
+        return true
+    }
+}
+
 /// Host-owned execution boundary. Transport can be XPC, an in-process test double,
 /// or a future signed broker without changing action validation or UI callers.
 public actor PluginExecutionCoordinator {
@@ -77,14 +139,22 @@ public actor PluginExecutionCoordinator {
     private var records: [PluginExecutionRecord] = []
     private let maximumRecords = 100
 
-    public init(transport: any PluginExecutionTransport) { self.transport = transport }
+    public init(transport: any PluginExecutionTransport,
+                timeoutNanoseconds: UInt64 = 10_000_000_000,
+                limits: PluginLimits = .init()) {
+        self.transport = LimitedPluginExecutionTransport(base: transport,
+                                                          timeoutNanoseconds: timeoutNanoseconds,
+                                                          limits: limits)
+    }
 
     public func execute(manifest: PluginManifest, request: Data,
                         taskRevisions: [String: String]? = nil,
                         documentRevision: String? = nil) async throws -> ValidatedPluginIntent {
         do {
             let response = try await transport.execute(pluginID: manifest.id, request: request)
-            guard response.count <= PluginLimits().maximumPayloadBytes else { throw PluginExecutionError.invalidResponse }
+            guard response.count <= PluginLimits().maximumPayloadBytes else {
+                throw PluginExecutionError.responseTooLarge(response.count)
+            }
             try PluginJSON.rejectDuplicateKeys(response)
             let action = try JSONDecoder().decode(PluginAction.self, from: response)
             let intent = try PluginValidator.validate(action: action, manifest: manifest,

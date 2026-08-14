@@ -19,6 +19,17 @@ import Foundation
 public struct GenericPluginPageRunner {
     public init() {}
 
+    /// The request envelope shared with the PluginRunnerSpike XPC worker.
+    /// `inputJSON` remains a JSON string for compatibility with the existing service.
+    public struct ExecutionRequest: Codable, Equatable, Sendable {
+        public let source: String
+        public let inputJSON: String
+        public init(source: String, inputJSON: String) {
+            self.source = source
+            self.inputJSON = inputJSON
+        }
+    }
+
     /// The machine token the entry function switches on — historically `reportType` for
     /// reports and `view` for reviews / methodology / nl-report. Resolution order:
     ///   1. the first `picker` entry control's collected value (`input[control.id]`, verbatim
@@ -67,5 +78,70 @@ public struct GenericPluginPageRunner {
                                             kv: kv,
                                             agentResult: agent,
                                             manifest: manifest)
+    }
+
+    /// Executes a page according to its registry origin. Bundled entries retain the trusted
+    /// in-process JavaScriptCore path; installed entries can only use the supplied transport.
+    /// Both paths return only a page that has passed `PluginValidator.decodePage`.
+    public func run(entry: PluginRegistryEntry,
+                    source: String,
+                    snapshot: PluginDocumentSnapshot,
+                    todayYMD: String,
+                    metadata: [String: ReportPluginRunner.TaskMetadata] = [:],
+                    kvNamespace: [String: String] = [:],
+                    agentResult: String? = nil,
+                    input: [String: String] = [:],
+                    transport: any PluginExecutionTransport,
+                    timeoutNanoseconds: UInt64 = 10_000_000_000,
+                    limits: PluginLimits = .init()) async throws -> PluginPageDocument {
+        guard entry.enabled else { throw PluginExecutionError.disabled }
+        if entry.source == .bundled {
+            return try run(manifest: entry.manifest, source: source, snapshot: snapshot,
+                           todayYMD: todayYMD, metadata: metadata, kvNamespace: kvNamespace,
+                           agentResult: agentResult, input: input)
+        }
+
+        let reportType = Self.resolveReportType(manifest: entry.manifest, input: input)
+        let capabilities = Set(entry.manifest.capabilities)
+        let pageInput = PageInput(
+            reportType: reportType,
+            tasks: snapshot.tasks.map { task in
+                let meta = metadata[task.id]
+                return PageInput.Task(id: task.id, title: task.title, due: task.due,
+                                      completed: task.completed, lists: task.lists, tags: task.tags,
+                                      created: meta?.created, done: meta?.done, q: meta?.quadrant)
+            },
+            todayYMD: todayYMD,
+            kv: capabilities.contains(.storageKV) ? kvNamespace : [:],
+            agentResult: capabilities.contains(.agentQuery) ? agentResult : nil)
+        let inputData = try JSONEncoder().encode(pageInput)
+        guard let inputJSON = String(data: inputData, encoding: .utf8) else {
+            throw ReportPluginRunnerError.inputEncodingFailed
+        }
+        let request = try JSONEncoder().encode(ExecutionRequest(source: source, inputJSON: inputJSON))
+        let bounded = LimitedPluginExecutionTransport(base: transport,
+                                                       timeoutNanoseconds: timeoutNanoseconds,
+                                                       limits: limits)
+        let response = try await bounded.execute(pluginID: entry.manifest.id, request: request)
+        return try PluginValidator.decodePage(response, manifest: entry.manifest, limits: limits)
+    }
+
+    private struct PageInput: Encodable {
+        struct Task: Encodable {
+            let id: String
+            let title: String
+            let due: String?
+            let completed: Bool
+            let lists: [String]
+            let tags: [String]
+            let created: String?
+            let done: String?
+            let q: Int?
+        }
+        let reportType: String
+        let tasks: [Task]
+        let todayYMD: String
+        let kv: [String: String]
+        let agentResult: String?
     }
 }

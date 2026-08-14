@@ -209,6 +209,91 @@ final class ArchitectureTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: store.journalURL.path))
     }
 
+    // X4: a same-bytes touch + reload must not invalidate an in-flight snapshot.
+    func testNoOpReloadKeepsGenerationAndAcceptsPriorSnapshotSave() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try FileSystemTaskDocumentStore(directory: dir)
+        try store.bootstrap(sample: "keep me +work q:2")
+        let first = try store.load()
+        let original = try String(contentsOf: store.tasksURL, encoding: .utf8)
+        try original.write(to: store.tasksURL, atomically: true, encoding: .utf8)
+        let reloaded = try store.load()
+        XCTAssertEqual(reloaded.generation, first.generation)
+        XCTAssertEqual(reloaded.documentRevision, first.documentRevision)
+        var changed = first.lines
+        changed[0].setFocus(true)
+        let saved = try store.save(lines: changed, expectedGeneration: first.generation)
+        XCTAssertTrue(saved.lines[0].isFocused)
+        XCTAssertNotEqual(saved.generation, first.generation)
+        XCTAssertNotEqual(saved.documentRevision, first.documentRevision)
+    }
+
+    // X4: generation only moves when tasks.txt bytes actually change.
+    func testLoadDoesNotBumpGenerationWhenContentUnchanged() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try FileSystemTaskDocumentStore(directory: dir)
+        try store.bootstrap(sample: "same")
+        let first = try store.load()
+        let second = try store.load()
+        XCTAssertEqual(first.generation, second.generation)
+        XCTAssertEqual(first.documentRevision, second.documentRevision)
+        try "different".write(to: store.tasksURL, atomically: true, encoding: .utf8)
+        let third = try store.load()
+        XCTAssertNotEqual(third.generation, first.generation)
+        XCTAssertNotEqual(third.documentRevision, first.documentRevision)
+    }
+
+    // X4: unread external rewrite must not let an old handle archive the wrong line.
+    func testExternalRewriteRejectsOldSnapshotSaveAndArchive() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try FileSystemTaskDocumentStore(directory: dir)
+        try store.bootstrap(sample: "keep-me\narchive-me")
+        let first = try store.load()
+        try "archive-me\nkeep-me".write(to: store.tasksURL, atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try store.save(lines: first.lines, expectedGeneration: first.generation)) { error in
+            guard case TaskDocumentStoreError.staleSnapshot = error else {
+                return XCTFail("expected staleSnapshot, got \(error)")
+            }
+        }
+        XCTAssertThrowsError(try store.archiveTask(TaskHandle(generation: first.generation, index: 0),
+                                                   expectedGeneration: first.generation)) { error in
+            guard case TaskDocumentStoreError.staleSnapshot = error else {
+                return XCTFail("expected staleSnapshot, got \(error)")
+            }
+        }
+        XCTAssertEqual(try String(contentsOf: store.tasksURL, encoding: .utf8), "archive-me\nkeep-me")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.archiveURL.path))
+    }
+
+    // X4: applyAgentChatActions stale gate is documentRevision, not generation.
+    func testAgentChatApplyUsesDocumentRevisionNotGeneration() throws {
+        let text = "open task +work"
+        let older = TaskDocumentSnapshot(lines: TasksDocument.parse(text), generation: 1, tasksText: text)
+        let newer = TaskDocumentSnapshot(lines: TasksDocument.parse(text), generation: 99, tasksText: text)
+        XCTAssertEqual(older.documentRevision, newer.documentRevision)
+        XCTAssertEqual(try newer.generationForMatchingRevision(older.documentRevision), 99)
+        XCTAssertThrowsError(try newer.generationForMatchingRevision("not-the-revision")) { error in
+            guard case TaskDocumentStoreError.staleSnapshot = error else {
+                return XCTFail("expected staleSnapshot, got \(error)")
+            }
+        }
+    }
+
+    func testWorkspaceToggleFocusUsesReadLayerFirstFocus() throws {
+        let snapshot = TaskDocumentSnapshot(
+            lines: TasksDocument.parse("a focus:true +keep\nb focus:true q:2\nc focus:true"),
+            generation: 4)
+        let lines = try TaskWorkspace.apply(.toggleFocus(TaskHandle(generation: 4, index: 1)),
+                                            to: snapshot, todayYMD: "2026-08-15")
+        XCTAssertEqual(lines.map(\.isFocused), [false, true, false])
+        XCTAssertEqual(lines[0].raw, "a +keep")
+        XCTAssertEqual(lines[1].raw, "b focus:true q:2")
+        XCTAssertEqual(lines[2].raw, "c")
+    }
+
     func testActivityReportIncludesArchive() {
         let live = TasksDocument.parse("x live +work created:2026-07-19 done:2026-07-20")
         let archive = TasksDocument.parse("x old +home created:2026-06-01 done:2026-07-18")

@@ -6,6 +6,15 @@ private struct TestTransport: PluginExecutionTransport {
     func execute(pluginID: String, request: Data) async throws -> Data { response }
 }
 
+private struct DelayedTransport: PluginExecutionTransport {
+    let delayNanoseconds: UInt64
+    let response: Data
+    func execute(pluginID: String, request: Data) async throws -> Data {
+        try await Task.sleep(nanoseconds: delayNanoseconds)
+        return response
+    }
+}
+
 final class PluginExecutionCoordinatorTests: XCTestCase {
     func testCoordinatorValidatesTransportResponseAndRecordsSuccess() async throws {
         let manifest = PluginManifest(id: "app.txtnimal.test", name: "Test", version: "1.0.0", apiVersion: 1,
@@ -61,5 +70,30 @@ final class PluginExecutionCoordinatorTests: XCTestCase {
         let records = await coordinator.executionRecords()
         XCTAssertEqual(records.count, 1)
         XCTAssertEqual(records.first?.status, .failed)
+    }
+
+    func testTransportTimesOutWithInjectedDeadline() async throws {
+        let transport = LimitedPluginExecutionTransport(
+            base: DelayedTransport(delayNanoseconds: 200_000_000, response: Data()),
+            timeoutNanoseconds: 10_000_000)
+        do {
+            _ = try await transport.execute(pluginID: "app.txtnimal.test", request: Data())
+            XCTFail("expected timeout")
+        } catch {
+            XCTAssertEqual(error as? PluginExecutionError, .timedOut)
+        }
+    }
+
+    func testTransportRejectsOversizedResponseBeforeReturningIt() async throws {
+        let transport = LimitedPluginExecutionTransport(
+            base: TestTransport(response: Data(repeating: 0, count: 12)),
+            timeoutNanoseconds: 1_000_000_000,
+            limits: PluginLimits(maximumPayloadBytes: 8))
+        do {
+            _ = try await transport.execute(pluginID: "app.txtnimal.test", request: Data())
+            XCTFail("expected payload limit")
+        } catch {
+            XCTAssertEqual(error as? PluginExecutionError, .responseTooLarge(12))
+        }
     }
 }

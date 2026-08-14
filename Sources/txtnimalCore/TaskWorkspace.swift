@@ -47,7 +47,7 @@ public enum TaskWorkspace {
             }
         case .toggleFocus(let handle):
             let i = try index(handle)
-            lines = TasksDocument.setFocus(lines, onIndex: lines[i].isFocused ? nil : i)
+            lines = TasksDocument.toggleFocus(lines, at: i)
         case .setQuadrant(let handle, let q):
             let i = try index(handle); guard !lines[i].isDone else { return lines }; lines[i].setQuadrant(q)
         case .setDue(let handle, let due):

@@ -28,8 +28,9 @@ public struct TaskLine: Equatable {
             while i < s.count, s[i] == " " || s[i] == "\t" { ws.append(s[i]); i += 1 }
             if i >= s.count { return (segs, ws) } // trailing whitespace only
             var word = ""
-            // note:"..." keeps spaces inside the quotes as one word
-            if String(s[i...]).hasPrefix("note:\"") {
+            // note:"..." keeps spaces inside the quotes as one word.
+            // Compare a fixed 6-char slice — never copy the tail (was O(n²) per token).
+            if i + 6 <= s.count, String(s[i..<(i + 6)]) == "note:\"" {
                 word = "note:\""
                 i += 6
                 while i < s.count {
@@ -276,11 +277,22 @@ public enum TasksDocument {
         lines.map(\.raw).joined(separator: "\n")
     }
 
+    /// Read-layer focus: the first `focus:true`. Load/save leave extras intact.
+    public static func focusIndex(in lines: [TaskLine]) -> Int? {
+        lines.firstIndex(where: { $0.isFocused })
+    }
+
     /// Enforce the single-focus invariant: at most one line carries `focus:true`.
     /// Returns a new array with focus set on `index` and cleared everywhere else.
     public static func setFocus(_ lines: [TaskLine], onIndex index: Int?) -> [TaskLine] {
         var out = lines
         for i in out.indices { out[i].setFocus(i == index) }
         return out
+    }
+
+    /// Toggle using the read-layer focus (first `focus:true`). Any other line
+    /// becomes the sole focus; the current read-layer focus clears every `focus:true`.
+    public static func toggleFocus(_ lines: [TaskLine], at index: Int) -> [TaskLine] {
+        setFocus(lines, onIndex: focusIndex(in: lines) == index ? nil : index)
     }
 }

@@ -662,6 +662,7 @@ final class TaskStore: ObservableObject {
         guard !filtered.isEmpty else { return 0 }
 
         let original = documentStoreSnapshot()
+        let expectedGeneration = try original.generationForMatchingRevision(context.documentRevision)
         let current = try PluginSnapshotBuilder.build(from: original)
         let currentTasksByID = Dictionary(uniqueKeysWithValues: current.tasks.map { ($0.id, $0) })
         let manifest = PluginManifest(
@@ -738,7 +739,7 @@ final class TaskStore: ObservableObject {
             tasksText: original.tasksText
         )
         let lines = try PluginIntentApplier.applyBatch(intents, to: snapshot, todayYMD: RelativeDate.todayYMD())
-        apply(try documentStore.save(lines: lines, expectedGeneration: context.generation))
+        apply(try documentStore.save(lines: lines, expectedGeneration: expectedGeneration))
         return intents.count
     }
 
@@ -908,7 +909,7 @@ final class TaskStore: ObservableObject {
     }
 
     /// Page plugin 按鈕的 tasks.* intent 統一套用路徑(與 reschedule-tomorrow / agent review 同一條):
-    /// PluginIntentApplier 檢查 documentRevision、save 檢查 generation,任一 stale 即拒絕。
+    /// PluginIntentApplier 與 agent-chat 套用都以 documentRevision 判定 stale；save 用 revision 對上的當前 generation。
     func applyPluginPageIntent(_ intent: ValidatedPluginIntent) {
         do {
             let changed = try PluginIntentApplier.apply(intent, to: documentStoreSnapshot(), todayYMD: RelativeDate.todayYMD())
@@ -1224,7 +1225,7 @@ final class TaskStore: ObservableObject {
     // MARK: derived
 
     var todayYMD: String { RelativeDate.todayYMD() }
-    var focusIndex: Int? { lines.firstIndex(where: { $0.isFocused }) }
+    var focusIndex: Int? { TasksDocument.focusIndex(in: lines) }
 
     /// 某列是否通過目前的標籤篩選 + 搜尋。
     func matches(_ i: Int) -> Bool {
@@ -1332,7 +1333,7 @@ final class TaskStore: ObservableObject {
     }
     func toggleDone(using handle: TaskHandle) { apply(.toggleDone(handle)) }
     func toggleFocus(using handle: TaskHandle) {
-        let wasFocused = task(using: handle)?.isFocused == true
+        let wasFocused = focusIndex == handle.index
         apply(.toggleFocus(handle))
         if wasFocused { focusMode = false }
     }
@@ -1369,7 +1370,7 @@ final class TaskStore: ObservableObject {
     }
     func toggleFocus() {
         guard let i = cursor, lines.indices.contains(i) else { return }
-        let already = lines[i].isFocused
+        let already = focusIndex == i
         do { lines = try TaskWorkspace.apply(.toggleFocus(handle(for: i)), to: currentSnapshot, todayYMD: todayYMD) }
         catch { report(error); return }
         if already { focusMode = false }

@@ -49,8 +49,10 @@ status: DRAFT
 - 自動判定重要性/自動排程——四象限刻意保留人工判斷。
 - 行動版/跨平台、App Store sandbox、內建雲端 LLM——理由見 `docs/V0.3-PLAN.md` 不做清單。
 
-## Outcomes
+## Desired Outcomes
 
-- 三波交付項各自以 OpenSpec change 開立並收斂,`specgate status` 全綠。
-- 產品不變量 1–5 在每一波結束時仍由測試護住(含新增的 App 層 CI)。
-- 快捷鍵文件與實際行為零落差。
+- 三波交付項(9 項)各自以 OpenSpec change 開立並收斂:V0.3 出貨時 `specgate status` 顯示 0 個缺 specs 的 active change。
+- 產品不變量 1–5 每一波結束時由自動化測試護住:`swift test` 0 failures,且 App 層測試進 CI(xcodebuild test 在 PR 上必跑)。
+- 快捷鍵契約零落差:README/SPEC 列出的每一個快捷鍵在 App 內行為一致,抽查 100% 通過。
+- 已安裝第三方外掛全部行程外執行:App 行程內 JSContext 僅剩 bundled 路徑(架構測試守衛),失控外掛不可使 UI 無回應超過逾時上限(10s)。
+- 外部編輯不再靜默覆蓋:外部改檔後 GUI 未存編輯 0 遺失(衝突面測試覆蓋)。

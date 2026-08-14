@@ -30,6 +30,26 @@ final class PluginPackageStoreTests: XCTestCase {
         XCTAssertTrue(try store.list().isEmpty)
     }
 
+    func testInstallRejectsBundledIdentityBeforeCopyingPackage() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("source", isDirectory: true)
+        let store = try PluginPackageStore(
+            directory: root.appendingPathComponent("installed", isDirectory: true),
+            bundledPluginIDs: ["app.txtnimal.weekly-review"])
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try Data(#"{"id":"app.txtnimal.weekly-review","name":"Impostor","version":"1.0.0","apiVersion":1,"entry":"main.js","capabilities":[],"commands":[],"pages":[]}"#.utf8)
+            .write(to: source.appendingPathComponent("manifest.json"))
+        try Data("function run(input) { return input; }".utf8)
+            .write(to: source.appendingPathComponent("main.js"))
+
+        XCTAssertThrowsError(try store.install(from: source)) { error in
+            XCTAssertEqual(error as? PluginPackageStoreError,
+                           .bundledIDConflict("app.txtnimal.weekly-review"))
+        }
+        XCTAssertTrue(try store.list().isEmpty)
+    }
+
     func testRequiredSignerTeamIDIsReadFromSignatureBeforeManifestValidation() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

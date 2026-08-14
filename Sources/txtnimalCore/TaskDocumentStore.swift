@@ -19,6 +19,16 @@ public struct TaskDocumentSnapshot: Equatable {
         self.tasksText = text
         self.documentRevision = DocumentRevision.make(for: text)
     }
+
+    /// Agent-chat apply is keyed on content identity, not the in-memory generation
+    /// counter. Returns this snapshot's generation when `expected` still matches;
+    /// otherwise throws `staleSnapshot` so a review cannot land on a new document.
+    public func generationForMatchingRevision(_ expected: String) throws -> UInt64 {
+        guard documentRevision == expected else {
+            throw TaskDocumentStoreError.staleSnapshot(expected: generation, actual: generation)
+        }
+        return generation
+    }
 }
 public enum TaskDocumentStoreError: LocalizedError, Equatable {
     case readFailed(String)
@@ -76,6 +86,10 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
 
     private let fm: FileManager
     private var generation: UInt64 = 0
+    /// SHA-256 of the last tasks.txt bytes this store adopted. Used to (a) skip
+    /// generation bumps on no-op reloads and (b) reject writes after an unread
+    /// external edit, even when `generation` has not moved yet.
+    private var lastDocumentRevision: String?
 
     public init(directory: URL, tasksFilename: String = "tasks.txt", fileManager: FileManager = .default) throws {
         self.directory = directory
@@ -96,19 +110,19 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         let tasks = try readRequired(tasksURL)
         let scratch = try readOptional(scratchURL)
         let archive = try readOptional(archiveURL)
-        generation &+= 1
+        adoptContent(tasks)
         return TaskDocumentSnapshot(lines: TasksDocument.parse(tasks), scratch: scratch,
                                     archiveLines: TasksDocument.parse(archive), generation: generation,
                                     tasksText: tasks)
     }
 
     public func save(lines: [TaskLine], expectedGeneration: UInt64) throws -> TaskDocumentSnapshot {
-        try requireGeneration(expectedGeneration)
+        try requireFresh(expectedGeneration)
         let tasksText = TasksDocument.serialize(lines)
         // Ordinary save never rewrites archive.txt — journal carries nil archiveText
         // so recovery cannot roll archive back to a stale snapshot.
         try commit(tasksText: tasksText, archiveText: nil)
-        generation &+= 1
+        adoptContent(tasksText)
         let archiveText = try readOptional(archiveURL)
         return TaskDocumentSnapshot(lines: lines, scratch: try readOptional(scratchURL), archiveLines: TasksDocument.parse(archiveText),
                                     generation: generation, tasksText: tasksText)
@@ -117,7 +131,7 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
     public func saveScratch(_ text: String) throws { try write(text, to: scratchURL) }
 
     public func archiveCompleted(before todayYMD: String, expectedGeneration: UInt64) throws -> TaskDocumentSnapshot {
-        try requireGeneration(expectedGeneration)
+        try requireFresh(expectedGeneration)
         let currentText = try readRequired(tasksURL)
         let current = TasksDocument.parse(currentText)
         let old = current.filter { $0.isDone && ($0.completedDate ?? todayYMD) < todayYMD }
@@ -128,14 +142,14 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         let archiveText = previousArchive + (previousArchive.isEmpty || previousArchive.hasSuffix("\n") ? "" : "\n") + moved
         let tasksText = TasksDocument.serialize(kept)
         try commit(tasksText: tasksText, archiveText: archiveText)
-        generation &+= 1
+        adoptContent(tasksText)
         return TaskDocumentSnapshot(lines: kept, scratch: try readOptional(scratchURL),
                                     archiveLines: TasksDocument.parse(archiveText), generation: generation,
                                     tasksText: tasksText)
     }
 
     public func archiveTask(_ handle: TaskHandle, expectedGeneration: UInt64) throws -> TaskDocumentSnapshot {
-        try requireGeneration(expectedGeneration)
+        try requireFresh(expectedGeneration)
         guard handle.generation == expectedGeneration else {
             throw TaskDocumentStoreError.staleSnapshot(expected: handle.generation, actual: expectedGeneration)
         }
@@ -150,7 +164,7 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         let archiveText = previousArchive + separator + archivedRaw + "\n"
         let tasksText = TasksDocument.serialize(current)
         try commit(tasksText: tasksText, archiveText: archiveText)
-        generation &+= 1
+        adoptContent(tasksText)
         return TaskDocumentSnapshot(lines: current, scratch: try readOptional(scratchURL),
                                     archiveLines: TasksDocument.parse(archiveText), generation: generation,
                                     tasksText: tasksText)
@@ -158,6 +172,27 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
 
     private func requireGeneration(_ expected: UInt64) throws {
         guard expected == generation else { throw TaskDocumentStoreError.staleSnapshot(expected: expected, actual: generation) }
+    }
+
+    /// Rejects both a stale in-memory generation and an unread external edit.
+    /// Disk bytes are compared via `documentRevision` so an old handle cannot
+    /// land on a different task at the same index after the file was rewritten.
+    private func requireFresh(_ expected: UInt64) throws {
+        try requireGeneration(expected)
+        let diskText = try readRequired(tasksURL)
+        let diskRevision = DocumentRevision.make(for: diskText)
+        if let lastDocumentRevision, lastDocumentRevision != diskRevision {
+            throw TaskDocumentStoreError.staleSnapshot(expected: expected, actual: generation)
+        }
+    }
+
+    /// Bump `generation` only when tasks.txt content actually changed.
+    private func adoptContent(_ tasksText: String) {
+        let revision = DocumentRevision.make(for: tasksText)
+        if lastDocumentRevision != revision {
+            generation &+= 1
+            lastDocumentRevision = revision
+        }
     }
 
     private func readRequired(_ url: URL) throws -> String {

@@ -91,6 +91,39 @@ final class TaskLineTests: XCTestCase {
         XCTAssertEqual(out[1].raw, "b focus:true")
     }
 
+    // X3: load/read keeps every focus:true; the read-layer index is the first one.
+    // A focus mutation (toggle another line) serializes exactly one focus:true
+    // and leaves every non-focus token on the untouched lines byte-identical.
+    func testMultipleFocusReadTakesFirstAndMutationNormalizes() {
+        let text = "alpha +keep focus:true pri:high\nbeta q:2 focus:true @home\ngamma focus:true due:2026-08-01"
+        let lines = TasksDocument.parse(text)
+        XCTAssertEqual(TasksDocument.serialize(lines), text)
+        XCTAssertEqual(TasksDocument.focusIndex(in: lines), 0)
+        XCTAssertEqual(lines.map(\.isFocused), [true, true, true])
+
+        let out = TasksDocument.toggleFocus(lines, at: 1)
+        XCTAssertEqual(out.map(\.isFocused), [false, true, false])
+        XCTAssertEqual(out.filter(\.isFocused).count, 1)
+        XCTAssertEqual(out[0].raw, "alpha +keep pri:high")
+        XCTAssertEqual(out[1].raw, "beta q:2 focus:true @home")
+        XCTAssertEqual(out[2].raw, "gamma due:2026-08-01")
+    }
+
+    func testLoadDoesNotRewriteFileWithMultipleFocus() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try FileSystemTaskDocumentStore(directory: dir)
+        let text = "a focus:true +keep\nb focus:true q:2\nc focus:true @home"
+        try store.bootstrap(sample: text)
+        let past = Date().addingTimeInterval(-180)
+        try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: store.tasksURL.path)
+        let loaded = try store.load()
+        XCTAssertEqual(TasksDocument.focusIndex(in: loaded.lines), 0)
+        XCTAssertEqual(try String(contentsOf: store.tasksURL, encoding: .utf8), text)
+        let after = try XCTUnwrap(FileManager.default.attributesOfItem(atPath: store.tasksURL.path)[.modificationDate] as? Date)
+        XCTAssertEqual(after.timeIntervalSince1970, past.timeIntervalSince1970, accuracy: 0.5)
+    }
+
     func testContextsParsedAndStrippedFromTitle() {
         let t = TaskLine("Email vendor @calls +work due:2026-07-10")
         XCTAssertEqual(t.contexts, ["calls"])

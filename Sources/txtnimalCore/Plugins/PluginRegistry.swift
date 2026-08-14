@@ -56,7 +56,11 @@ public final class PluginRegistry {
             entriesByID[entry.manifest.id] = entry
         }
         for entry in try discoverInstalledEntries() {
-            entriesByID[entry.manifest.id] = entry
+            // Bundled plugins are first-party identities. Keep them authoritative even
+            // when an older store contains a colliding package from before F14.
+            if entriesByID[entry.manifest.id] == nil {
+                entriesByID[entry.manifest.id] = entry
+            }
         }
 
         return entriesByID.values.sorted { $0.manifest.id < $1.manifest.id }
