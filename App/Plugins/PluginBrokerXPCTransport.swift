@@ -17,23 +17,32 @@ final class PluginBrokerXPCTransport: PluginExecutionTransport, @unchecked Senda
             throw PluginExecutionError.invalidResponse
         }
         return try await withCheckedThrowingContinuation { continuation in
+            // error handler 與 reply 可能都觸發:continuation 只允許 resume 一次
+            let lock = NSLock()
+            var resumed = false
+            func resumeOnce(_ result: Result<Data, Error>) {
+                lock.lock(); defer { lock.unlock() }
+                guard !resumed else { return }
+                resumed = true
+                continuation.resume(with: result)
+            }
             let connection = NSXPCConnection(serviceName: serviceName)
             connection.remoteObjectInterface = NSXPCInterface(with: PluginBrokerXPCProtocol.self)
             connection.invalidationHandler = { connection.invalidationHandler = nil }
             connection.resume()
             let proxy = connection.remoteObjectProxyWithErrorHandler { error in
-                connection.invalidate(); continuation.resume(throwing: PluginExecutionError.transport(error.localizedDescription))
+                connection.invalidate(); resumeOnce(.failure(PluginExecutionError.transport(error.localizedDescription)))
             } as? PluginBrokerXPCProtocol
             guard let proxy else {
-                connection.invalidate(); continuation.resume(throwing: PluginExecutionError.transport("invalid broker proxy")); return
+                connection.invalidate(); resumeOnce(.failure(PluginExecutionError.transport("invalid broker proxy"))); return
             }
             proxy.execute(request: "execute-js", source: envelope.source, inputJSON: input, probePath: nil) { response in
                 connection.invalidate()
                 guard let data = response.data(using: .utf8),
-                      (try? PluginJSON.rejectDuplicateKeys(data)) == nil else {
-                    continuation.resume(throwing: PluginExecutionError.invalidResponse); return
+                      (try? PluginJSON.rejectDuplicateKeys(data)) != nil else {
+                    resumeOnce(.failure(PluginExecutionError.invalidResponse)); return
                 }
-                continuation.resume(returning: data)
+                resumeOnce(.success(data))
             }
         }
     }

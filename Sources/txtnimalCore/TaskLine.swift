@@ -173,12 +173,20 @@ public struct TaskLine: Equatable {
             .joined(separator: " ")
     }
 
+    /// An unknown `key:value`-shaped token (e.g. `pri:high`). Not part of the known schema, but
+    /// the preservation invariant says it must survive edits — `setTitle` keeps it as metadata.
+    /// Key must look like an identifier (letter first) so title words like `12:30` stay title.
+    private static func isUnknownMetadataWord(_ w: String) -> Bool {
+        guard let c = w.firstIndex(of: ":"), c != w.startIndex, c < w.index(before: w.endIndex) else { return false }
+        let key = String(w[..<c])
+        guard !knownKeys.contains(key), key.first?.isLetter == true else { return false }
+        return key.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }
+    }
+
     /// Replace the task's title text while preserving metadata tokens (x, +project,
-    /// @context, note:, known key:value). The edited line normalizes to
+    /// @context, note:, known key:value, and unknown key:value). The edited line normalizes to
     /// `[x] title metadata…` (single-spaced) — only this one line changes.
     public mutating func setTitle(_ newTitle: String) {
-        let titleWords = newTitle.split(separator: " ").map(String.init)
-        guard !titleWords.isEmpty else { return }
         let (segs, _) = tokenize()
         var hasX = false
         var meta: [String] = []
@@ -187,8 +195,13 @@ public struct TaskLine: Equatable {
             if w == "x" { hasX = true; continue }
             if w.hasPrefix("+") || w.hasPrefix("@") || w.hasPrefix("note:\"") { meta.append(w); continue }
             if let c = w.firstIndex(of: ":"), c != w.startIndex, Self.knownKeys.contains(String(w[..<c])) { meta.append(w); continue }
+            if Self.isUnknownMetadataWord(w) { meta.append(w); continue } // 不變量 2:未知 token 必須存活
             // otherwise a title word — dropped, replaced by newTitle
         }
+        // 編輯欄以 `title` 預填、可能連未知 token 一起帶回來——已保留的不重複寫入。
+        let preserved = Set(meta)
+        let titleWords = newTitle.split(separator: " ").map(String.init).filter { !preserved.contains($0) }
+        guard !titleWords.isEmpty else { return }
         raw = ((hasX ? ["x"] : []) + titleWords + meta).joined(separator: " ")
     }
 

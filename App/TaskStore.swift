@@ -568,7 +568,10 @@ final class TaskStore: ObservableObject {
                                     "documentRevision": snapshot.documentRevision]
         guard let inputData = try? JSONSerialization.data(withJSONObject: input),
               let inputJSON = String(data: inputData, encoding: .utf8),
-              let source = try? String(contentsOf: package.url.appendingPathComponent(package.manifest.entry), encoding: .utf8),
+              // Fails CLOSED: entry 必須通過 containment guard(symlink 解析後仍在套件根內),
+              // 不得裸 path join——與 resolvePluginEntry 的 SCO-172 修法一致。
+              let entryURL = try? PluginValidator.resolveEntry(package.manifest.entry, in: package.url),
+              let source = try? String(contentsOf: entryURL, encoding: .utf8),
               let request = try? JSONEncoder().encode(PluginRequestEnvelope(source: source, inputJSON: inputJSON)) else {
             lastError = "無法載入 plugin entry。"; return
         }
@@ -879,6 +882,24 @@ final class TaskStore: ObservableObject {
     private func documentStoreSnapshot() -> TaskDocumentSnapshot {
         TaskDocumentSnapshot(lines: lines, scratch: scratch, archiveLines: archiveLines, generation: generation,
                              tasksText: TasksDocument.serialize(lines))
+    }
+
+    /// Page plugin 按鈕的 tasks.* intent 統一套用路徑(與 reschedule-tomorrow / agent review 同一條):
+    /// PluginIntentApplier 檢查 documentRevision、save 檢查 generation,任一 stale 即拒絕。
+    func applyPluginPageIntent(_ intent: ValidatedPluginIntent) {
+        do {
+            let changed = try PluginIntentApplier.apply(intent, to: documentStoreSnapshot(), todayYMD: RelativeDate.todayYMD())
+            apply(try documentStore.save(lines: changed, expectedGeneration: generation))
+            ensureCursor()
+        } catch { report(error) }
+    }
+
+    /// 供 page host 做 action 驗證用的當前 revision 上下文。
+    func pluginPageValidationContext() -> (taskRevisions: [String: String], documentRevision: String) {
+        let snapshot = documentStoreSnapshot()
+        let tasks = (try? PluginSnapshotBuilder.build(from: snapshot))?.tasks ?? []
+        return (Dictionary(tasks.map { ($0.id, $0.revision) }, uniquingKeysWith: { first, _ in first }),
+                snapshot.documentRevision)
     }
 
     func reportCandidateTasks() -> [PluginTaskSnapshot] {

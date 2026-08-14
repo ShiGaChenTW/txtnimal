@@ -142,10 +142,13 @@ struct PluginPageHostView: View {
             if agentLoading { loadingRow }
             if let errorMessage { errorRow(errorMessage) }
             if let document {
+                let context = store.pluginPageValidationContext()
                 PluginPagePrototypeView(
                     document: document,
                     manifest: manifest,
-                    onIntent: { _ in },
+                    taskRevisions: context.taskRevisions,
+                    documentRevision: context.documentRevision,
+                    onIntent: { store.applyPluginPageIntent($0) },
                     onKVWrite: handleKVWrite,
                     onExport: handleExport,
                     onImport: handleImport,

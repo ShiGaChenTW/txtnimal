@@ -168,8 +168,10 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         do {
             let data = try JSONEncoder().encode(entry)
             try data.write(to: journalURL, options: .atomic)
-            try write(tasksText, to: tasksURL)
+            // 不變量:archive 寫入失敗絕不能移除 live 任務——先落 archive,成功後才改 live。
+            // archive 失敗時 tasks.txt 原封不動,journal 留待下次 load() 重放。
             try write(archiveText, to: archiveURL)
+            try write(tasksText, to: tasksURL)
             try fm.removeItem(at: journalURL)
         } catch {
             throw TaskDocumentStoreError.writeFailed(directory.path)
@@ -181,8 +183,9 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         do {
             let data = try Data(contentsOf: journalURL)
             let entry = try JSONDecoder().decode(TaskDocumentJournalEntry.self, from: data)
-            try write(entry.tasksText, to: tasksURL)
+            // 與 commit 同序:archive 先於 live,重放中途失敗也不會只剩 live 被改。
             try write(entry.archiveText, to: archiveURL)
+            try write(entry.tasksText, to: tasksURL)
             try fm.removeItem(at: journalURL)
         } catch {
             throw TaskDocumentStoreError.readFailed(journalURL.path)

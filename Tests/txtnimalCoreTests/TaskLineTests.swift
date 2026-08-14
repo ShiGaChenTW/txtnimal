@@ -105,6 +105,23 @@ final class TaskLineTests: XCTestCase {
         XCTAssertEqual(t.title, "Ring the bank")
     }
 
+    // Invariant 2: unknown key:value tokens survive a retitle (programmatic setTitle included).
+    func testSetTitlePreservesUnknownTokens() {
+        var t = TaskLine("Old title pri:high weird:stuff q:2")
+        t.setTitle("New title")
+        XCTAssertEqual(t.raw, "New title pri:high weird:stuff q:2")
+
+        // The edit field is seeded with `title` (which includes unknown tokens) — no duplication.
+        var u = TaskLine("Task pri:high")
+        u.setTitle(u.title)
+        XCTAssertEqual(u.raw, "Task pri:high")
+
+        // Colon words that are not identifier-keyed stay title words.
+        var v = TaskLine("Meet at 12:30 due:2026-07-10")
+        v.setTitle("Meet at 13:00")
+        XCTAssertEqual(v.raw, "Meet at 13:00 due:2026-07-10")
+    }
+
     func testAddTagAppendsAndDedupes() {
         var t = TaskLine("Call bank")
         t.addTag("personal")          // bare → +personal
