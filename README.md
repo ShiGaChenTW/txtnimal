@@ -21,7 +21,7 @@ txtnimal 是一款原生 macOS 任務管理工具。它將每項任務保存為�
 - **List 與 Tag**：介面使用 List／Tag；底層仍保留 todo.txt 的 `+project`／`@context` 語法，維持相容性。
 - **單一 Focus**：一次聚焦一項任務，並提供專注模式與置頂 HUD。
 - **四象限**：以 `q:1`～`q:4` 手動安排任務，不替使用者猜測重要性。
-- **便箋與統計**：內建純文字便箋、完成趨勢與活動統計。
+- **Agent 與統計**：⌘3 開啟 Agent 工作區；統計頁顯示完成趨勢與活動。
 - **外掛生態**：內建 registry 統一管理外掛——在設定裡啟用／停用、pin 到側邊欄、安裝 package。隨附習慣追蹤、智慧分類、自然語言週報、報表與匯入／匯出等外掛，也能自行開發（宣告 `manifest` 能力即可）。
 - **自訂體驗**：支援中英文介面、深淺色、強調色、行距、中英文字體、文字大小及三款 App Icon。
 - **本機運作**：不需帳號、雲端服務或遙測。
@@ -80,7 +80,7 @@ xcodegen generate
 ```text
 ~/Documents/txtnimal/
 ├── tasks.txt    # 目前任務
-├── scratch.txt  # 便箋
+├── scratch.txt  # 便箋檔（目前無 App 內頁面）
 └── archive.txt  # 歷史完成項目
 ```
 
@@ -122,22 +122,31 @@ Review landing page due:2026-07-25 +website @mac note:"check mobile spacing"
 
 | 快捷鍵 | 功能 |
 |---|---|
-| `⌘1`～`⌘5` | 清單／象限／便箋／統計／設定 |
-| `↑` / `↓` | 移動游標 |
-| `n` | 新增任務 |
+| `⌘1` | 清單 |
+| `⌘2` | 四象限 |
+| `⌘3` | Agent |
+| `⌘4` | 統計 |
+| `⌘5` / `⌘,` | 設定 |
+| `↑` / `↓` / `j` / `k` | 移動游標 |
+| `n` | 清單尾端新增任務 |
 | `Enter` / `e` | 行內編輯 |
 | `⌘E` | 開啟完整編輯器 |
-| `x` / `⌘Enter` | 完成或取消完成 |
+| `x` / `Space` / `⌘Enter` | 完成或取消完成 |
 | `f` / `⌘⇧F` | 切換 Focus |
 | `z` | 進入或離開專注模式 |
 | `/` / `⌘F` | 搜尋 |
 | `p` | 加入 List |
 | `R` | 將所有逾期任務改為今天 |
 | `[` / `]` | 調整行距 |
+| `1`–`4` / `0` | 象限指派／取消歸位（僅象限頁） |
 | `⌘K` | 開啟指令面板 |
-| `Esc` | 取消、清除篩選或返回清單 |
+| `⌘⇧T` | 切換深／淺色 |
+| `Esc` | 關閉面板、清除搜尋／篩選；統計與設定頁回清單 |
+| `⌥Space`（預設） | 全域快速捕捉（設定可重綁） |
+| `⌥T`（預設） | 側邊面板滑出／收回（設定可重綁） |
 
-全域快速捕捉熱鍵可在設定頁自行綁定。
+完整對照（含定義位置）見 [docs/ShortcutMap.md](docs/ShortcutMap.md)。
+全域快速捕捉與側邊面板熱鍵可在設定頁自行重綁。
 輸入 `+`、`@` 或 `due:` 時會顯示候選清單；可繼續輸入過濾，或使用 `↑`／`↓` 選擇並以 `Enter`／`Tab` 套用。
 
 在清單或四象限的任務上按右鍵，可編輯任務、調整完成／Focus／到期日／List／Tag／象限、複製原始 todo.txt 行、封存或刪除。封存會把原始行移至 `archive.txt`；刪除經確認後永久生效，不會自動封存。象限選單中的 `4 Delete（象限）`只代表 Eisenhower 象限，不會刪除任務。
@@ -232,7 +241,7 @@ txtnimal is a native macOS task manager that stores every task as a line of ordi
 - **Lists and Tags:** The UI calls them List and Tag while preserving todo.txt's `+project` and `@context` syntax on disk.
 - **Single Focus:** Keep one active task, with a focus mode and always-on-top HUD.
 - **Four quadrants:** Assign tasks manually with `q:1` through `q:4`; the app does not guess their importance.
-- **Scratchpad and statistics:** Keep quick notes and review completion activity.
+- **Agent and statistics:** Open the Agent workspace with ⌘3, and review completion trends and activity.
 - **Plugin ecosystem:** A built-in registry manages plugins—enable/disable, pin to the sidebar, and install packages from Settings. Ships with habit tracking, smart triage, natural-language reports, analytics, and import/export plugins, and you can build your own by declaring capabilities in a `manifest`.
 - **Customizable:** Choose Chinese or English, appearance, accent color, spacing, separate Latin and Chinese fonts, text sizes, and one of three app icons.
 - **Local by design:** No account, cloud backend, or telemetry.
@@ -291,7 +300,7 @@ The default data directory is:
 ```text
 ~/Documents/txtnimal/
 ├── tasks.txt    # Active tasks
-├── scratch.txt  # Scratchpad
+├── scratch.txt  # Scratch file (no in-app page yet)
 └── archive.txt  # Completed history
 ```
 
@@ -333,22 +342,31 @@ See the [todo.txt format specification](https://github.com/todotxt/todo.txt) for
 
 | Shortcut | Action |
 |---|---|
-| `⌘1`–`⌘5` | List / Quadrants / Scratchpad / Statistics / Settings |
-| `↑` / `↓` | Move the cursor |
-| `n` | Add a task |
+| `⌘1` | List |
+| `⌘2` | Quadrants |
+| `⌘3` | Agent |
+| `⌘4` | Statistics |
+| `⌘5` / `⌘,` | Settings |
+| `↑` / `↓` / `j` / `k` | Move the cursor |
+| `n` | Add a task at the end of the list |
 | `Enter` / `e` | Edit inline |
 | `⌘E` | Open the full editor |
-| `x` / `⌘Enter` | Complete or uncomplete |
+| `x` / `Space` / `⌘Enter` | Complete or uncomplete |
 | `f` / `⌘⇧F` | Toggle Focus |
 | `z` | Enter or leave focus mode |
 | `/` / `⌘F` | Search |
 | `p` | Add a List |
 | `R` | Reschedule every overdue task to today |
 | `[` / `]` | Adjust row spacing |
+| `1`–`4` / `0` | Assign / unassign quadrant (Quadrants view only) |
 | `⌘K` | Open the command palette |
-| `Esc` | Cancel, clear a filter, or return to the list |
+| `⌘⇧T` | Cycle dark / light appearance |
+| `Esc` | Dismiss a panel or clear search / filter; from Statistics or Settings, return to the list |
+| `⌥Space` (default) | Global quick capture (rebind in Settings) |
+| `⌥T` (default) | Show or hide the sidebar panel (rebind in Settings) |
 
-The global quick-capture shortcut can be changed in Settings.
+See [docs/ShortcutMap.md](docs/ShortcutMap.md) for the full map (including definition sites).
+The global capture and sidebar shortcuts can be rebound in Settings.
 Type `+`, `@`, or `due:` to open suggestions. Keep typing to filter, or use `↑`/`↓` and apply a choice with `Enter` or `Tab`.
 
 Right-click a task in the List or Quadrants view to edit it, change completion, Focus, due date, Lists, Tags, or quadrant, copy its original todo.txt line, archive it, or delete it. Archiving moves the unchanged line to `archive.txt`; deletion is permanent after confirmation and does not archive the task. The Quadrant item `4 Delete (Quadrant)` only assigns the Eisenhower quadrant—it does not delete the task.
