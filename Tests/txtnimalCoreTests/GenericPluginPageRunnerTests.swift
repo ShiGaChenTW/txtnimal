@@ -276,4 +276,12 @@ final class GenericPluginPageRunnerTests: XCTestCase {
             metadata: metadata(), input: ["view": "stalled"])
         XCTAssertEqual(first, second)
     }
+
+    func testWeeklyReviewFixtureUsesManifestEntryFunction() throws {
+        let manifest = try loadManifest("weekly-review")
+        let source = try loadSource("weekly-review")
+        let document = try GenericPluginPageRunner().run(
+            manifest: manifest, source: source, snapshot: reportSnapshot(), todayYMD: today)
+        XCTAssertEqual(document.page.pageID, "weekly-review")
+    }
 }

@@ -759,6 +759,7 @@ struct AgentWorkspaceView: View {
     @State private var section: Section = .schedule
     @State private var schedulePrompt = ""
     @StateObject private var chatModel = AgentChatViewModel()
+    @EnvironmentObject var store: TaskStore
 
     var body: some View {
         VStack(spacing: 0) {
@@ -789,6 +790,9 @@ struct AgentWorkspaceView: View {
                 }
             }
         }
+        // 對話紀錄跟著目前資料夾走:換資料夾/任務檔就換 ChatStore,不再寫死預設目錄。
+        .onAppear { chatModel.syncDirectory(store.dataDirPath) }
+        .onChange(of: store.dataDirPath) { chatModel.syncDirectory($0) }
     }
 
     private func sectionTab(_ title: String, _ target: Section) -> some View {
@@ -1332,7 +1336,7 @@ private final class AgentChatViewModel: ObservableObject {
     @Published private(set) var pendingReview: AgentChatPendingReview?
     @Published private(set) var streamingText = ""      // assistant text as it streams in
 
-    private let chatStore: ChatStore
+    private var chatStore: ChatStore
     private let credentialStore: any AgentCredentialStore
     private var requestTask: Task<Void, Never>?
     private var requestID: UUID?
@@ -1354,6 +1358,19 @@ private final class AgentChatViewModel: ObservableObject {
     var canSend: Bool {
         endpointIssue == nil && !isSending && pendingReview == nil
             && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// 對話紀錄目錄與目前任務檔資料夾同步;切換時重載該資料夾的歷史。
+    func syncDirectory(_ path: String) {
+        let dir = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+        guard dir != chatStore.directory else { return }
+        cancel()
+        pendingReview = nil
+        chatStore = ChatStore(directory: dir)
+        conversations = []
+        current = nil
+        reloadHistory()
+        if current == nil { startNewConversation() }
     }
 
     func refreshEndpoint() {

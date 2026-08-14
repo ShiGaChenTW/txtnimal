@@ -51,8 +51,9 @@ public final class PluginPackageStore {
             throw PluginPackageStoreError.invalidPackage
         }
         let manifest = try loadManifest(at: source)
-        try securityPolicy.validate(manifest)
-        try validateSignatureIfRequired(manifest, packageURL: source)
+        let signature = try loadSignatureIfRequired(manifest, packageURL: source)
+        try securityPolicy.validate(manifest, signerTeamID: signature?.teamID)
+        try validateSignatureIfRequired(signature, manifest: manifest, packageURL: source)
         _ = try PluginValidator.resolveEntry(manifest.entry, in: source, fileManager: fileManager)
         let destination = directory.appendingPathComponent(manifest.id, isDirectory: true)
         guard !fileManager.fileExists(atPath: destination.path) else { throw PluginPackageStoreError.packageExists }
@@ -70,18 +71,27 @@ public final class PluginPackageStore {
 
     private func load(at url: URL) throws -> InstalledPluginPackage {
         let manifest = try loadManifest(at: url)
-        try securityPolicy.validate(manifest)
-        try validateSignatureIfRequired(manifest, packageURL: url)
+        let signature = try loadSignatureIfRequired(manifest, packageURL: url)
+        try securityPolicy.validate(manifest, signerTeamID: signature?.teamID)
+        try validateSignatureIfRequired(signature, manifest: manifest, packageURL: url)
         _ = try PluginValidator.resolveEntry(manifest.entry, in: url, fileManager: fileManager)
         return InstalledPluginPackage(manifest: manifest, url: url)
     }
 
-    private func validateSignatureIfRequired(_ manifest: PluginManifest, packageURL: URL) throws {
-        guard securityPolicy.requiredSignerTeamID != nil else { return }
+    private func loadSignatureIfRequired(_ manifest: PluginManifest, packageURL: URL) throws -> PluginSignature? {
+        guard securityPolicy.requiredSignerTeamID != nil else { return nil }
         let signatureURL = packageURL.appendingPathComponent("signature.json")
-        let entryURL = try PluginValidator.resolveEntry(manifest.entry, in: packageURL, fileManager: fileManager)
         do {
-            let signature = try JSONDecoder().decode(PluginSignature.self, from: Data(contentsOf: signatureURL))
+            return try JSONDecoder().decode(PluginSignature.self, from: Data(contentsOf: signatureURL))
+        } catch {
+            throw PluginPackageStoreError.invalidPackage
+        }
+    }
+
+    private func validateSignatureIfRequired(_ signature: PluginSignature?, manifest: PluginManifest, packageURL: URL) throws {
+        guard let signature else { return }
+        do {
+            let entryURL = try PluginValidator.resolveEntry(manifest.entry, in: packageURL, fileManager: fileManager)
             try securityPolicy.validateSignature(signature, entryData: Data(contentsOf: entryURL))
         } catch { throw PluginPackageStoreError.invalidPackage }
     }

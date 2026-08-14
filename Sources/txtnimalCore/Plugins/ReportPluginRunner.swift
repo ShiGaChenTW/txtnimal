@@ -27,8 +27,9 @@ public enum ReportPluginRunnerError: LocalizedError, Sendable {
 ///
 /// This is deliberately NOT routed through the XPC broker: the task-report plugin
 /// is first-party and only reads a task snapshot the host already holds. The host
-/// evaluates `source`, calls the global `run(input)`, and decodes the returned
-/// JSON object into a `PluginPageDocument`.
+/// evaluates `source`, calls the manifest-declared entry function (falling back to
+/// `run(input)` for legacy callers), and validates the returned JSON object before
+/// handing a `PluginPageDocument` to the host.
 public struct ReportPluginRunner {
     public struct TaskMetadata: Sendable, Equatable {
         public let created: String?
@@ -64,7 +65,8 @@ public struct ReportPluginRunner {
                     snapshot: PluginDocumentSnapshot, todayYMD: String,
                     metadata: [String: TaskMetadata] = [:],
                     kv: [String: String] = [:],
-                    agentResult: String? = nil) throws -> PluginPageDocument {
+                    agentResult: String? = nil,
+                    manifest: PluginManifest? = nil) throws -> PluginPageDocument {
         let input = Input(
             reportType: reportType,
             tasks: snapshot.tasks.map { task in
@@ -93,25 +95,47 @@ public struct ReportPluginRunner {
         context.evaluateScript(source)
         if let scriptException { throw ReportPluginRunnerError.scriptException(scriptException) }
 
-        guard let runFunction = context.objectForKeyedSubscript("run"),
-              !runFunction.isUndefined, !runFunction.isNull else {
+        let entryFunctionName = manifest?.pages.first(where: { $0.id == reportType })?.entryFunction
+            ?? manifest?.pages.first?.entryFunction
+            ?? "run"
+        guard let entryFunction = context.objectForKeyedSubscript(entryFunctionName),
+              !entryFunction.isUndefined, !entryFunction.isNull else {
             throw ReportPluginRunnerError.missingRunFunction
         }
 
         // Setting the JSON as a native string (not concatenating it into evaluated
         // code) keeps the payload out of the parse path — no code injection surface.
         context.setObject(inputJSON, forKeyedSubscript: "__txtnimalReportInput" as NSString)
-        guard let result = context.evaluateScript("run(JSON.parse(__txtnimalReportInput))") else {
+        guard let inputValue = context.evaluateScript("JSON.parse(__txtnimalReportInput)"),
+              let result = entryFunction.call(withArguments: [inputValue]) else {
             throw ReportPluginRunnerError.runReturnedNothing
         }
         if let scriptException { throw ReportPluginRunnerError.scriptException(scriptException) }
 
-        guard let object = result.toObject(), JSONSerialization.isValidJSONObject(object) else {
+        guard let object = result.toObject() as? [String: Any], JSONSerialization.isValidJSONObject(object) else {
             throw ReportPluginRunnerError.resultNotJSONObject
         }
         let resultData = try JSONSerialization.data(withJSONObject: object)
         do {
-            return try JSONDecoder().decode(PluginPageDocument.self, from: resultData)
+            let validationManifest = manifest.map { manifest in
+                guard !manifest.pages.contains(where: { $0.id == reportType }) else { return manifest }
+                return PluginManifest(id: manifest.id, name: manifest.name, version: manifest.version,
+                                      apiVersion: manifest.apiVersion, entry: manifest.entry,
+                                      capabilities: manifest.capabilities, commands: manifest.commands,
+                                      pages: manifest.pages + [PluginPageDeclaration(id: reportType,
+                                                                                    title: reportType,
+                                                                                    entryFunction: entryFunctionName)],
+                                      entryControls: manifest.entryControls, placement: manifest.placement)
+            } ?? PluginManifest(id: "app.txtnimal.legacy", name: "Legacy", version: "1.0.0",
+                                apiVersion: 1, entry: "main.js", capabilities: PluginCapability.allCases,
+                                pages: Array(Set([reportType,
+                                                   (object["page"] as? [String: Any])?["pageID"] as? String,
+                                                   "weekly", "progress", "category", "standup",
+                                                   "daily", "stalled", "gtd", "eisenhower", "para", "triage"]))
+                                    .compactMap { $0 }
+                                    .map { PluginPageDeclaration(id: $0, title: $0,
+                                                                 entryFunction: entryFunctionName) })
+            return try PluginValidator.decodePage(resultData, manifest: validationManifest)
         } catch {
             throw ReportPluginRunnerError.decodeFailed(String(describing: error))
         }

@@ -97,7 +97,7 @@ final class ReportPluginRunnerTests: XCTestCase {
         let echo = """
         function run(input) {
           var a = input.tasks[0], b = input.tasks[1];
-          return { schemaVersion: 1, page: { type: "page", id: "root", title: "echo", children: [
+          return { schemaVersion: 1, page: { type: "page", id: "root", pageID: "weekly", title: "echo", children: [
             { type: "statCard", id: "a-created", title: "c", value: String(a.created) },
             { type: "statCard", id: "a-done",    title: "d", value: String(a.done) },
             { type: "statCard", id: "a-q",       title: "q", value: String(a.q) },
@@ -125,5 +125,39 @@ final class ReportPluginRunnerTests: XCTestCase {
             try ReportPluginRunner().run(source: "function notRun() { return {}; }",
                                          reportType: "weekly", snapshot: snapshot(), todayYMD: today)
         )
+    }
+
+    func testManifestEntryFunctionIsUsedAndOutputIsValidated() throws {
+        let source = """
+        function renderWeeklyReview(input) {
+          return { schemaVersion: 1, page: { type: \"page\", id: \"root\", pageID: \"weekly-review\", children: [] } };
+        }
+        """
+        let manifest = PluginManifest(id: "app.txtnimal.weekly-review", name: "Weekly Review",
+                                      version: "1.0.0", apiVersion: 1, entry: "main.js",
+                                      capabilities: [.uiPage],
+                                      pages: [PluginPageDeclaration(id: "weekly-review", title: "Weekly Review",
+                                                                    entryFunction: "renderWeeklyReview")])
+        let document = try ReportPluginRunner().run(source: source, reportType: "weekly-review",
+                                                    snapshot: snapshot(), todayYMD: today,
+                                                    manifest: manifest)
+        XCTAssertEqual(document.page.pageID, "weekly-review")
+    }
+
+    func testManifestOutputExceedingNodeLimitIsRejectedBeforeReturn() throws {
+        let source = """
+        function run(input) {
+          var children = [];
+          for (var i = 0; i < 401; i++) { children.push({type: \"text\", id: \"n\" + i, value: \"x\"}); }
+          return {schemaVersion: 1, page: {type: \"page\", id: \"root\", pageID: \"limited\", children: children}};
+        }
+        """
+        let manifest = PluginManifest(id: "app.txtnimal.limited", name: "Limited", version: "1.0.0",
+                                      apiVersion: 1, entry: "main.js", capabilities: [.uiPage],
+                                      pages: [PluginPageDeclaration(id: "limited", title: "Limited",
+                                                                    entryFunction: "run")])
+        XCTAssertThrowsError(try ReportPluginRunner().run(source: source, reportType: "limited",
+                                                          snapshot: snapshot(), todayYMD: today,
+                                                          manifest: manifest))
     }
 }

@@ -37,12 +37,22 @@ public enum TaskDocumentStoreError: LocalizedError, Equatable {
 public struct TaskDocumentJournalEntry: Codable, Equatable, Sendable {
     public let transactionID: UUID
     public let tasksText: String
-    public let archiveText: String
+    /// `nil` means this transaction does not touch `archive.txt`.
+    public let archiveText: String?
 
-    public init(transactionID: UUID = UUID(), tasksText: String, archiveText: String) {
+    public init(transactionID: UUID = UUID(), tasksText: String, archiveText: String? = nil) {
         self.transactionID = transactionID
         self.tasksText = tasksText
         self.archiveText = archiveText
+    }
+
+    // 升級相容:舊版 journal 沒有 transactionID(且 archiveText 必為全文)。
+    // 解碼失敗會讓 load() 整個炸掉,所以缺欄位時補一顆新 UUID 而不是丟錯。
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        transactionID = try container.decodeIfPresent(UUID.self, forKey: .transactionID) ?? UUID()
+        tasksText = try container.decode(String.self, forKey: .tasksText)
+        archiveText = try container.decodeIfPresent(String.self, forKey: .archiveText)
     }
 }
 
@@ -95,9 +105,11 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
     public func save(lines: [TaskLine], expectedGeneration: UInt64) throws -> TaskDocumentSnapshot {
         try requireGeneration(expectedGeneration)
         let tasksText = TasksDocument.serialize(lines)
-        let archiveText = try readOptional(archiveURL)
-        try commit(tasksText: tasksText, archiveText: archiveText)
+        // Ordinary save never rewrites archive.txt — journal carries nil archiveText
+        // so recovery cannot roll archive back to a stale snapshot.
+        try commit(tasksText: tasksText, archiveText: nil)
         generation &+= 1
+        let archiveText = try readOptional(archiveURL)
         return TaskDocumentSnapshot(lines: lines, scratch: try readOptional(scratchURL), archiveLines: TasksDocument.parse(archiveText),
                                     generation: generation, tasksText: tasksText)
     }
@@ -163,14 +175,17 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         catch { throw TaskDocumentStoreError.writeFailed(url.path) }
     }
 
-    private func commit(tasksText: String, archiveText: String) throws {
+    private func commit(tasksText: String, archiveText: String?) throws {
         let entry = TaskDocumentJournalEntry(tasksText: tasksText, archiveText: archiveText)
         do {
             let data = try JSONEncoder().encode(entry)
             try data.write(to: journalURL, options: .atomic)
             // 不變量:archive 寫入失敗絕不能移除 live 任務——先落 archive,成功後才改 live。
             // archive 失敗時 tasks.txt 原封不動,journal 留待下次 load() 重放。
-            try write(archiveText, to: archiveURL)
+            // nil archiveText = 本交易不動 archive（普通 save）。
+            if let archiveText {
+                try write(archiveText, to: archiveURL)
+            }
             try write(tasksText, to: tasksURL)
             try fm.removeItem(at: journalURL)
         } catch {
@@ -183,8 +198,11 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         do {
             let data = try Data(contentsOf: journalURL)
             let entry = try JSONDecoder().decode(TaskDocumentJournalEntry.self, from: data)
-            // 與 commit 同序:archive 先於 live,重放中途失敗也不會只剩 live 被改。
-            try write(entry.archiveText, to: archiveURL)
+            // 與 commit 同序:有 archive 才先寫 archive,再改 live。nil = 不動 archive,
+            // 避免把較新的 archive 回滾成 journal 裡的舊快照。
+            if let archiveText = entry.archiveText {
+                try write(archiveText, to: archiveURL)
+            }
             try write(entry.tasksText, to: tasksURL)
             try fm.removeItem(at: journalURL)
         } catch {

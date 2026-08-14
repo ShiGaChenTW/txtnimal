@@ -546,6 +546,14 @@ final class TaskStore: ObservableObject {
         pluginExecutionRecords = (try? pluginExecutionLogStore?.load()) ?? []
     }
 
+    /// Persist the coordinator's latest final record (applied/failed) so the UI log matches host persist.
+    private func commitLatestExecutionRecord(from coordinator: PluginExecutionCoordinator) async {
+        if let record = await coordinator.executionRecords().last, record.status != .pending {
+            try? pluginExecutionLogStore?.append(record)
+        }
+        await MainActor.run { refreshPluginExecutionRecords() }
+    }
+
     func clearPluginExecutionRecords() {
         do { try pluginExecutionLogStore?.clear(); refreshPluginExecutionRecords() }
         catch { report(error) }
@@ -577,18 +585,33 @@ final class TaskStore: ObservableObject {
         }
         Task { [weak self] in
             guard let self else { return }
+            let coordinator = PluginExecutionCoordinator(transport: PluginBrokerXPCTransport())
             do {
-                let coordinator = PluginExecutionCoordinator(transport: PluginBrokerXPCTransport())
                 let intent = try await coordinator.execute(manifest: package.manifest, request: request,
                                                            taskRevisions: [taskID: taskRevision], documentRevision: snapshot.documentRevision)
-                let changed = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: RelativeDate.todayYMD())
-                await MainActor.run {
-                    do {
-                        self.apply(try self.documentStore.save(lines: changed, expectedGeneration: self.generation))
-                        self.refreshPluginExecutionRecords()
-                    } catch { self.report(error) }
+                let changed: [TaskLine]
+                do {
+                    changed = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: RelativeDate.todayYMD())
+                } catch {
+                    await coordinator.recordPersistFailed(error)
+                    await self.commitLatestExecutionRecord(from: coordinator)
+                    await MainActor.run { self.report(error) }
+                    return
                 }
-            } catch { await MainActor.run { self.refreshPluginExecutionRecords(); self.report(error) } }
+                do {
+                    try await MainActor.run {
+                        self.apply(try self.documentStore.save(lines: changed, expectedGeneration: self.generation))
+                    }
+                    await coordinator.recordPersistSucceeded()
+                } catch {
+                    await coordinator.recordPersistFailed(error)
+                    await MainActor.run { self.report(error) }
+                }
+                await self.commitLatestExecutionRecord(from: coordinator)
+            } catch {
+                await self.commitLatestExecutionRecord(from: coordinator)
+                await MainActor.run { self.report(error) }
+            }
         }
     }
 

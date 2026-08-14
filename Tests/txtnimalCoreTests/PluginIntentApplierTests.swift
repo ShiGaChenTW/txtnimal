@@ -137,6 +137,28 @@ final class PluginIntentApplierTests: XCTestCase {
         XCTAssertEqual(result.map(\.title), ["Two"])
     }
 
+    func testRescheduleDoneTaskIsRejected() throws {
+        let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("x done id:task-one due:2026-07-20 done:2026-07-20"))
+        let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .rescheduleTask,
+                                           taskIDs: ["task-one"], due: "2026-08-01", expectedRevision: "rev",
+                                           documentRevision: snapshot.documentRevision)
+        XCTAssertThrowsError(try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")) { error in
+            XCTAssertEqual(error as? PluginIntentApplyError, .unsupportedCommand)
+        }
+        XCTAssertEqual(snapshot.lines[0].due, "2026-07-20")
+    }
+
+    func testRetitleDoneTaskIsRejected() throws {
+        let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("x done id:task-one done:2026-07-20"))
+        let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .retitleTask,
+                                           taskIDs: ["task-one"], title: "Should not apply", due: nil,
+                                           expectedRevision: nil, documentRevision: snapshot.documentRevision)
+        XCTAssertThrowsError(try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")) { error in
+            XCTAssertEqual(error as? PluginIntentApplyError, .unsupportedCommand)
+        }
+        XCTAssertEqual(snapshot.lines[0].title, "done")
+    }
+
     func testRetitleTaskChangesTitleKeepingMetadata() throws {
         let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("Old id:task-one due:2026-07-20"))
         let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .retitleTask,

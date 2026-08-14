@@ -292,7 +292,7 @@ final class AgentQueryBrokerTests: XCTestCase {
 
     private let echoAgentResultSource = """
     function run(input) {
-      return { schemaVersion: 1, page: { type: "page", id: "root", title: "echo", children: [
+      return { schemaVersion: 1, page: { type: "page", id: "root", pageID: "triage", title: "echo", children: [
         { type: "statCard", id: "ar", title: "s", value: String(input.agentResult) }
       ] } };
     }

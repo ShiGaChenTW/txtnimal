@@ -55,7 +55,11 @@ public enum PluginIntentApplier {
                 for tag in intent.tags { line.addTag("@" + tag) }
                 lines.append(line)   // append doesn't shift existing indices
             case .rescheduleTask:
-                for id in intent.taskIDs { lines[try index(for: id)].setDue(intent.due ?? todayYMD) }
+                for id in intent.taskIDs {
+                    let i = try index(for: id)
+                    guard !lines[i].isDone else { throw PluginIntentApplyError.unsupportedCommand }
+                    lines[i].setDue(intent.due ?? todayYMD)
+                }
             case .rescheduleOverdue:
                 for i in lines.indices where !lines[i].isDone && (lines[i].due ?? todayYMD) < todayYMD {
                     lines[i].setDue(todayYMD)
@@ -78,7 +82,9 @@ public enum PluginIntentApplier {
                 }
                 let safe = TaskLine.sanitizedTitle(newTitle)
                 guard !safe.isEmpty else { throw PluginIntentApplyError.unsupportedCommand }
-                lines[try index(for: id)].setTitle(safe)
+                let i = try index(for: id)
+                guard !lines[i].isDone else { throw PluginIntentApplyError.unsupportedCommand }
+                lines[i].setTitle(safe)
             }
         }
         for i in deleteIndices.sorted(by: >) { lines.remove(at: i) }

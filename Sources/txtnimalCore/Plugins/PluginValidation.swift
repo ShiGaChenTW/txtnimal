@@ -3,10 +3,10 @@ import Foundation
 public struct PluginLimits: Equatable, Sendable {
     public var maximumManifestBytes = 64 * 1024
     public var maximumPayloadBytes = 256 * 1024
-    public var maximumNodes = 200
+    public var maximumNodes = 400
     public var maximumDepth = 8
     public var maximumQueryResults = 100
-    public init(maximumManifestBytes: Int = 64 * 1024, maximumPayloadBytes: Int = 256 * 1024, maximumNodes: Int = 200,
+    public init(maximumManifestBytes: Int = 64 * 1024, maximumPayloadBytes: Int = 256 * 1024, maximumNodes: Int = 400,
                 maximumDepth: Int = 8, maximumQueryResults: Int = 100) {
         self.maximumManifestBytes = maximumManifestBytes; self.maximumPayloadBytes = maximumPayloadBytes; self.maximumNodes = maximumNodes
         self.maximumDepth = maximumDepth; self.maximumQueryResults = maximumQueryResults
@@ -142,12 +142,17 @@ public enum PluginValidator {
         try PluginJSON.rejectDuplicateKeys(data)
         try validatePageKeys(data)
         let page = try JSONDecoder().decode(PluginPageDocument.self, from: data)
-        try validate(page, manifest: manifest, limits: limits)
+        try validate(page, manifest: manifest, limits: limits, gateMissingCapabilities: true)
         return page
     }
 
     public static func validate(_ document: PluginPageDocument, manifest: PluginManifest,
                                 limits: PluginLimits = .init()) throws {
+        try validate(document, manifest: manifest, limits: limits, gateMissingCapabilities: false)
+    }
+
+    private static func validate(_ document: PluginPageDocument, manifest: PluginManifest,
+                                 limits: PluginLimits, gateMissingCapabilities: Bool) throws {
         guard document.schemaVersion == supportedSchemaVersion else {
             throw PluginValidationError.incompatibleSchemaVersion
         }
@@ -159,7 +164,8 @@ public enum PluginValidator {
         var nodeCount = 0
         var ids = Set<String>()
         try validateNode(document.page, depth: 1, isRoot: true, count: &nodeCount, ids: &ids,
-                         manifest: manifest, limits: limits)
+                         manifest: manifest, limits: limits,
+                         gateMissingCapabilities: gateMissingCapabilities)
     }
 
     public static func validate(action: PluginAction, manifest: PluginManifest,
@@ -394,7 +400,8 @@ public enum PluginValidator {
     private static func validateNode(_ node: PluginPageNode, depth: Int, isRoot: Bool,
                                      count: inout Int,
                                      ids: inout Set<String>, manifest: PluginManifest,
-                                     limits: PluginLimits) throws {
+                                     limits: PluginLimits,
+                                     gateMissingCapabilities: Bool = false) throws {
         guard depth <= limits.maximumDepth else { throw PluginValidationError.depthLimitExceeded }
         count += 1
         guard count <= limits.maximumNodes else { throw PluginValidationError.nodeLimitExceeded }
@@ -416,15 +423,19 @@ public enum PluginValidator {
         }
         try validateFields(of: node)
         if let action = node.action {
-            switch action.type {
+            if !gateMissingCapabilities || !actionNeedsUnavailableCapability(action, manifest: manifest) {
+              switch action.type {
             case .kvSet:
                 _ = try validate(kvAction: action, manifest: manifest)
             case .importRead:
                 _ = try validate(importAction: action, manifest: manifest)
             case .exportWrite:
                 _ = try validate(exportAction: action, manifest: manifest)
+            case .agentQuery:
+                _ = try validate(agentQueryAction: action, manifest: manifest)
             default:
                 _ = try validate(action: action, manifest: manifest)
+              }
             }
         }
         let containerKinds: Set<PluginPageNode.Kind> = [.page, .section, .form]
@@ -433,8 +444,31 @@ public enum PluginValidator {
         }
         for child in node.children ?? [] {
             try validateNode(child, depth: depth + 1, isRoot: false, count: &count, ids: &ids,
-                             manifest: manifest, limits: limits)
+                             manifest: manifest, limits: limits,
+                             gateMissingCapabilities: gateMissingCapabilities)
         }
+    }
+
+    private static func actionNeedsUnavailableCapability(_ action: PluginAction,
+                                                          manifest: PluginManifest) -> Bool {
+        let capability: PluginCapability?
+        switch action.type {
+        case .kvSet: capability = .storageKV
+        case .importRead: capability = .importRead
+        case .exportWrite: capability = .exportWrite
+        case .agentQuery: capability = .agentQuery
+        case .hostCommand:
+            switch PluginHostCommand(rawValue: action.command) {
+            case .createTask: capability = .tasksCreate
+            case .rescheduleTask, .rescheduleOverdue, .retitleTask: capability = .tasksUpdate
+            case .completeTask: capability = .tasksComplete
+            case .deleteTask: capability = .tasksDelete
+            case nil: capability = nil
+            }
+        case .pluginAction: capability = nil
+        }
+        guard let capability else { return false }
+        return !manifest.capabilities.contains(capability)
     }
 
     private static func validateManifestKeys(_ data: Data) throws {

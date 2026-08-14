@@ -147,6 +147,68 @@ final class ArchitectureTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: store.archiveURL, encoding: .utf8), "archived already\n")
     }
 
+    func testOrdinarySaveDoesNotRewriteArchiveFile() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try FileSystemTaskDocumentStore(directory: dir)
+        try store.bootstrap(sample: "open task")
+        try "archived already\n".write(to: store.archiveURL, atomically: true, encoding: .utf8)
+        let past = Date().addingTimeInterval(-180)
+        try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: store.archiveURL.path)
+        let snapshot = try store.load()
+        var changed = snapshot.lines
+        changed[0].setFocus(true)
+        _ = try store.save(lines: changed, expectedGeneration: snapshot.generation)
+        XCTAssertEqual(try String(contentsOf: store.archiveURL, encoding: .utf8), "archived already\n")
+        let after = try XCTUnwrap(FileManager.default.attributesOfItem(atPath: store.archiveURL.path)[.modificationDate] as? Date)
+        XCTAssertEqual(after.timeIntervalSince1970, past.timeIntervalSince1970, accuracy: 0.5)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.journalURL.path))
+    }
+
+    func testJournalRecoveryWithNilArchiveLeavesCurrentArchiveIntact() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try FileSystemTaskDocumentStore(directory: dir)
+        try store.bootstrap(sample: "old live")
+        try "current archive\n".write(to: store.archiveURL, atomically: true, encoding: .utf8)
+        let entry = TaskDocumentJournalEntry(tasksText: "recovered live\n", archiveText: nil)
+        try JSONEncoder().encode(entry).write(to: store.journalURL)
+        let loaded = try store.load()
+        XCTAssertEqual(loaded.lines.filter { !$0.isBlank }.map(\.title), ["recovered live"])
+        XCTAssertEqual(try String(contentsOf: store.archiveURL, encoding: .utf8), "current archive\n")
+        XCTAssertEqual(loaded.archiveLines.filter { !$0.isBlank }.map(\.title), ["current archive"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.journalURL.path))
+    }
+
+    func testJournalRecoveryStillAppliesExplicitArchiveBeforeLive() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try FileSystemTaskDocumentStore(directory: dir)
+        try store.bootstrap(sample: "stale live")
+        try "stale archive\n".write(to: store.archiveURL, atomically: true, encoding: .utf8)
+        let entry = TaskDocumentJournalEntry(tasksText: "kept live\n", archiveText: "moved done\n")
+        try JSONEncoder().encode(entry).write(to: store.journalURL)
+        let loaded = try store.load()
+        XCTAssertEqual(loaded.lines.filter { !$0.isBlank }.map(\.title), ["kept live"])
+        XCTAssertEqual(loaded.archiveLines.filter { !$0.isBlank }.map(\.title), ["moved done"])
+        XCTAssertEqual(try String(contentsOf: store.archiveURL, encoding: .utf8), "moved done\n")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.journalURL.path))
+    }
+
+    // 升級相容:舊版 journal 沒有 transactionID——解碼不得失敗,否則 load() 整個炸掉。
+    func testLegacyJournalWithoutTransactionIDStillRecovers() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try FileSystemTaskDocumentStore(directory: dir)
+        try store.bootstrap(sample: "old live")
+        let legacy = #"{"tasksText":"recovered live\n","archiveText":"legacy archive\n"}"#
+        try Data(legacy.utf8).write(to: store.journalURL)
+        let loaded = try store.load()
+        XCTAssertEqual(loaded.lines.filter { !$0.isBlank }.map(\.title), ["recovered live"])
+        XCTAssertEqual(try String(contentsOf: store.archiveURL, encoding: .utf8), "legacy archive\n")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.journalURL.path))
+    }
+
     func testActivityReportIncludesArchive() {
         let live = TasksDocument.parse("x live +work created:2026-07-19 done:2026-07-20")
         let archive = TasksDocument.parse("x old +home created:2026-06-01 done:2026-07-18")

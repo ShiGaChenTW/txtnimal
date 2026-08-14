@@ -140,7 +140,6 @@ function draftSection(draft, index) {
     title: "草稿 " + (index + 1),
     children: [
       node("text", "brain-draft-title-" + (index + 1), { value: draft.title }),
-      node("text", "brain-draft-meta-" + (index + 1), { value: draftSummaryText(draft) }),
       node("button", "brain-create-" + (index + 1), {
         title: "建立：" + buildTaskTitle(draft),
         action: action

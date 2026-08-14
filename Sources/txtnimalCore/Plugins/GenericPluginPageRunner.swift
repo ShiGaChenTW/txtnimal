@@ -65,6 +65,7 @@ public struct GenericPluginPageRunner {
                                             todayYMD: todayYMD,
                                             metadata: metadata,
                                             kv: kv,
-                                            agentResult: agent)
+                                            agentResult: agent,
+                                            manifest: manifest)
     }
 }

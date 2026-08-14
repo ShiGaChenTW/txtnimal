@@ -208,7 +208,7 @@ final class PluginKVStoreTests: XCTestCase {
 
     private let echoKVSource = """
     function run(input) {
-      return { schemaVersion: 1, page: { type: "page", id: "root", title: "echo", children: [
+      return { schemaVersion: 1, page: { type: "page", id: "root", pageID: "weekly", title: "echo", children: [
         { type: "statCard", id: "kv-streak", title: "s", value: String(input.kv.streak) }
       ] } };
     }

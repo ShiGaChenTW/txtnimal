@@ -90,7 +90,8 @@ public actor PluginExecutionCoordinator {
             let intent = try PluginValidator.validate(action: action, manifest: manifest,
                                                       taskRevisions: taskRevisions,
                                                       documentRevision: documentRevision)
-            append(PluginExecutionRecord(pluginID: manifest.id, command: intent.command.rawValue, status: .applied))
+            // Persist has not happened yet — stay pending until the host reports the save result.
+            append(PluginExecutionRecord(pluginID: manifest.id, command: intent.command.rawValue, status: .pending))
             return intent
         } catch {
             append(PluginExecutionRecord(pluginID: manifest.id, command: "unknown", status: .failed,
@@ -101,8 +102,26 @@ public actor PluginExecutionCoordinator {
 
     public func executionRecords() -> [PluginExecutionRecord] { records }
 
+    /// Host persist of the last validated intent succeeded. No-op if there is no pending record.
+    public func recordPersistSucceeded() {
+        updateLastPending(to: .applied)
+    }
+
+    /// Host persist of the last validated intent failed. No-op if there is no pending record.
+    public func recordPersistFailed(_ error: Error) {
+        updateLastPending(to: .failed,
+                          error: (error as? LocalizedError)?.errorDescription ?? String(describing: error))
+    }
+
     private func append(_ record: PluginExecutionRecord) {
         records.append(record)
         if records.count > maximumRecords { records.removeFirst(records.count - maximumRecords) }
+    }
+
+    private func updateLastPending(to status: PluginExecutionStatus, error: String? = nil) {
+        guard let index = records.lastIndex(where: { $0.status == .pending }) else { return }
+        let current = records[index]
+        records[index] = PluginExecutionRecord(pluginID: current.pluginID, command: current.command,
+                                               status: status, timestamp: current.timestamp, error: error)
     }
 }
