@@ -36,6 +36,11 @@ enum ImportReviewState {
     case error(String)
 }
 
+enum ExternalEditConflict: Equatable {
+    case save
+    case archive(TaskHandle)
+}
+
 /// 視窗承載模式：一般視窗 或 常駐螢幕邊緣的滑出面板。兩者共用同一個 TaskStore。
 enum WindowMode: String, CaseIterable, Hashable {
     case window, sidebar
@@ -244,6 +249,8 @@ final class TaskStore: ObservableObject {
     @Published private(set) var lines: [TaskLine] = []
     @Published private(set) var archiveLines: [TaskLine] = []
     @Published var lastError: String?
+    @Published var externalEditConflict: ExternalEditConflict?
+    @Published private(set) var reloadNotice: String?
     @Published var appLanguage: AppLanguage = {
         AppLanguage(rawValue: UserDefaults.standard.string(forKey: "appLanguage") ?? "zh-Hant") ?? .traditionalChinese
     }() {
@@ -468,6 +475,9 @@ final class TaskStore: ObservableObject {
     private var kvStore: PluginKVStore?
     private var pluginExecutionLogStore: PluginExecutionLogStore?
     private var generation: UInt64 = 0
+    private var documentRevision = ""
+    private var hasUnsavedChanges = false
+    private var reloadNoticeWorkItem: DispatchWorkItem?
     private var agentQueryTask: Task<Void, Never>?
     private var agentRunID: UUID?
 
@@ -1160,16 +1170,16 @@ final class TaskStore: ObservableObject {
     }
 
     func load() {
-        do { apply(try documentStore.load()) } catch { report(error) }
+        do { apply(try documentStore.load()); hasUnsavedChanges = false } catch { report(error) }
     }
 
     private func save() {
-        do { apply(try documentStore.save(lines: lines, expectedGeneration: generation)) }
-        catch {
-            let message = error.localizedDescription
-            load()
-            lastError = message
-        }
+        hasUnsavedChanges = true
+        do {
+            apply(try documentStore.save(lines: lines, expectedGeneration: generation))
+            hasUnsavedChanges = false
+            externalEditConflict = nil
+        } catch { handleWriteError(error, conflict: .save) }
     }
 
     func saveScratch() {
@@ -1178,10 +1188,67 @@ final class TaskStore: ObservableObject {
 
     private func apply(_ snapshot: TaskDocumentSnapshot) {
         lines = snapshot.lines; scratch = snapshot.scratch; archiveLines = snapshot.archiveLines
-        generation = snapshot.generation; lastError = nil
+        generation = snapshot.generation; documentRevision = snapshot.documentRevision; lastError = nil
     }
 
-    private func report(_ error: Error) { lastError = error.localizedDescription }
+    private func report(_ error: Error) {
+        if let storeError = error as? TaskDocumentStoreError, case .staleSnapshot = storeError {
+            externalEditConflict = .save
+            hasUnsavedChanges = true
+            return
+        }
+        lastError = error.localizedDescription
+    }
+
+    private func handleWriteError(_ error: Error, conflict: ExternalEditConflict) {
+        if let storeError = error as? TaskDocumentStoreError, case .staleSnapshot = storeError {
+            externalEditConflict = conflict
+            hasUnsavedChanges = true
+            lastError = nil
+            return
+        }
+        report(error)
+    }
+
+    /// 放棄本次 App 內容，採用磁碟版本。這是明確的使用者選擇，不由 watcher 自動呼叫。
+    func reloadAfterExternalConflict() {
+        do {
+            let oldIndex = cursor
+            apply(try documentStore.load())
+            hasUnsavedChanges = false
+            externalEditConflict = nil
+            editingIndex = nil
+            cursor = oldIndex.flatMap { lines.indices.contains($0) ? $0 : nil }
+            ensureCursor()
+            showReloadNotice()
+        } catch { report(error) }
+    }
+
+    /// 先採用最新磁碟 generation，再用衝突發生前保留的 App 內容走正常 save/journal 交易。
+    func forceOverwriteExternalChanges() {
+        guard let conflict = externalEditConflict else { return }
+        let localLines = lines
+        do {
+            apply(try documentStore.load())
+            lines = localLines
+            switch conflict {
+            case .save:
+                save()
+            case .archive(let oldHandle):
+                guard localLines.indices.contains(oldHandle.index) else { throw TaskWorkspaceError.missingTask }
+                let archivedRaw = localLines[oldHandle.index].raw
+                guard let index = lines.indices.first(where: { lines[$0].raw == archivedRaw }) else {
+                    throw TaskWorkspaceError.missingTask
+                }
+                apply(try documentStore.archiveTask(TaskHandle(generation: generation, index: index),
+                                                     expectedGeneration: generation))
+                hasUnsavedChanges = false
+                externalEditConflict = nil
+            }
+            editingIndex = nil
+            ensureCursor()
+        } catch { handleWriteError(error, conflict: conflict) }
+    }
 
     // MARK: task files
 
@@ -1252,9 +1319,26 @@ final class TaskStore: ObservableObject {
     private func reloadIfChanged() {
         do {
             let snapshot = try documentStore.load()
-            guard snapshot.lines != lines else { generation = snapshot.generation; return }
-            apply(snapshot); editingIndex = nil; ensureCursor()
+            guard snapshot.documentRevision != documentRevision else {
+                generation = snapshot.generation
+                return
+            }
+            guard !hasUnsavedChanges, externalEditConflict == nil else { return }
+            let oldIndex = cursor
+            apply(snapshot)
+            editingIndex = nil
+            cursor = oldIndex.flatMap { lines.indices.contains($0) ? $0 : nil }
+            ensureCursor()
+            showReloadNotice()
         } catch { report(error) }
+    }
+
+    private func showReloadNotice() {
+        reloadNoticeWorkItem?.cancel()
+        reloadNotice = "已從檔案重新載入"
+        let work = DispatchWorkItem { [weak self] in self?.reloadNotice = nil }
+        reloadNoticeWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
     }
 
     // MARK: derived
@@ -1388,7 +1472,9 @@ final class TaskStore: ObservableObject {
         do {
             apply(try documentStore.archiveTask(handle, expectedGeneration: generation))
             editingIndex = nil; cursor = nextCursor; ensureCursor()
-        } catch { report(error) }
+            hasUnsavedChanges = false
+            externalEditConflict = nil
+        } catch { handleWriteError(error, conflict: .archive(handle)) }
     }
     private func apply(_ command: TaskCommand) {
         do {

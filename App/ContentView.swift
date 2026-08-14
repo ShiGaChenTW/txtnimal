@@ -45,6 +45,18 @@ struct ContentView: View {
             if store.focusMode { focusOverlay }   // 技法 B：純變暗
             if showingPalette { paletteOverlay }  // ⌘K:條件掛載,不常駐樹中(焦點教訓)
             if isSidebarPanel { sidebarInnerEdge }  // 內緣外框 + 柔和陰影
+            if let notice = store.reloadNotice {
+                Text(notice)
+                    .font(Theme.monoSmall)
+                    .foregroundColor(Theme.fg)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Theme.panel)
+                    .overlay(Rectangle().stroke(Theme.border))
+                    .padding(.top, 10)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
         }
         .frame(minWidth: isSidebarPanel ? 100 : 660, minHeight: 580)
         .background(WindowAccessor { hostWindow = $0 })
@@ -77,6 +89,15 @@ struct ContentView: View {
             set: { if !$0 { store.lastError = nil } }
         )) { Button("好") { store.lastError = nil } } message: {
             Text(store.lastError ?? "未知錯誤")
+        }
+        .alert("偵測到外部編輯衝突", isPresented: Binding(
+            get: { store.externalEditConflict != nil },
+            set: { if !$0 { store.externalEditConflict = nil } }
+        )) {
+            Button("重新載入（捨棄我的變更）") { store.reloadAfterExternalConflict() }
+            Button("強制覆蓋（以我的為準）", role: .destructive) { store.forceOverwriteExternalChanges() }
+        } message: {
+            Text("檔案已被外部修改。請選擇如何處理；在你選擇前不會再寫入檔案。")
         }
         .confirmationDialog("確認任務操作", isPresented: Binding(
             get: { pendingTaskAction != nil },
