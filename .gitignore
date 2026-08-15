@@ -35,3 +35,10 @@ TasksTxt/
 *.mobileprovision
 *.p12
 *.pfx
+
+# 內部工程文件與舊站備份 — 公開 repo 不放(與 docs/ openspec/ plans/ 同規則)
+ISA.md
+(old)txtnimal-product-website/
+
+# 根目錄那份 banner 與已追蹤的 web/banner.png byte-identical,是重複檔,可直接刪
+txtnimal-banner.png
