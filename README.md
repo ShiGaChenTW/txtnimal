@@ -80,7 +80,7 @@ xcodegen generate
 ```text
 ~/Documents/txtnimal/
 ├── tasks.txt    # 目前任務
-├── scratch.txt  # 便箋檔（目前無 App 內頁面）
+├── scratch.txt  # 便箋檔（⌘K「開啟便箋」）
 └── archive.txt  # 歷史完成項目
 ```
 
@@ -139,7 +139,8 @@ Review landing page due:2026-07-25 +website @mac note:"check mobile spacing"
 | `R` | 將所有逾期任務改為今天 |
 | `[` / `]` | 調整行距 |
 | `1`–`4` / `0` | 象限指派／取消歸位（僅象限頁） |
-| `⌘K` | 開啟指令面板 |
+| `⌘K` | 開啟指令面板（含外掛指令與「開啟便箋」） |
+| `⌘Z` / `⇧⌘Z` | 復原／重做 |
 | `⌘⇧T` | 切換深／淺色 |
 | `Esc` | 關閉面板、清除搜尋／篩選；統計與設定頁回清單 |
 | `⌥Space`（預設） | 全域快速捕捉（設定可重綁） |
@@ -300,7 +301,7 @@ The default data directory is:
 ```text
 ~/Documents/txtnimal/
 ├── tasks.txt    # Active tasks
-├── scratch.txt  # Scratch file (no in-app page yet)
+├── scratch.txt  # Scratch file (⌘K “Open scratch”)
 └── archive.txt  # Completed history
 ```
 
@@ -359,7 +360,8 @@ See the [todo.txt format specification](https://github.com/todotxt/todo.txt) for
 | `R` | Reschedule every overdue task to today |
 | `[` / `]` | Adjust row spacing |
 | `1`–`4` / `0` | Assign / unassign quadrant (Quadrants view only) |
-| `⌘K` | Open the command palette |
+| `⌘K` | Open the command palette (includes plugin commands and Open scratch) |
+| `⌘Z` / `⇧⌘Z` | Undo / redo |
 | `⌘⇧T` | Cycle dark / light appearance |
 | `Esc` | Dismiss a panel or clear search / filter; from Statistics or Settings, return to the list |
 | `⌥Space` (default) | Global quick capture (rebind in Settings) |

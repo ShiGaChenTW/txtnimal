@@ -581,36 +581,55 @@ final class TaskStore: ObservableObject {
     }
 
     func runRescheduleTomorrow() {
-        guard let index = cursor, lines.indices.contains(index), let taskID = lines[index].stableID else {
-            lastError = "目前 task 沒有穩定 ID，無法由插件安全操作。"
+        runCommandPlugin(pluginID: "app.txtnimal.reschedule-tomorrow", commandID: "reschedule-tomorrow")
+    }
+
+    /// Palette / settings entry for a command plugin. Same isolation path as the former
+    /// `runRescheduleTomorrow` body: containment-guarded entry, XPC + rate limit, coordinator
+    /// validation, then `PluginIntentApplier` + `documentStore.save`. Does not touch undo history
+    /// (plugin writes already clear it via `apply`).
+    func runCommandPlugin(pluginID: String, commandID: String) {
+        guard let entry = galleryPluginEntries().first(where: { $0.manifest.id == pluginID }),
+              entry.enabled,
+              entry.manifest.commands.contains(where: { $0.id == commandID }) else {
+            lastError = "此外掛指令無法執行。"
             return
         }
-        guard let package = installedPluginPackages.first(where: { $0.manifest.id == "app.txtnimal.reschedule-tomorrow" }) else {
-            lastError = "請先安裝 Reschedule Tomorrow plugin package。"
-            return
+        var taskIDs: [String] = []
+        var taskRevisions: [String: String] = [:]
+        var selectedRevision = ""
+        if entry.manifest.capabilities.contains(.tasksSelectedRead) {
+            guard let index = cursor, lines.indices.contains(index), let taskID = lines[index].stableID else {
+                lastError = "目前 task 沒有穩定 ID，無法由插件安全操作。"
+                return
+            }
+            taskIDs = [taskID]
+            selectedRevision = DocumentRevision.make(for: lines[index].raw)
+            taskRevisions[taskID] = selectedRevision
         }
         let snapshot = documentStoreSnapshot()
-        let taskRevision = DocumentRevision.make(for: lines[index].raw)
-        let input: [String: Any] = ["taskIDs": [taskID],
+        let input: [String: Any] = ["taskIDs": taskIDs,
                                     "tomorrow": RelativeDate.todayYMD(Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()),
-                                    "revision": taskRevision,
-                                    "documentRevision": snapshot.documentRevision]
+                                    "revision": selectedRevision,
+                                    "documentRevision": snapshot.documentRevision,
+                                    "command": commandID]
         guard let inputData = try? JSONSerialization.data(withJSONObject: input),
               let inputJSON = String(data: inputData, encoding: .utf8),
               // Fails CLOSED: entry 必須通過 containment guard(symlink 解析後仍在套件根內),
               // 不得裸 path join——與 resolvePluginEntry 的 SCO-172 修法一致。
-              let entryURL = try? PluginValidator.resolveEntry(package.manifest.entry, in: package.url),
+              let entryURL = try? entry.resolvedEntryURL(),
               let source = try? String(contentsOf: entryURL, encoding: .utf8),
               let request = try? JSONEncoder().encode(PluginRequestEnvelope(source: source, inputJSON: inputJSON)) else {
             lastError = "無法載入 plugin entry。"; return
         }
+        let manifest = entry.manifest
         Task { [weak self] in
             guard let self else { return }
             let transport = LimitedPluginExecutionTransport(base: PluginBrokerXPCTransport())
             let coordinator = PluginExecutionCoordinator(transport: transport)
             do {
-                let intent = try await coordinator.execute(manifest: package.manifest, request: request,
-                                                           taskRevisions: [taskID: taskRevision], documentRevision: snapshot.documentRevision)
+                let intent = try await coordinator.execute(manifest: manifest, request: request,
+                                                           taskRevisions: taskRevisions, documentRevision: snapshot.documentRevision)
                 let changed: [TaskLine]
                 do {
                     changed = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: RelativeDate.todayYMD())

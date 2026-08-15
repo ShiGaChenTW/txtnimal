@@ -18,8 +18,10 @@ struct txtnimalApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("切到清單") { store.view = .list; store.ensureCursor() }.keyboardShortcut("1", modifiers: .command)
-                Button("切到象限") { store.view = .grid; store.ensureCursor() }.keyboardShortcut("4", modifiers: .command)
+                Button("切到象限") { store.view = .grid; store.ensureCursor() }.keyboardShortcut("2", modifiers: .command)
                 Button("切到 Agent") { store.view = .agent }.keyboardShortcut("3", modifiers: .command)
+                Button("切到統計") { store.view = .dash }.keyboardShortcut("4", modifiers: .command)
+                Button("切到設定") { store.view = .settings }.keyboardShortcut("5", modifiers: .command)
                 Button("從 Reminders 匯入") { store.importFromReminders() }
             }
         }

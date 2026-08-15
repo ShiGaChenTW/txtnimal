@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var showingCapture = false
     @State private var captureText = ""
     @State private var showingAddProject = false
+    @State private var showingScratch = false
     @State private var projectText = ""
     @State private var monitor: Any?
     @State private var hostWindow: NSWindow?
@@ -78,6 +79,7 @@ struct ContentView: View {
         .onChange(of: store.focusMode) { _ in FocusHUD.shared.update(store: store) }
         .onDisappear { if let m = monitor { NSEvent.removeMonitor(m) } }
         .sheet(isPresented: $showingAddProject, onDismiss: { projectText = "" }) { addProjectSheet }
+        .sheet(isPresented: $showingScratch) { scratchSheet }
         .sheet(isPresented: $showingEdit) { editSheet }
         .sheet(isPresented: Binding(
             get: { if case .review = store.importReview { return true } else { return false } },
@@ -798,45 +800,41 @@ struct ContentView: View {
         store.addProjectToCursor(projectText); projectText = ""; showingAddProject = false
     }
 
-    // MARK: ⌘K 指令面板(SPEC 7.5:模糊搜尋 + 快捷鍵教學)
+    private var scratchSheet: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("便箋").font(Theme.monoSmall).foregroundColor(Theme.dim).tracking(1.2)
+                Spacer()
+                Text(store.scratchURL.lastPathComponent).font(Theme.monoSmall).foregroundColor(Theme.dim)
+            }
+            TextEditor(text: $store.scratch)
+                .font(Theme.mono).foregroundColor(Theme.fg)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 280)
+                .padding(4).background(Theme.panel).overlay(Rectangle().stroke(Theme.border))
+                .onChange(of: store.scratch) { _ in store.saveScratch() }
+            HStack {
+                Text("esc 關閉 · 自動存入 scratch.txt").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                Spacer()
+                Button("關閉") { showingScratch = false }.keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(20).frame(width: 560, alignment: .topLeading)
+    }
+
+    // MARK: ⌘K 指令面板 — 來源是 CommandCatalog,不是手抄清單
 
     @State private var showingPalette = false
     @State private var paletteQuery = ""
     @State private var paletteSel = 0
     @FocusState private var paletteFocused: Bool
 
-    private struct PaletteCmd {
-        let name: String, alias: String, keys: String
-        let run: () -> Void
-    }
-    private var paletteCommands: [PaletteCmd] {
-        [
-            .init(name: "完成 / 取消完成", alias: "done toggle", keys: "x", run: { animatedDone() }),
-            .init(name: "編輯任務", alias: "edit popup", keys: "⌘E", run: { openEdit() }),
-            .init(name: "行內編輯", alias: "inline edit rename", keys: "e", run: { store.startEditing() }),
-            .init(name: "Focus 這一件", alias: "focus", keys: "f", run: { store.toggleFocus() }),
-            .init(name: "專注模式", alias: "zen focus mode", keys: "z", run: { store.toggleFocusMode() }),
-            .init(name: "新增捕捉", alias: "new capture add", keys: "n", run: { openCapture() }),
-            .init(name: "加 +List", alias: "project list", keys: "p", run: { if store.cursor != nil { showingAddProject = true } }),
-            .init(name: "搜尋", alias: "search find filter", keys: "/", run: { store.searchActive = true }),
-            .init(name: "逾期全改今天", alias: "reschedule overdue today", keys: "R", run: { store.rescheduleOverdue() }),
-            .init(name: "行距更緊", alias: "density compact tighter", keys: "[", run: { store.cycleDensity(-1) }),
-            .init(name: "行距更鬆", alias: "density relaxed looser", keys: "]", run: { store.cycleDensity(1) }),
-            .init(name: "清單視圖", alias: "list view", keys: "⌘1", run: { store.view = .list; store.ensureCursor() }),
-            .init(name: "Agent", alias: "agent ai reschedule", keys: "⌘3", run: { store.view = .agent }),
-            .init(name: "象限視圖", alias: "quadrant grid matrix", keys: "⌘2", run: { store.view = .grid; store.ensureCursor() }),
-            .init(name: "統計", alias: "stats dashboard charts", keys: "⌘4", run: { store.view = .dash }),
-            .init(name: "深 / 淺主題", alias: "theme dark light appearance", keys: "⌘⇧T", run: { store.cycleAppearance() }),
-        ]
-    }
-    /// 子序列模糊比對:query 每字元依序出現於 target 即中
-    private func fuzzy(_ query: String, _ target: String) -> Bool {
-        var rest = Substring(query.lowercased())
-        for ch in target.lowercased() where ch == rest.first { rest = rest.dropFirst() }
-        return rest.isEmpty
-    }
-    private var filteredPalette: [PaletteCmd] {
-        paletteCommands.filter { fuzzy(paletteQuery, $0.name + " " + $0.alias) }
+    private var filteredPalette: [CommandSpec] {
+        CommandPaletteAssembler.assemble(
+            plugins: store.galleryPluginEntries(),
+            context: CommandPaletteContext(page: store.view.palettePage, hasSelection: store.cursor != nil),
+            query: paletteQuery
+        )
     }
     private var paletteOverlay: some View {
         ZStack(alignment: .top) {
@@ -857,11 +855,14 @@ struct ContentView: View {
                     Text("沒有符合的指令").font(Theme.monoSmall).foregroundColor(Theme.dim)
                         .padding(.vertical, 14)
                 } else {
-                    ForEach(Array(cmds.enumerated()), id: \.element.name) { i, cmd in
+                    ForEach(Array(cmds.enumerated()), id: \.element.id) { i, cmd in
                         HStack {
                             Text(LocalizedStringKey(cmd.name))
+                            if case .plugin = cmd.identity {
+                                Text("外掛").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                            }
                             Spacer()
-                            Text(cmd.keys).foregroundColor(Theme.dim)
+                            Text(cmd.keyDisplay).foregroundColor(Theme.dim)
                         }
                         .font(Theme.mono)
                         .padding(.horizontal, 14).padding(.vertical, 6)
@@ -896,7 +897,39 @@ struct ContentView: View {
         guard cmds.indices.contains(paletteSel) else { closePalette(); return }
         let cmd = cmds[paletteSel]
         closePalette()
-        DispatchQueue.main.async { cmd.run() }   // 面板收掉、焦點歸還後再執行
+        DispatchQueue.main.async { perform(cmd.identity) }   // 面板收掉、焦點歸還後再執行
+    }
+
+    private func perform(_ identity: CommandIdentity) {
+        switch identity {
+        case .builtin(let command):
+            switch command {
+            case .toggleDone: animatedDone()
+            case .editPopup: openEdit()
+            case .inlineEdit: store.startEditing()
+            case .toggleFocus: store.toggleFocus()
+            case .focusMode: store.toggleFocusMode()
+            case .inlineAdd: store.view = .list; store.requestInlineAdd = true
+            case .openCapture: openCapture()
+            case .addList: if store.cursor != nil { showingAddProject = true }
+            case .search: store.searchActive = true
+            case .rescheduleOverdue: store.rescheduleOverdue()
+            case .densityTighter: store.cycleDensity(-1)
+            case .densityLooser: store.cycleDensity(1)
+            case .viewList: store.view = .list; store.ensureCursor()
+            case .viewGrid: store.view = .grid; store.ensureCursor()
+            case .viewAgent: store.view = .agent
+            case .viewDash: store.view = .dash
+            case .viewSettings: store.view = .settings
+            case .cycleAppearance: store.cycleAppearance()
+            case .openPalette: openPalette()
+            case .undo: store.undo()
+            case .redo: store.redo()
+            case .openScratch: showingScratch = true
+            }
+        case .plugin(let pluginID, let commandID):
+            store.runCommandPlugin(pluginID: pluginID, commandID: commandID)
+        }
     }
 
     // MARK: keyboard (macOS 13 無 onKeyPress，用 NSEvent local monitor)
@@ -1000,28 +1033,19 @@ struct ContentView: View {
             }
             return e
         }
-        if showingCapture || showingAddProject { return e }
+        if showingCapture || showingAddProject || showingScratch { return e }
         // NSTextField 的 field editor 也是 NSTextView，且切頁後可能短暫保留；只在確實
         // 顯示文字輸入介面時放行，避免它吞掉清單的 n/e/x 等單鍵命令。
         if store.inlineAddActive || store.view == .agent || store.view == .settings || store.searchActive { return e }
         let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)
         let chars = e.charactersIgnoringModifiers ?? ""
         if cmd {
-            switch chars.lowercased() {
-            case "1": store.view = .list; store.ensureCursor(); return nil
-            case "2": store.view = .grid; store.ensureCursor(); return nil
-            case "3": store.view = .agent; return nil
-            case "4": store.view = .dash; return nil
-            case ",", "5": store.view = .settings; return nil
-            case "b": store.view = .list; store.requestInlineAdd = true; return nil
-            case "k": openPalette(); return nil
-            case "e": openEdit(); return nil
-            case "f" where shift: store.toggleFocus(); return nil
-            case "f": store.searchActive = true; return nil
-            case "t" where shift: store.cycleAppearance(); return nil
-            case "\r": animatedDone(); return nil
-            default: return e
+            if let spec = CommandKeyMatcher.match(character: chars, command: true, shift: shift,
+                                                  in: CommandCatalog.builtIns) {
+                perform(spec.identity)
+                return nil
             }
+            return e
         }
         if store.focusMode {
             if chars == "z" || e.keyCode == 53 { store.focusMode = false }
@@ -1046,19 +1070,27 @@ struct ContentView: View {
         switch chars {
         case "k": store.move(-1); return nil
         case "j": store.move(1); return nil
-        case "e": store.startEditing(); return nil
-        case "x", " ": animatedDone(); return nil
-        case "f": store.toggleFocus(); return nil
-        case "z": store.toggleFocusMode(); return nil
-        case "n": store.view = .list; store.requestInlineAdd = true; return nil
-        case "p": if store.cursor != nil { showingAddProject = true }; return nil
-        case "/": store.searchActive = true; return nil
-        case "R": store.rescheduleOverdue(); return nil
-        case "[": store.cycleDensity(-1); return nil
-        case "]": store.cycleDensity(1); return nil
         case "1", "2", "3", "4": if store.view == .grid { store.setQuadrant(Int(chars)); return nil }; return e
         case "0": if store.view == .grid { store.setQuadrant(nil); return nil }; return e
-        default: return e
+        default:
+            if let spec = CommandKeyMatcher.match(character: chars, command: false, shift: false,
+                                                  in: CommandCatalog.builtIns) {
+                perform(spec.identity)
+                return nil
+            }
+            return e
+        }
+    }
+}
+
+private extension AppView {
+    var palettePage: CommandPalettePage {
+        switch self {
+        case .list: return .list
+        case .grid: return .grid
+        case .agent: return .agent
+        case .dash: return .dash
+        case .settings: return .settings
         }
     }
 }

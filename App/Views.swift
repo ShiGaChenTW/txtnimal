@@ -424,7 +424,7 @@ struct EditRow: View {
     }
 }
 
-// MARK: - ⌘4 四象限（v1：鍵盤 1–4 指派;拖拉為 v2）
+// MARK: - ⌘2 四象限（v1：鍵盤 1–4 指派;拖拉為 v2）
 
 struct QuadrantView: View {
     @EnvironmentObject var store: TaskStore

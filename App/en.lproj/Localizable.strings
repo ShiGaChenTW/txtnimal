@@ -135,6 +135,12 @@
 "Focus 這一件" = "Focus this task";
 "專注模式" = "Zen mode";
 "新增捕捉" = "New capture";
+"行內新增" = "Add inline";
+"開啟便箋" = "Open scratch";
+"便箋" = "Scratch";
+"復原" = "Undo";
+"重做" = "Redo";
+"外掛" = "Plugin";
 "加 +List" = "Add +List";
 "搜尋" = "Search";
 "逾期全改今天" = "Move all overdue tasks to today";
@@ -177,6 +183,9 @@
 "切到清單" = "Switch to List";
 "切到象限" = "Switch to Quadrants";
 "切到 Agent" = "Switch to Agent";
+"切到統計" = "Switch to Stats";
+"切到設定" = "Switch to Settings";
+"esc 關閉 · 自動存入 scratch.txt" = "esc Close · saved to scratch.txt";
 "外觀" = "Appearance";
 "快速捕捉" = "Quick Capture";
 "開啟 tasks.txt 視窗" = "Open tasks.txt Window";
