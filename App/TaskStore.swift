@@ -476,7 +476,18 @@ final class TaskStore: ObservableObject {
     private var pluginExecutionLogStore: PluginExecutionLogStore?
     private var generation: UInt64 = 0
     private var documentRevision = ""
+    /// Last tasks.txt that landed on disk (or was adopted from a load). `save()`
+    /// records this as the undo origin so mutations don't each push themselves.
+    private var committedTasksText = ""
+    private var undoStack = UndoStack()
+    /// Undo/redo restore through `save()`; must not record a new history entry.
+    private var recordsUndoHistory = true
+    /// True only while `save()` is adopting its own snapshot, so `apply()` can tell
+    /// a recorded write from a bypass (plugin/agent/import/archive) that must clear.
+    private var applyingViaSave = false
     private var hasUnsavedChanges = false
+    @Published private(set) var canUndo = false
+    @Published private(set) var canRedo = false
     private var reloadNoticeWorkItem: DispatchWorkItem?
     private var agentQueryTask: Task<Void, Never>?
     private var agentRunID: UUID?
@@ -1170,16 +1181,55 @@ final class TaskStore: ObservableObject {
     }
 
     func load() {
-        do { apply(try documentStore.load()); hasUnsavedChanges = false } catch { report(error) }
+        do { apply(try documentStore.load()); hasUnsavedChanges = false; clearUndoHistory() } catch { report(error) }
     }
 
     private func save() {
         hasUnsavedChanges = true
+        let previous = committedTasksText
         do {
+            applyingViaSave = true
+            defer { applyingViaSave = false }
             apply(try documentStore.save(lines: lines, expectedGeneration: generation))
+            if recordsUndoHistory {
+                recordUndoSnapshot(from: previous, to: committedTasksText)
+            }
             hasUnsavedChanges = false
             externalEditConflict = nil
         } catch { handleWriteError(error, conflict: .save) }
+    }
+
+    /// Restore the previous committed tasks.txt through the normal `save()` path.
+    /// Empty history is a silent no-op: no write, no error.
+    func undo() { restoreHistory(undoStack.undo()) }
+
+    /// Restore the snapshot discarded by the last `undo()`, same write path as `save()`.
+    func redo() { restoreHistory(undoStack.redo()) }
+
+    private func restoreHistory(_ text: String?) {
+        guard let text else { return }
+        recordsUndoHistory = false
+        defer { recordsUndoHistory = true }
+        lines = TasksDocument.parse(text)
+        save()
+        syncUndoAvailability()
+    }
+
+    private func recordUndoSnapshot(from previous: String, to new: String) {
+        guard previous != new else { return }
+        if undoStack.isEmpty { undoStack.push(previous) }
+        undoStack.push(new)
+        syncUndoAvailability()
+    }
+
+    private func clearUndoHistory() {
+        undoStack.clear()
+        syncUndoAvailability()
+    }
+
+    private func syncUndoAvailability() {
+        canUndo = undoStack.canUndo
+        canRedo = undoStack.canRedo
     }
 
     func saveScratch() {
@@ -1187,8 +1237,13 @@ final class TaskStore: ObservableObject {
     }
 
     private func apply(_ snapshot: TaskDocumentSnapshot) {
+        // Writes that bypass `save()` — plugin intents, agent/import review, archive —
+        // land here with no history entry. Undoing past one would silently wipe it,
+        // the same hazard external edits get cleared for. Same rule, one choke point.
+        if !applyingViaSave && snapshot.tasksText != committedTasksText { clearUndoHistory() }
         lines = snapshot.lines; scratch = snapshot.scratch; archiveLines = snapshot.archiveLines
         generation = snapshot.generation; documentRevision = snapshot.documentRevision; lastError = nil
+        committedTasksText = snapshot.tasksText
     }
 
     private func report(_ error: Error) {
@@ -1217,6 +1272,7 @@ final class TaskStore: ObservableObject {
             apply(try documentStore.load())
             hasUnsavedChanges = false
             externalEditConflict = nil
+            clearUndoHistory()
             editingIndex = nil
             cursor = oldIndex.flatMap { lines.indices.contains($0) ? $0 : nil }
             ensureCursor()
@@ -1227,10 +1283,13 @@ final class TaskStore: ObservableObject {
     /// 先採用最新磁碟 generation，再用衝突發生前保留的 App 內容走正常 save/journal 交易。
     func forceOverwriteExternalChanges() {
         guard let conflict = externalEditConflict else { return }
+        clearUndoHistory()
         let localLines = lines
         do {
             apply(try documentStore.load())
             lines = localLines
+            recordsUndoHistory = false
+            defer { recordsUndoHistory = true }
             switch conflict {
             case .save:
                 save()
@@ -1245,6 +1304,7 @@ final class TaskStore: ObservableObject {
                 hasUnsavedChanges = false
                 externalEditConflict = nil
             }
+            clearUndoHistory()
             editingIndex = nil
             ensureCursor()
         } catch { handleWriteError(error, conflict: conflict) }
@@ -1326,6 +1386,7 @@ final class TaskStore: ObservableObject {
             guard !hasUnsavedChanges, externalEditConflict == nil else { return }
             let oldIndex = cursor
             apply(snapshot)
+            clearUndoHistory()
             editingIndex = nil
             cursor = oldIndex.flatMap { lines.indices.contains($0) ? $0 : nil }
             ensureCursor()
