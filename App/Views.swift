@@ -20,6 +20,58 @@ extension EnvironmentValues {
     }
 }
 
+/// 完成一筆重複任務、引擎真的生出後繼時的回饋管道。
+/// 帶的是 `recurringSuccessor` 實際回傳的那一筆,顯示端只讀它的 due,不重算日期。
+struct RecurrenceAnnouncer {
+    var announce: (TaskLine) -> Void = { _ in }
+}
+
+private struct RecurrenceAnnouncerKey: EnvironmentKey {
+    static let defaultValue = RecurrenceAnnouncer()
+}
+
+extension EnvironmentValues {
+    var recurrenceAnnouncer: RecurrenceAnnouncer {
+        get { self[RecurrenceAnnouncerKey.self] }
+        set { self[RecurrenceAnnouncerKey.self] = newValue }
+    }
+}
+
+/// 完成任務,並在引擎確實追加了後繼任務時發出回饋。
+///
+/// 後繼由 `recurringSuccessor` 產生 —— 與 `TaskWorkspace.toggleDone` 同一支、同一個
+/// completionYMD,所以回饋裡的日期就是實際寫進檔案的那一筆,不是另外算的。
+/// 只在 open → done 的方向判斷(取消完成不生後繼),且要求行數真的增加,
+/// 這樣 stale handle 之類讓 toggle 失敗的情況不會誤報。
+func completeAnnouncingRecurrence(
+    _ task: TaskLine,
+    in store: TaskStore,
+    announcer: RecurrenceAnnouncer,
+    complete: () -> Void
+) {
+    let successor = task.isDone ? nil : task.recurringSuccessor(completionYMD: store.todayYMD)
+    let countBefore = store.lines.count
+    complete()
+    guard let successor, store.lines.count > countBefore else { return }
+    announcer.announce(successor)
+}
+
+/// 重複徽章 —— 清單列與象限列共用。
+/// 只有 `rec:` 值能被 `RecurrenceRule.parse` 解析時才出現;無效值不顯示徽章,
+/// 也不顯示錯誤、不改寫該行文字(渲染層從不回寫 raw)。
+struct RecurrenceBadge: View {
+    let task: TaskLine
+
+    var body: some View {
+        if let label = CaptureAssist.recurrenceLabel(inRawLine: task.raw) {
+            Text("↻ \(label)")
+                .font(Theme.monoSmall)
+                .foregroundColor(Theme.yellow)
+                .help("重複任務：\(label)")
+        }
+    }
+}
+
 // MARK: - ⌘1 主清單
 
 struct ListView: View {
@@ -248,6 +300,7 @@ struct ListView: View {
 struct RowView: View {
     @EnvironmentObject var store: TaskStore
     @Environment(\.taskContextActions) private var contextActions
+    @Environment(\.recurrenceAnnouncer) private var recurrenceAnnouncer
     let index: Int
     let group: String
     @State private var flash = false   // 完成瞬間綠光一閃(SPEC 7.5 招牌時刻)
@@ -282,6 +335,7 @@ struct RowView: View {
                     .font(store.tagFont)
                     .onTapGesture { store.toggleTagFilter("@" + c) }
             }
+            RecurrenceBadge(task: t)
             dueBadge(t)
         }
         .font(Theme.mono)
@@ -309,12 +363,15 @@ struct RowView: View {
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
             store.cursor = index
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { store.toggleDone() }
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
+                completeAnnouncingRecurrence(t, in: store, announcer: recurrenceAnnouncer) { store.toggleDone() }
+            }
         }
         .onTapGesture { store.cursor = index }
         .background {
             ThemedTaskContextMenuPresenter(handle: store.handle(for: index), task: t,
-                                           actions: contextActions, store: store)
+                                           actions: contextActions, announcer: recurrenceAnnouncer,
+                                           store: store)
         }
     }
 
@@ -372,6 +429,7 @@ struct EditRow: View {
 struct QuadrantView: View {
     @EnvironmentObject var store: TaskStore
     @Environment(\.taskContextActions) private var contextActions
+    @Environment(\.recurrenceAnnouncer) private var recurrenceAnnouncer
     private let meta: [(Int, String, String, Color)] = [
         (1, "Do", "重要且緊急", Theme.red), (2, "Schedule", "重要但不緊急", Theme.yellow),
         (3, "Delegate", "緊急但不重要", Theme.cyan), (4, "Delete", "不重要且不緊急", Theme.dim),
@@ -440,19 +498,23 @@ struct QuadrantView: View {
                 Text("[ ]").foregroundColor(Theme.dim)
                 Text(t.title).foregroundColor(t.isFocused ? Theme.focus : Theme.fg).lineLimit(1)
                     .font(store.taskFont)
+                RecurrenceBadge(task: t)
             }
             .font(Theme.mono).padding(.horizontal, 4).padding(.vertical, 2)
             .background(store.cursor == i ? Theme.selBg : .clear)
             .contentShape(Rectangle())
             .onTapGesture(count: 2) {
                 store.cursor = i
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { store.toggleDone() }
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
+                    completeAnnouncingRecurrence(t, in: store, announcer: recurrenceAnnouncer) { store.toggleDone() }
+                }
             }
             .onTapGesture { store.cursor = i }
             .onDrag { NSItemProvider(object: store.dragPayload(for: i) as NSString) }
             .background {
                 ThemedTaskContextMenuPresenter(handle: store.handle(for: i), task: t,
-                                               actions: contextActions, store: store)
+                                               actions: contextActions, announcer: recurrenceAnnouncer,
+                                               store: store)
             }
         }
     }
@@ -480,6 +542,9 @@ private struct ThemedTaskContextMenuPresenter: NSViewRepresentable {
     let handle: TaskHandle
     let task: TaskLine
     let actions: TaskContextActions
+    // NSHostingController 會開一棵新的 SwiftUI 樹,@Environment 不會跨過去,
+    // 所以回饋管道跟 actions 一樣用明傳的方式帶進 popover。
+    let announcer: RecurrenceAnnouncer
     @ObservedObject var store: TaskStore
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -498,7 +563,7 @@ private struct ThemedTaskContextMenuPresenter: NSViewRepresentable {
         view.onRightClick = { [weak view] point in
             guard let view else { return }
             coordinator.show(from: view, point: point, handle: handle, task: task,
-                             actions: actions, store: store)
+                             actions: actions, announcer: announcer, store: store)
         }
     }
 
@@ -506,13 +571,13 @@ private struct ThemedTaskContextMenuPresenter: NSViewRepresentable {
         private var popover: NSPopover?
 
         func show(from view: NSView, point: NSPoint, handle: TaskHandle, task: TaskLine,
-                  actions: TaskContextActions, store: TaskStore) {
+                  actions: TaskContextActions, announcer: RecurrenceAnnouncer, store: TaskStore) {
             popover?.close()
             let popover = NSPopover()
             popover.behavior = .transient
             popover.animates = false
             let menu = ThemedTaskContextMenu(
-                handle: handle, task: task, actions: actions,
+                handle: handle, task: task, actions: actions, announcer: announcer,
                 dismiss: { [weak popover] in popover?.close() }
             )
             .environmentObject(store)
@@ -562,6 +627,7 @@ private struct ThemedTaskContextMenu: View {
     let handle: TaskHandle
     let task: TaskLine
     let actions: TaskContextActions
+    let announcer: RecurrenceAnnouncer
     let dismiss: () -> Void
     @State private var expanded: ExpandedSection?
 
@@ -575,7 +641,9 @@ private struct ThemedTaskContextMenu: View {
 
                 actionRow("編輯任務…", symbol: "e", enabled: !task.isDone) { actions.edit(handle) }
                 actionRow(task.isDone ? "取消完成" : "完成", symbol: "x") {
-                    store.toggleDone(using: handle)
+                    completeAnnouncingRecurrence(task, in: store, announcer: announcer) {
+                        store.toggleDone(using: handle)
+                    }
                 }
                 actionRow(task.isFocused ? "取消 Focus" : "設為 Focus", symbol: "f",
                           color: Theme.focus, enabled: !task.isDone) {

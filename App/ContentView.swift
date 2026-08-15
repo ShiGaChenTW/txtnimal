@@ -57,12 +57,17 @@ struct ContentView: View {
                     .transition(.opacity)
                     .allowsHitTesting(false)
             }
+            if let notice = recurrenceNotice {
+                recurrenceNoticeBanner(notice)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            }
         }
         .frame(minWidth: isSidebarPanel ? 100 : 660, minHeight: 580)
         .background(WindowAccessor { hostWindow = $0 })
         .font(Theme.mono).foregroundColor(Theme.fg)
         .environment(\.locale, store.appLanguage.locale)
         .environment(\.taskContextActions, taskContextActions)
+        .environment(\.recurrenceAnnouncer, recurrenceAnnouncer)
         .onAppear {
             installMonitor()
             store.applyAppearance()
@@ -446,6 +451,8 @@ struct ContentView: View {
     private func tokenColor(_ p: String) -> Color {
         // due: 只在可解析時變藍 — 上色本身就是即時驗證回饋
         if p.hasPrefix("due:") { return DueDateParser.parse(String(p.dropFirst(4)), today: Date()) != nil ? Theme.blue : Theme.fg }
+        // rec: 同理 — 能解析才變黃,上色即時告訴使用者這個週期寫對了沒
+        if p.hasPrefix("rec:") { return CaptureAssist.recurrenceLabel(for: String(p.dropFirst(4))) != nil ? Theme.yellow : Theme.fg }
         if p.hasPrefix("+"), p.count > 1 { return Theme.mag }
         if p.hasPrefix("@"), p.count > 1 { return Theme.cyan }
         if p.hasPrefix("note:") { return Theme.dim }
@@ -476,6 +483,7 @@ struct ContentView: View {
     @State private var editProjects = ""
     @State private var editContexts = ""
     @State private var editNote = ""
+    @State private var editRec = ""
     @FocusState private var editTitleFocused: Bool
     // 下拉層:游標在欄位時按 ↓ 展開。
     // @FocusState 在 sheet 內的 .plain TextField 上不可靠(前兩次失敗主因),
@@ -637,6 +645,7 @@ struct ContentView: View {
         editProjects = t.projects.map { "+" + $0 }.joined(separator: " ")
         editContexts = t.contexts.map { "@" + $0 }.joined(separator: " ")
         editNote = t.note ?? ""
+        editRec = CaptureAssist.recurrenceValue(inRawLine: t.raw) ?? ""
         editField = 0
         showingEdit = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { editTitleFocused = true }
@@ -644,7 +653,7 @@ struct ContentView: View {
     private func commitEdit() {
         if let i = editIndex {
             store.applyEdit(i, title: editTitle, due: editDue, projects: editProjects,
-                            contexts: editContexts, note: editNote)
+                            contexts: editContexts, note: editNote, rec: editRec)
         }
         closeEdit()
     }
@@ -733,6 +742,19 @@ struct ContentView: View {
                         editField = 3; showDatePicker = false; showProjectMenu = false
                         showContextMenu = true; editContextsFocused = true
                     })
+                }
+                // 週期:沒有下拉,改用即時標籤當回饋 — 打得出「每週」就是設定成功,
+                // 空白清除,打不出標籤代表值無效(儲存時原樣保留舊值,不寫垃圾進檔案)。
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("週期").font(Theme.monoSmall).foregroundColor(Theme.dim)
+                    HStack(spacing: 0) {
+                        TextField("", text: $editRec,
+                                  prompt: Text("1w · +1m").foregroundColor(Theme.dim.opacity(0.4)))
+                            .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.yellow)
+                        Text(CaptureAssist.recurrenceLabel(for: editRec.trimmingCharacters(in: .whitespaces)) ?? "")
+                            .font(Theme.monoSmall).foregroundColor(Theme.dim).lineLimit(1)
+                    }
+                    .padding(7).background(Theme.panel).overlay(Rectangle().stroke(Theme.border))
                 }
             }
 
@@ -880,7 +902,47 @@ struct ContentView: View {
     // MARK: keyboard (macOS 13 無 onKeyPress，用 NSEvent local monitor)
 
     private func animatedDone() {
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { store.toggleDone() }
+        guard let i = store.cursor, store.lines.indices.contains(i) else { return }
+        let task = store.lines[i]
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
+            completeAnnouncingRecurrence(task, in: store, announcer: recurrenceAnnouncer) { store.toggleDone() }
+        }
+    }
+
+    // MARK: 完成重複任務的短暫回饋
+
+    @State private var recurrenceNotice: String?
+    /// 每次回饋帶一個序號,收掉時只認自己那一次 —— 連續完成兩筆時,
+    /// 前一個計時器不會把後一個的訊息提早收掉。
+    @State private var recurrenceNoticeToken = 0
+
+    private var recurrenceAnnouncer: RecurrenceAnnouncer {
+        RecurrenceAnnouncer(announce: { announceRecurrence($0) })
+    }
+
+    /// `successor` 是 `recurringSuccessor` 實際回傳的那一筆,日期直接讀它的 `due`。
+    private func announceRecurrence(_ successor: TaskLine) {
+        guard let due = successor.due else { return }   // 沒有 due 就沒有可告知的日期
+        recurrenceNoticeToken += 1
+        let token = recurrenceNoticeToken
+        withAnimation(.easeOut(duration: 0.18)) { recurrenceNotice = "↻ 下一筆已建立 · \(due)" }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) {
+            guard recurrenceNoticeToken == token else { return }
+            withAnimation(.easeOut(duration: 0.25)) { recurrenceNotice = nil }
+        }
+    }
+
+    private func recurrenceNoticeBanner(_ text: String) -> some View {
+        Text(text)
+            .font(Theme.monoSmall)
+            .foregroundColor(Theme.yellow)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Theme.panel)
+            .overlay(Rectangle().stroke(Theme.yellow.opacity(0.55)))
+            .padding(.bottom, 52)   // 讓開底部的狀態列 / 捕捉列
+            .transition(.opacity)
+            .allowsHitTesting(false)
     }
 
     /// 側邊面板內緣(朝螢幕中央那側)的外框線 + 柔和陰影,給浮出的面板立體邊界。

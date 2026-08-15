@@ -66,6 +66,10 @@ public struct TaskLine: Equatable {
 
     public var isDone: Bool { words.first == "x" }
     public var due: String? { value(forKey: "due") }
+
+    /// Raw `rec:` value, unvalidated — parse with `RecurrenceRule.parse` before trusting it.
+    /// Exposed so the UI reads recurrence through this tokenizer instead of re-implementing it.
+    public var recurrence: String? { value(forKey: "rec") }
     public var quadrant: Int? { value(forKey: "q").flatMap(Int.init) }
     public var isFocused: Bool { value(forKey: "focus") == "true" }
     public var created: String? { value(forKey: "created") }

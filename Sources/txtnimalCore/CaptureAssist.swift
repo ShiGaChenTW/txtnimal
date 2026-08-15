@@ -5,7 +5,7 @@ import Foundation
 /// The task line remains the source of truth. These helpers only expose recognized
 /// metadata as removable chips and offer conservative, opt-in date suggestions.
 public enum CaptureAssist {
-    public enum CompletionKind: Equatable, Sendable { case due, project, context }
+    public enum CompletionKind: Equatable, Sendable { case due, project, context, rec }
 
     public struct CompletionQuery: Equatable, Sendable {
         public let kind: CompletionKind
@@ -30,7 +30,7 @@ public enum CaptureAssist {
     }
 
     public struct Token: Equatable, Sendable, Identifiable {
-        public enum Kind: Equatable, Sendable { case due, project, context }
+        public enum Kind: Equatable, Sendable { case due, project, context, rec }
 
         public let kind: Kind
         public let raw: String
@@ -74,8 +74,50 @@ public enum CaptureAssist {
             if raw.hasPrefix("@"), raw.count > 1 {
                 return Token(kind: .context, raw: raw, displayValue: String(raw.dropFirst()))
             }
+            // 與 due: 同規則:值解析不過就不是可見 chip,原字不動、不報錯。
+            if raw.hasPrefix("rec:"), raw.count > 4 {
+                guard let label = recurrenceLabel(for: String(raw.dropFirst(4))) else { return nil }
+                return Token(kind: .rec, raw: raw, displayValue: label)
+            }
             return nil
         }
+    }
+
+    /// 週期候選值 — 兩個捕捉介面共用同一份清單,避免各自手抄一份而漂移。
+    /// 排序:非 strict 的常用節奏在前(從完成日往後推,多數人要的),strict(`+`,從原 due 往後推)在後。
+    public static let recurrenceCandidates: [String] = [
+        "1d", "1w", "2w", "1m", "1y",
+        "+1d", "+1w", "+2w", "+1m", "+1y",
+    ]
+
+    /// `rec:` 原始值 → 人話標籤。純函式,只吃字串。
+    ///
+    /// 語意與 `RecurrenceRule.parse` 嚴格對齊:parse 回 nil 時本函式必回 nil,
+    /// 使 UI 徽章與捕捉補全共用同一份「什麼算有效週期」的判斷。
+    public static func recurrenceLabel(for value: String) -> String? {
+        guard let rule = RecurrenceRule.parse(value) else { return nil }
+        let unit: String
+        switch rule.unit {
+        case .day: unit = "天"
+        case .week: unit = "週"
+        case .month: unit = "月"
+        case .year: unit = "年"
+        }
+        let cadence = rule.count == 1 ? "每\(unit)" : "每 \(rule.count) \(unit)"
+        return rule.strict ? cadence + "(固定)" : cadence
+    }
+
+    /// 整行原始文字 → 人話週期標籤。無 `rec:`、或其值無法解析時回 nil。
+    /// 列渲染只讀不寫:回 nil 就是不畫徽章,絕不改寫該行。
+    public static func recurrenceLabel(inRawLine raw: String) -> String? {
+        guard let value = recurrenceValue(inRawLine: raw) else { return nil }
+        return recurrenceLabel(for: value)
+    }
+
+    /// 取出整行中第一個 `rec:` token 的值(未經驗證的原始字串)。
+    /// 斷詞交給 `TaskLine`,不在這裡另寫一份 — 兩份規則必然漂移。
+    public static func recurrenceValue(inRawLine raw: String) -> String? {
+        TaskLine(raw).recurrence
     }
 
     /// Only suggests unambiguous Traditional Chinese date phrases. Project and
@@ -123,6 +165,9 @@ public enum CaptureAssist {
         if token.hasPrefix("due:") {
             return CompletionQuery(kind: .due, fragment: String(token.dropFirst(4)), tokenRange: range)
         }
+        if token.hasPrefix("rec:") {
+            return CompletionQuery(kind: .rec, fragment: String(token.dropFirst(4)), tokenRange: range)
+        }
         if token.hasPrefix("+") {
             return CompletionQuery(kind: .project, fragment: String(token.dropFirst()), tokenRange: range)
         }
@@ -138,7 +183,12 @@ public enum CaptureAssist {
         to input: String
     ) -> CompletionResult {
         let prefix: String
-        switch query.kind { case .due: prefix = "due:"; case .project: prefix = "+"; case .context: prefix = "@" }
+        switch query.kind {
+        case .due: prefix = "due:"
+        case .project: prefix = "+"
+        case .context: prefix = "@"
+        case .rec: prefix = "rec:"
+        }
         let source = input as NSString
         let replacement = prefix + candidate
         var result = source.replacingCharacters(in: query.tokenRange, with: replacement)

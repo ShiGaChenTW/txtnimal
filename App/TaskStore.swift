@@ -1606,7 +1606,8 @@ final class TaskStore: ObservableObject {
     }
 
     /// ⌘E 編輯彈窗:一次寫回標題 / 到期 / 專案 / 便箋(逐欄最小變更,未動的 token 原樣保留)。
-    func applyEdit(_ index: Int, title: String, due: String, projects: String, contexts: String, note: String) {
+    func applyEdit(_ index: Int, title: String, due: String, projects: String, contexts: String, note: String,
+                   rec: String? = nil) {
         guard lines.indices.contains(index) else { return }
         let t = title.trimmingCharacters(in: .whitespaces)
         if !t.isEmpty, t != lines[index].title { lines[index].setTitle(t) }
@@ -1627,6 +1628,17 @@ final class TaskStore: ObservableObject {
         let wantedCtx = Set(contexts.split(whereSeparator: { $0 == " " || $0 == "@" }).map(String.init))
         for c in Set(lines[index].contexts).subtracting(wantedCtx) { lines[index].removeTag("@" + c) }
         for c in wantedCtx.subtracting(Set(lines[index].contexts)) { lines[index].addTag("@" + c) }
+
+        // 週期:`nil` = 這次編輯不碰(給沒有 rec 欄位的呼叫端),空字串才是清除。
+        // 不可解析的輸入原樣保留既有 rec — 徽章與補全都認 RecurrenceRule.parse,
+        // 把 `3x` 寫進檔案只會變成看不見也用不到的垃圾。
+        if let recInput = rec?.trimmingCharacters(in: .whitespaces) {
+            if recInput.isEmpty {
+                lines[index].removeKey("rec")
+            } else if RecurrenceRule.parse(recInput) != nil {
+                lines[index].setValue(recInput, forKey: "rec")
+            }
+        }
 
         lines[index].setNote(note)
         save(); ensureCursor()

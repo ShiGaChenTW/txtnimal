@@ -67,6 +67,26 @@ final class TaskLineTests: XCTestCase {
         XCTAssertEqual(t.raw, "rest here")
     }
 
+    /// ⌘E 週期欄位靠 `recurrence` 讀、`setValue`/`removeKey` 寫。
+    /// spec「清除週期保留未知 token」是不變量,釘在這裡而不是 App 層。
+    func testRecurrenceRoundTripPreservesUnknownTokens() {
+        var t = TaskLine("倒垃圾 due:2026-08-20 rec:1w zz:9")
+        XCTAssertEqual(t.recurrence, "1w")
+
+        t.setValue("+2d", forKey: "rec")
+        XCTAssertEqual(t.raw, "倒垃圾 due:2026-08-20 rec:+2d zz:9")
+        XCTAssertEqual(t.recurrence, "+2d")
+
+        t.removeKey("rec")
+        XCTAssertEqual(t.raw, "倒垃圾 due:2026-08-20 zz:9")
+        XCTAssertNil(t.recurrence)
+    }
+
+    /// 備註裡提到 rec: 不算週期設定 — 讀取端統一走這支斷詞。
+    func testRecurrenceIgnoresRecInsideNote() {
+        XCTAssertNil(TaskLine("倒垃圾 note:\"提醒 rec:1w 這件事\"").recurrence)
+    }
+
     func testMarkDoneStampsAndClearsFocusAndQuadrant() {
         var t = TaskLine("Write report due:2026-07-01 focus:true q:1")
         t.setDone(true, date: "2026-07-09")

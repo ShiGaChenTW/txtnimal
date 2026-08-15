@@ -647,16 +647,16 @@ private struct GlobalCaptureView: View {
     @State private var completionSelection = 0
 
     private enum CaptureCommand: CaseIterable {
-        case due, project, context, note
+        case due, project, context, rec, note
 
         var key: String {
-            switch self { case .due: return "due:"; case .project: return "+"; case .context: return "@"; case .note: return "note:\"\"" }
+            switch self { case .due: return "due:"; case .project: return "+"; case .context: return "@"; case .rec: return "rec:"; case .note: return "note:\"\"" }
         }
         var title: LocalizedStringKey {
-            switch self { case .due: return "/due"; case .project: return "/project"; case .context: return "/context"; case .note: return "/note" }
+            switch self { case .due: return "/due"; case .project: return "/project"; case .context: return "/context"; case .rec: return "/rec"; case .note: return "/note" }
         }
         var detail: LocalizedStringKey {
-            switch self { case .due: return "設定到期日"; case .project: return "加入專案"; case .context: return "加入情境"; case .note: return "加入備註" }
+            switch self { case .due: return "設定到期日"; case .project: return "加入專案"; case .context: return "加入情境"; case .rec: return "設定重複週期"; case .note: return "加入備註" }
         }
     }
 
@@ -699,6 +699,12 @@ private struct GlobalCaptureView: View {
                 .init(value: "sat", label: "due:sat", detail: "星期六"),
                 .init(value: "sun", label: "due:sun", detail: "星期日"),
             ]
+        case .rec:
+            // 候選清單由 core 提供,兩個捕捉介面共用同一份;無法解析的值不入選單。
+            source = CaptureAssist.recurrenceCandidates.compactMap { value in
+                guard let label = CaptureAssist.recurrenceLabel(for: value) else { return nil }
+                return CompletionItem(value: value, label: "rec:\(value)", detail: label)
+            }
         }
         let fragment = query.fragment.lowercased()
         return Array(source.filter {
@@ -707,7 +713,8 @@ private struct GlobalCaptureView: View {
     }
     private var autocompleteOpen: Bool { completionQuery != nil }
     private var desiredHeight: CGFloat {
-        if commandMode { return 226 }
+        // 指令列高 41 + 輸入列 58 + 分隔線 4;跟著 allCases 走,加指令不必手改常數。
+        if commandMode { return CGFloat(58 + CaptureCommand.allCases.count * 41 + 4) }
         if autocompleteOpen { return CGFloat(92 + max(1, completionItems.count) * 34) }
         if !tokens.isEmpty || suggestion != nil { return 126 }
         return 92
@@ -780,11 +787,11 @@ private struct GlobalCaptureView: View {
     }
 
     private var emptyCompletionMessage: LocalizedStringKey {
-        switch completionQuery?.kind { case .project: return "沒有符合的專案"; case .context: return "沒有符合的情境"; default: return "沒有符合的日期快捷" }
+        switch completionQuery?.kind { case .project: return "沒有符合的專案"; case .context: return "沒有符合的情境"; case .rec: return "沒有符合的週期"; default: return "沒有符合的日期快捷" }
     }
 
     private var completionColor: Color {
-        switch completionQuery?.kind { case .project: return Theme.mag; case .context: return Theme.cyan; default: return Theme.blue }
+        switch completionQuery?.kind { case .project: return Theme.mag; case .context: return Theme.cyan; case .rec: return Theme.yellow; default: return Theme.blue }
     }
 
     private var tokenRow: some View {
@@ -845,11 +852,11 @@ private struct GlobalCaptureView: View {
     }
 
     private func tokenLabel(_ token: CaptureAssist.Token) -> String {
-        switch token.kind { case .due: return "日期"; case .project: return "專案"; case .context: return "情境" }
+        switch token.kind { case .due: return "日期"; case .project: return "專案"; case .context: return "情境"; case .rec: return "週期" }
     }
 
     private func tokenColor(_ token: CaptureAssist.Token) -> Color {
-        switch token.kind { case .due: return Theme.blue; case .project: return Theme.mag; case .context: return Theme.cyan }
+        switch token.kind { case .due: return Theme.blue; case .project: return Theme.mag; case .context: return Theme.cyan; case .rec: return Theme.yellow }
     }
 
     private func apply(_ suggestion: CaptureAssist.DueSuggestion) {
