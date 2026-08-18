@@ -173,6 +173,7 @@ txtnimal tag ensure errands                     # 確保 @errands 存在
 | `l` | 新增 List |
 | `t` | 改到期日（開日曆） |
 | `d` | 刪除任務（需二次確認） |
+| `s` | 顯示／隱藏清單頁左側 List 導覽欄 |
 | `R` | 將所有逾期任務改為今天 |
 | `[` / `]` | 調整行距 |
 | `1`–`4` / `0` | 象限指派／取消歸位（僅象限頁） |
@@ -431,6 +432,7 @@ txtnimal tag ensure errands                     # guarantee @errands exists
 | `l` | Create a new List |
 | `t` | Change the due date (opens the calendar) |
 | `d` | Delete the task (asks for confirmation) |
+| `s` | Show/hide the left-hand List navigation rail |
 | `R` | Reschedule every overdue task to today |
 | `[` / `]` | Adjust row spacing |
 | `1`–`4` / `0` | Assign / unassign quadrant (Quadrants view only) |
