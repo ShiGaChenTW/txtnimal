@@ -85,6 +85,7 @@ public enum BuiltinCommand: String, Equatable, Sendable, CaseIterable {
     case rescheduleOverdue
     case densityTighter
     case densityLooser
+    case toggleListRail
     case viewList
     case viewGrid
     case viewAgent
@@ -185,6 +186,9 @@ public enum CommandCatalog {
         spec(.densityLooser, name: "行距更鬆", alias: "density relaxed looser",
              bindings: [.init("]")],
              availability: .always),
+        spec(.toggleListRail, name: "顯示／隱藏 List 導覽欄", alias: "toggle list rail sidebar nav",
+             bindings: [.init("s")],
+             availability: .listGrid),
         spec(.viewList, name: "清單視圖", alias: "list view",
              bindings: [.init("1", command: true)],
              availability: .always),

@@ -112,7 +112,11 @@ struct ListView: View {
     }
 
     /// 側邊面板模式最窄只有 100pt,塞不下導覽欄;一個 list 都還沒有時它也只是一格空裝飾。
-    private var showsRail: Bool { !isSidebarPanel && !store.allProjects().isEmpty }
+    /// `s` 鍵(`listRailVisible`)是使用者的明示意願,擺在最後 —— 前兩個條件是「放不下 / 沒東西放」,
+    /// 這個是「我不想看」,三者任一成立都不顯示。
+    private var showsRail: Bool {
+        !isSidebarPanel && !store.allProjects().isEmpty && store.listRailVisible
+    }
 
     private var taskColumn: some View {
         let g = store.groups()
@@ -339,7 +343,7 @@ struct ListView: View {
 struct ListNavigationRail: View {
     @EnvironmentObject var store: TaskStore
 
-    /// 視窗 `minWidth` 有把這個寬度算進去(見 ContentView),改這裡要同步改那裡。
+    /// 視窗 `minWidth` 直接讀這個值(見 `ContentView.windowMinWidth`),改這裡那邊會自己跟上。
     static let width: CGFloat = 172
 
     var body: some View {

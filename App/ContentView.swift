@@ -21,6 +21,28 @@ struct ContentView: View {
     @State private var showTabMenu = false
     @State private var pendingTaskAction: PendingTaskAction?
 
+    /// 清單內容本身要的寬度,不含左側導覽欄。
+    private static let contentMinWidth: CGFloat = 660
+
+    /// 視窗寬度下限。導覽欄顯示時要整段加上它的寬度與 1pt 分隔線,否則視窗縮到底時
+    /// 任務列會比沒有導覽欄時更擠;`s` 把它收起來後,下限就得跟著縮回 660 ——
+    /// 不然「變回加導覽欄之前的樣子」只做到一半:欄不見了,視窗還是卡在寬版縮不回去。
+    ///
+    /// 寬度直接讀 `ListNavigationRail.width`,不再手抄第二份常數。
+    /// (先前寫死的 840 比 660+172+1 多出 7pt,那 7pt 沒有出處,一併收斂掉。)
+    ///
+    /// 只看 `listRailVisible`,刻意不看 `ListNavigationRail` 的另外兩個顯示條件:
+    /// - **不看「有沒有 list」**:那樣使用者建第一個 list 時,視窗會被硬拉寬,
+    ///   而他只是新增了一筆資料,沒要求動視窗。
+    /// - **不看目前在哪一頁**:那樣 ⌘1／⌘4 切頁會順手改視窗大小。
+    /// 下限跟著使用者「按了 s」這個明示動作走,不跟著資料或頁面漂移。
+    private var windowMinWidth: CGFloat {
+        if isSidebarPanel { return 100 }   // 側邊面板不顯示導覽欄,維持 100
+        return store.listRailVisible
+            ? Self.contentMinWidth + ListNavigationRail.width + 1
+            : Self.contentMinWidth
+    }
+
     var body: some View {
         ZStack {
             // 側邊模式讓根背景層透明,露出面板後方的毛玻璃;一般視窗維持不透明。
@@ -63,10 +85,7 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
         }
-        // 660 是清單內容本身要的寬度。清單頁左側多了固定 172pt 導覽欄 + 1pt 分隔線,
-        // 下限就得整段加上去(660+173→840),否則視窗縮到底時任務列會比加導覽欄前更擠。
-        // 側邊面板模式不顯示導覽欄,維持 100。
-        .frame(minWidth: isSidebarPanel ? 100 : 840, minHeight: 580)
+        .frame(minWidth: windowMinWidth, minHeight: 580)
         .background(WindowAccessor { hostWindow = $0 })
         .font(Theme.mono).foregroundColor(Theme.fg)
         .environment(\.locale, store.appLanguage.locale)
@@ -964,6 +983,7 @@ struct ContentView: View {
             case .rescheduleOverdue: store.rescheduleOverdue()
             case .densityTighter: store.cycleDensity(-1)
             case .densityLooser: store.cycleDensity(1)
+            case .toggleListRail: store.listRailVisible.toggle()
             case .viewList: store.view = .list; store.ensureCursor()
             case .viewGrid: store.view = .grid; store.ensureCursor()
             case .viewAgent: store.view = .agent

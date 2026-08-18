@@ -302,6 +302,15 @@ final class TaskStore: ObservableObject {
     @Published var inlineAddActive = false    // 新增列正在接收鍵盤事件
     @Published var requestNewList = false     // `l` 鍵 → 開 ListView 的「新增 List」視窗
     @Published var listEditorActive = false   // List 編輯視窗正在接收鍵盤事件
+    /// `s` 鍵切換清單頁左側 List 導覽欄。預設顯示 —— 這是剛上線的功能,不該一啟動就是關的;
+    /// 要不要看交給使用者按。讀取走 `object(forKey:)` 而非 `bool(forKey:)`:後者在鍵不存在時
+    /// 回傳 false,會讓「預設顯示」在全新安裝上直接失效。
+    /// ContentView 的視窗 `minWidth` 也吃這個值(導覽欄收起來,視窗才縮得回原本的寬度)。
+    @Published var listRailVisible: Bool = {
+        (UserDefaults.standard.object(forKey: "listRailVisible") as? Bool) ?? true
+    }() {
+        didSet { UserDefaults.standard.set(listRailVisible, forKey: "listRailVisible") }
+    }
     @Published var density: Density = {
         Density(rawValue: (UserDefaults.standard.object(forKey: "density") as? Int) ?? 1) ?? .normal
     }() {

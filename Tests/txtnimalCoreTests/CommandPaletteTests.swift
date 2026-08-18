@@ -226,6 +226,34 @@ final class CommandPaletteTests: XCTestCase {
         }
     }
 
+    // MARK: - Scenario: s 切換 List 導覽欄
+
+    func testToggleListRailResolvesFromPlainS() {
+        guard case .builtin(let id)? = CommandKeyMatcher.match(
+            character: "s", command: false, shift: false, in: CommandCatalog.builtIns
+        )?.identity else { return XCTFail("s 沒有解析到任何指令") }
+        XCTAssertEqual(id, .toggleListRail)
+        XCTAssertEqual(CommandCatalog.builtIn(.toggleListRail).keyDisplay, "s")
+    }
+
+    /// `s` 是未修飾單鍵,不該被 ⌘S 誤觸(⌘S 目前無綁定,應原樣放行給系統)。
+    func testToggleListRailIsNotBoundToCommandS() {
+        XCTAssertNil(CommandKeyMatcher.match(character: "s", command: true, shift: false,
+                                             in: CommandCatalog.builtIns))
+    }
+
+    /// 切換導覽欄與選了哪一筆任務無關,所以不要求選取;但只在清單／象限頁有意義。
+    func testToggleListRailNeedsNoSelectionButStaysOnListAndGrid() {
+        for page in [CommandPalettePage.list, .grid] {
+            XCTAssertTrue(identities(in: assemble(page: page, hasSelection: false))
+                .contains(.builtin(.toggleListRail)), "\(page)")
+        }
+        for page in [CommandPalettePage.dash, .settings, .agent] {
+            XCTAssertFalse(identities(in: assemble(page: page, hasSelection: true))
+                .contains(.builtin(.toggleListRail)), "\(page)")
+        }
+    }
+
     // MARK: - Scenario: 外掛指令可由指令盤列出 / 未安裝外掛不出現
 
     func testEnabledInstalledCommandPluginAppearsWhenSelected() {
