@@ -76,6 +76,7 @@ struct RecurrenceBadge: View {
 
 struct ListView: View {
     @EnvironmentObject var store: TaskStore
+    @Environment(\.isSidebarPanel) private var isSidebarPanel
     @State private var addText = ""
     @State private var addVisible = false
     @State private var showingListEditor = false
@@ -85,21 +86,15 @@ struct ListView: View {
     @FocusState private var addFocused: Bool
 
     var body: some View {
-        let g = store.groups()
-        VStack(alignment: .leading, spacing: 0) {
-            if selectedList != nil { listInfoBar }
-            if let i = store.focusIndex { focusBar(store.lines[i]) }
-            section("Today", g.today, group: "today", color: store.accent)    // 當下=強調色(設定頁可換)
-            overdueSection(g.overdue)                                          // 逾期=紅(獨佔)
-            section("Upcoming", g.upcoming, group: "up", color: Theme.yellow) // 未來=黃(呼應 q2 Schedule)
-            // No date 區塊 + 尾端新增列;帶 due: 的新任務由重新分組自動跳到對應區塊
-            if !g.noDate.isEmpty { sectionHeader("No date", g.noDate.count, color: Theme.dim, neutral: true) }
-            else { sectionHeader("No date", 0, color: Theme.dim, neutral: true) }
-            ForEach(g.noDate, id: \.self) { rowOrEdit($0, "nd") }
-            if addVisible { addRow }   // 預設隱藏,按 n 才出現
-            section("Done", g.done, group: "done", color: Theme.green)        // 完成=綠(色彩契約)
+        // 左導覽欄固定、只有右欄捲動 —— 所以捲動框在這裡,不在 ContentView 外層。
+        HStack(spacing: 0) {
+            if showsRail {
+                ListNavigationRail()
+                Rectangle().fill(Theme.border).frame(width: 1)
+            }
+            ScrollView { taskColumn.frame(maxWidth: .infinity, alignment: .leading) }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(.top, 4).padding(.bottom, 14)
         .onChange(of: store.requestInlineAdd) { req in   // n 鍵:顯示並聚焦輸入列,游標移到此
             if req { activateInlineAdd() }
         }
@@ -114,6 +109,27 @@ struct ListView: View {
         }
         .onDisappear { store.inlineAddActive = false; store.listEditorActive = false }
         .sheet(isPresented: $showingListEditor, onDismiss: { store.listEditorActive = false }) { listEditor }
+    }
+
+    /// 側邊面板模式最窄只有 100pt,塞不下導覽欄;一個 list 都還沒有時它也只是一格空裝飾。
+    private var showsRail: Bool { !isSidebarPanel && !store.allProjects().isEmpty }
+
+    private var taskColumn: some View {
+        let g = store.groups()
+        return VStack(alignment: .leading, spacing: 0) {
+            if selectedList != nil { listInfoBar }
+            if let i = store.focusIndex { focusBar(store.lines[i]) }
+            section("Today", g.today, group: "today", color: store.accent)    // 當下=強調色(設定頁可換)
+            overdueSection(g.overdue)                                          // 逾期=紅(獨佔)
+            section("Upcoming", g.upcoming, group: "up", color: Theme.yellow) // 未來=黃(呼應 q2 Schedule)
+            // No date 區塊 + 尾端新增列;帶 due: 的新任務由重新分組自動跳到對應區塊
+            if !g.noDate.isEmpty { sectionHeader("No date", g.noDate.count, color: Theme.dim, neutral: true) }
+            else { sectionHeader("No date", 0, color: Theme.dim, neutral: true) }
+            ForEach(g.noDate, id: \.self) { rowOrEdit($0, "nd") }
+            if addVisible { addRow }   // 預設隱藏,按 n 才出現
+            section("Done", g.done, group: "done", color: Theme.green)        // 完成=綠(色彩契約)
+        }
+        .padding(.top, 4).padding(.bottom, 14)
     }
 
     private var selectedList: String? {
@@ -310,6 +326,79 @@ struct ListView: View {
         }
         .font(Theme.monoSmall).tracking(1)
         .padding(.horizontal, 16).padding(.top, store.density.sectionTop).padding(.bottom, 6)
+    }
+}
+
+// MARK: - ⌘1 左側 List 導覽欄
+
+/// 清單頁左欄:一列 All tasks + 每個 List 一列,各自帶 done/total。
+///
+/// **純導覽層。** 點一列只是換 `store.tagFilter`,實際篩選仍走 `TaskStore.matches`
+/// 那條唯一路徑 —— 這裡不自己過濾任何東西,也不新增任何持久化狀態。
+/// 名稱來源 `allProjects()` 已含只存在於 List metadata、零任務的清單。
+struct ListNavigationRail: View {
+    @EnvironmentObject var store: TaskStore
+
+    /// 視窗 `minWidth` 有把這個寬度算進去(見 ContentView),改這裡要同步改那裡。
+    static let width: CGFloat = 172
+
+    var body: some View {
+        let lists = store.allProjects()
+        // 單趟掃完全部計數;每次重繪重算,不做快取 —— 個人任務清單的量級下這比維護
+        // 快取失效規則便宜得多,也不會有「數字沒跟上編輯」這類 bug。
+        let tallies = ListTallying.tally(store.lines, lists: lists)
+        return VStack(alignment: .leading, spacing: 0) {
+            Text("LIST").font(Theme.monoSmall).foregroundColor(Theme.mag.opacity(0.75))
+                .tracking(1)
+                .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 8)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    // All tasks 用強調色而非 mag:它不是一個 +List token,不該假裝是。
+                    row("All tasks", tallies.all, color: store.accent, selected: store.tagFilter == nil) {
+                        store.tagFilter = nil
+                    }
+                    ForEach(lists, id: \.self) { name in
+                        row("+" + name, tallies[name], color: Theme.mag,
+                            selected: store.tagFilter == "+" + name) {
+                            store.tagFilter = "+" + name
+                        }
+                    }
+                }
+            }
+        }
+        .frame(width: Self.width)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Theme.panel)
+    }
+
+    /// 選中的一列刻意**不**做 toggle:導覽欄自己有 All tasks 那一列可以清篩選,
+    /// 再讓「點已選中的列」等於取消,會出現點一下高亮就跳走的怪行為。
+    private func row(_ title: String, _ tally: ListTally, color: Color,
+                     selected: Bool, activate: @escaping () -> Void) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(store.tagFont)
+                .foregroundColor(color.opacity(selected ? 1 : 0.8))
+                .lineLimit(1).truncationMode(.tail)
+            Spacer(minLength: 6)
+            // 名稱可以被截斷,數字不行 —— 數字是這一列存在的理由。
+            Text(tally.label)
+                .font(Theme.monoSmall)
+                .foregroundColor(selected ? Theme.fg : Theme.dim)
+                .fixedSize()
+        }
+        .padding(.horizontal, 12).padding(.vertical, store.density.rowPad)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(selected ? color.opacity(0.14) : Color.clear)
+        .overlay(alignment: .leading) {
+            if selected { Rectangle().fill(color).frame(width: 3) }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            activate()
+            store.ensureCursor()   // 可見集合換了,游標必須落回還看得到的一列
+        }
+        .help("\(title)：\(tally.done)/\(tally.total) 已完成")
     }
 }
 

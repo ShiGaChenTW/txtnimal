@@ -28,13 +28,11 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 header
                 hline
-                // 象限頁滿版(上下 50/50)、統計頁滿版垂直置中,其餘視圖走捲動
-                if store.view == .grid {
-                    QuadrantView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if store.view == .dash {
-                    DashboardView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if store.view == .agent {
-                    AgentWorkspaceView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                // 滿版視圖自己管捲動:象限頁(上下 50/50)、統計頁(垂直置中)、Agent,
+                // 以及清單頁 —— 它的左導覽欄必須固定不動,捲動框因此下放到 ListView 右欄。
+                // 只剩設定頁走這層的整頁捲動。
+                if store.view == .grid || store.view == .dash || store.view == .agent || store.view == .list {
+                    body(for: store.view).frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView { body(for: store.view).frame(maxWidth: .infinity, alignment: .leading) }
                         .frame(maxHeight: .infinity)
@@ -65,7 +63,10 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
         }
-        .frame(minWidth: isSidebarPanel ? 100 : 660, minHeight: 580)
+        // 660 是清單內容本身要的寬度。清單頁左側多了固定 172pt 導覽欄 + 1pt 分隔線,
+        // 下限就得整段加上去(660+173→840),否則視窗縮到底時任務列會比加導覽欄前更擠。
+        // 側邊面板模式不顯示導覽欄,維持 100。
+        .frame(minWidth: isSidebarPanel ? 100 : 840, minHeight: 580)
         .background(WindowAccessor { hostWindow = $0 })
         .font(Theme.mono).foregroundColor(Theme.fg)
         .environment(\.locale, store.appLanguage.locale)
