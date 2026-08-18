@@ -77,6 +77,10 @@ public enum BuiltinCommand: String, Equatable, Sendable, CaseIterable {
     case inlineAdd
     case openCapture
     case addList
+    case addTag
+    case newList
+    case deleteTask
+    case quickDue
     case search
     case rescheduleOverdue
     case densityTighter
@@ -155,6 +159,19 @@ public enum CommandCatalog {
              availability: .listGrid),
         spec(.addList, name: "加 +List", alias: "project list",
              bindings: [.init("p")],
+             availability: .listGridSelection),
+        spec(.addTag, name: "加 @Tag", alias: "context tag at",
+             bindings: [.init("@")],
+             availability: .listGridSelection),
+        // 建 list 與任何一筆任務無關,所以不要求選取 — 這是它與 `.addList` 的分野。
+        spec(.newList, name: "新增 List", alias: "new list create project",
+             bindings: [.init("l")],
+             availability: .listGrid),
+        spec(.deleteTask, name: "刪除任務", alias: "delete remove task",
+             bindings: [.init("d")],
+             availability: .listGridSelection),
+        spec(.quickDue, name: "改到期日", alias: "due date reschedule when time",
+             bindings: [.init("t")],
              availability: .listGridSelection),
         spec(.search, name: "搜尋", alias: "search find filter",
              bindings: [.init("/"), .init("f", command: true)],

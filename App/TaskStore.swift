@@ -300,6 +300,8 @@ final class TaskStore: ObservableObject {
     @Published var searchActive = false
     @Published var requestInlineAdd = false   // `n` 鍵 → 聚焦清單尾端新增列
     @Published var inlineAddActive = false    // 新增列正在接收鍵盤事件
+    @Published var requestNewList = false     // `l` 鍵 → 開 ListView 的「新增 List」視窗
+    @Published var listEditorActive = false   // List 編輯視窗正在接收鍵盤事件
     @Published var density: Density = {
         Density(rawValue: (UserDefaults.standard.object(forKey: "density") as? Int) ?? 1) ?? .normal
     }() {
@@ -1672,5 +1674,11 @@ final class TaskStore: ObservableObject {
         let clean = name.split(whereSeparator: { $0 == " " || $0 == "+" || $0 == "@" }).joined()
         guard !clean.isEmpty, let i = cursor, lines.indices.contains(i) else { return }
         lines[i].addTag("+" + clean); save()
+    }
+    /// `addProjectToCursor` 的 @ 版本 — 同樣的清洗與守門,只有 sigil 不同。
+    func addContextToCursor(_ name: String) {
+        let clean = name.split(whereSeparator: { $0 == " " || $0 == "+" || $0 == "@" }).joined()
+        guard !clean.isEmpty, let i = cursor, lines.indices.contains(i) else { return }
+        lines[i].addTag("@" + clean); save()
     }
 }

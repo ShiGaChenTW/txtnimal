@@ -153,6 +153,79 @@ final class CommandPaletteTests: XCTestCase {
         }
     }
 
+    // MARK: - Scenario: d / t / l / @ 四個新單鍵
+
+    func testNewSingleKeyBindingsResolveToTheirCommands() {
+        let cmds = CommandCatalog.builtIns
+        func match(_ character: String) -> BuiltinCommand? {
+            guard case .builtin(let id) = CommandKeyMatcher.match(
+                character: character, command: false, shift: false, in: cmds
+            )?.identity else { return nil }
+            return id
+        }
+        XCTAssertEqual(match("d"), .deleteTask)
+        XCTAssertEqual(match("t"), .quickDue)
+        XCTAssertEqual(match("l"), .newList)
+        XCTAssertEqual(match("@"), .addTag)
+    }
+
+    func testNewCommandsKeyDisplay() {
+        XCTAssertEqual(CommandCatalog.builtIn(.deleteTask).keyDisplay, "d")
+        XCTAssertEqual(CommandCatalog.builtIn(.quickDue).keyDisplay, "t")
+        XCTAssertEqual(CommandCatalog.builtIn(.newList).keyDisplay, "l")
+        XCTAssertEqual(CommandCatalog.builtIn(.addTag).keyDisplay, "@")
+    }
+
+    /// `d` 是破壞性操作,`t`/`@` 改的是選中那一筆 — 三者都必須要求選取。
+    func testSelectionRequiredCommandsHiddenWithoutSelection() {
+        let result = identities(in: assemble(page: .list, hasSelection: false))
+        XCTAssertFalse(result.contains(.builtin(.deleteTask)))
+        XCTAssertFalse(result.contains(.builtin(.quickDue)))
+        XCTAssertFalse(result.contains(.builtin(.addTag)))
+    }
+
+    func testSelectionRequiredCommandsShownWithSelection() {
+        for page in [CommandPalettePage.list, .grid] {
+            let result = identities(in: assemble(page: page, hasSelection: true))
+            XCTAssertTrue(result.contains(.builtin(.deleteTask)), "\(page)")
+            XCTAssertTrue(result.contains(.builtin(.quickDue)), "\(page)")
+            XCTAssertTrue(result.contains(.builtin(.addTag)), "\(page)")
+        }
+    }
+
+    /// 建 list 與任何任務無關,所以不要求選取;但仍只在清單／象限頁有意義。
+    func testNewListNeedsNoSelectionButStaysOnListAndGrid() {
+        for page in [CommandPalettePage.list, .grid] {
+            XCTAssertTrue(identities(in: assemble(page: page, hasSelection: false))
+                .contains(.builtin(.newList)), "\(page)")
+        }
+        for page in [CommandPalettePage.dash, .settings, .agent] {
+            XCTAssertFalse(identities(in: assemble(page: page, hasSelection: true))
+                .contains(.builtin(.newList)), "\(page)")
+        }
+    }
+
+    func testNewCommandsHiddenOnDashAndSettings() {
+        for page in [CommandPalettePage.dash, .settings] {
+            let result = identities(in: assemble(page: page, hasSelection: true))
+            XCTAssertFalse(result.contains(.builtin(.deleteTask)), "\(page)")
+            XCTAssertFalse(result.contains(.builtin(.quickDue)), "\(page)")
+            XCTAssertFalse(result.contains(.builtin(.addTag)), "\(page)")
+        }
+    }
+
+    /// `handle` 在 catalog 之前就攔掉這些鍵(vim 移動、象限指派),catalog 綁到它們等於永遠不會觸發。
+    /// 這條在 catalog 端把契約釘死,免得下一個人加單鍵時踩到看不見的死鍵。
+    func testCatalogAvoidsKeysHardcodedAheadOfItInHandle() {
+        let reserved = ["j", "k", "0", "1", "2", "3", "4"]
+        for spec in CommandCatalog.builtIns {
+            for binding in spec.bindings where !binding.command {
+                XCTAssertFalse(reserved.contains(binding.character),
+                               "\(spec.id) binds \(binding.character), which `handle` consumes first")
+            }
+        }
+    }
+
     // MARK: - Scenario: 外掛指令可由指令盤列出 / 未安裝外掛不出現
 
     func testEnabledInstalledCommandPluginAppearsWhenSelected() {

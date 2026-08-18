@@ -103,11 +103,17 @@ struct ListView: View {
         .onChange(of: store.requestInlineAdd) { req in   // n 鍵:顯示並聚焦輸入列,游標移到此
             if req { activateInlineAdd() }
         }
+        .onChange(of: store.requestNewList) { req in    // l 鍵:開「新增 List」視窗
+            if req { activateNewList() }
+        }
         // 從其他頁切回清單時，request 可能在 ListView 掛載前已變成 true；
         // onChange 不會對初始值觸發，所以掛載時也必須消費一次。
-        .onAppear { if store.requestInlineAdd { activateInlineAdd() } }
-        .onDisappear { store.inlineAddActive = false }
-        .sheet(isPresented: $showingListEditor) { listEditor }
+        .onAppear {
+            if store.requestInlineAdd { activateInlineAdd() }
+            if store.requestNewList { activateNewList() }
+        }
+        .onDisappear { store.inlineAddActive = false; store.listEditorActive = false }
+        .sheet(isPresented: $showingListEditor, onDismiss: { store.listEditorActive = false }) { listEditor }
     }
 
     private var selectedList: String? {
@@ -141,6 +147,18 @@ struct ListView: View {
         listName = selectedList ?? ""
         listDescription = selectedList.map(store.listDescription) ?? ""
         showingListEditor = true
+        store.listEditorActive = true
+    }
+
+    /// `l` 走的是「新增」語意:即使目前正篩著某個 +list,也開空白表單,
+    /// 否則按 l 會變成在編輯那個既有 list — 與指令名稱不符。
+    private func activateNewList() {
+        editingListOriginal = nil
+        listName = ""
+        listDescription = ""
+        showingListEditor = true
+        store.listEditorActive = true
+        store.requestNewList = false
     }
 
     private var listEditor: some View {

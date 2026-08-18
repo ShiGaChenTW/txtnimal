@@ -12,8 +12,10 @@ struct ContentView: View {
     @State private var showingCapture = false
     @State private var captureText = ""
     @State private var showingAddProject = false
+    @State private var showingAddContext = false
     @State private var showingScratch = false
     @State private var projectText = ""
+    @State private var contextText = ""
     @State private var monitor: Any?
     @State private var hostWindow: NSWindow?
     @State private var showTabMenu = false
@@ -79,6 +81,7 @@ struct ContentView: View {
         .onChange(of: store.focusMode) { _ in FocusHUD.shared.update(store: store) }
         .onDisappear { if let m = monitor { NSEvent.removeMonitor(m) } }
         .sheet(isPresented: $showingAddProject, onDismiss: { projectText = "" }) { addProjectSheet }
+        .sheet(isPresented: $showingAddContext, onDismiss: { contextText = "" }) { addContextSheet }
         .sheet(isPresented: $showingScratch) { scratchSheet }
         .sheet(isPresented: $showingEdit) { editSheet }
         .sheet(isPresented: Binding(
@@ -638,6 +641,26 @@ struct ContentView: View {
         guard let i = store.cursor else { return }
         openEdit(store.handle(for: i))
     }
+    /// `t`:同一個編輯彈窗,但一開就把日曆攤開、當前欄位設為「到期」——
+    /// 走既有 popup 而不是另做一顆選擇器,是為了不讓日期有第二套寫入路徑。
+    /// 焦點刻意留在 `openEdit` 既有的標題欄:此檔上方註解記著 sheet 內 @FocusState
+    /// 不可靠(前兩次失敗主因),再排一個競爭的 asyncAfter 只會把它變成偶發 bug。
+    private func openEditOnDueField() {
+        guard let i = store.cursor else { return }
+        openEdit(store.handle(for: i))
+        guard showingEdit else { return }   // 已完成的任務 openEdit 會拒絕開啟
+        editField = 1
+        showProjectMenu = false; showContextMenu = false
+        showDatePicker = true
+    }
+    /// `d`:不自己刪,只把待確認動作交給既有的 confirmationDialog —
+    /// 破壞性操作只能有一條路徑,鍵盤捷徑不是繞過二次確認的理由。
+    private func confirmDeleteCursor() {
+        guard let i = store.cursor else { return }
+        let handle = store.handle(for: i)
+        guard let task = store.task(using: handle) else { return }
+        pendingTaskAction = .delete(handle, task.title)
+    }
     private func openEdit(_ handle: TaskHandle) {
         guard let t = store.task(using: handle), !t.isDone else { return }
         store.select(using: handle)
@@ -800,6 +823,26 @@ struct ContentView: View {
         store.addProjectToCursor(projectText); projectText = ""; showingAddProject = false
     }
 
+    private var addContextSheet: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("加入 @TAG 到選取任務").font(Theme.monoSmall).foregroundColor(Theme.dim).tracking(1.2)
+            HStack(spacing: 8) {
+                Text("@").foregroundColor(Theme.cyan)
+                TextField("mac", text: $contextText)
+                    .textFieldStyle(.plain).font(.system(size: 15, design: .monospaced)).foregroundColor(Theme.fg)
+                    .onSubmit { commitContext() }
+            }
+            HStack { Spacer()
+                Button("取消") { showingAddContext = false }
+                Button("加入") { commitContext() }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18).frame(width: 380).background(Theme.bg)
+    }
+    private func commitContext() {
+        store.addContextToCursor(contextText); contextText = ""; showingAddContext = false
+    }
+
     private var scratchSheet: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -912,6 +955,10 @@ struct ContentView: View {
             case .inlineAdd: store.view = .list; store.requestInlineAdd = true
             case .openCapture: openCapture()
             case .addList: if store.cursor != nil { showingAddProject = true }
+            case .addTag: if store.cursor != nil { showingAddContext = true }
+            case .newList: store.view = .list; store.requestNewList = true
+            case .deleteTask: confirmDeleteCursor()
+            case .quickDue: openEditOnDueField()
             case .search: store.searchActive = true
             case .rescheduleOverdue: store.rescheduleOverdue()
             case .densityTighter: store.cycleDensity(-1)
@@ -1033,7 +1080,11 @@ struct ContentView: View {
             }
             return e
         }
-        if showingCapture || showingAddProject || showingScratch { return e }
+        // 任何正在收文字的浮窗都要先放行,否則使用者打的字會被當成單鍵命令吃掉。
+        // `listEditorActive` 是 ListView 的 List 編輯視窗 — `l` 讓它變成一個按鍵就到得了,
+        // 沒有這道守門,在裡面打名稱會誤觸 d（刪除確認）等破壞性單鍵。
+        if showingCapture || showingAddProject || showingAddContext
+            || showingScratch || store.listEditorActive { return e }
         // NSTextField 的 field editor 也是 NSTextView，且切頁後可能短暫保留；只在確實
         // 顯示文字輸入介面時放行，避免它吞掉清單的 n/e/x 等單鍵命令。
         if store.inlineAddActive || store.view == .agent || store.view == .settings || store.searchActive { return e }
