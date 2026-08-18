@@ -113,10 +113,43 @@ Review landing page due:2026-07-25 +website @mac note:"check mobile spacing"
 | `note:"..."` | 任務備註 |
 | `q:1`～`q:4` | 四象限位置 |
 | `focus:true` | 當前唯一 Focus 任務 |
+| `id:xxxxxxxx` | 穩定 ID；由 `txtnimal` CLI 建立任務時寫入 |
 
 快速輸入支援 `due:today`、`due:tomorrow`、`due:fri`、`due:3d` 與 ISO 日期，儲存時會正規化為 `YYYY-MM-DD`。
 
 完整格式與 Project／Context 的原始語意請參閱 [todo.txt 格式規格](https://github.com/todotxt/todo.txt)。
+
+## 命令列介面（`txtnimal` CLI）
+
+給腳本與 coding agent 用的非互動介面，直接讀寫同一份 tasks.txt。它和 App 是兩支不同的程式，但預設指向同一個檔案。
+
+```bash
+swift build -c release          # 產物在 .build/release/txtnimal
+```
+
+```bash
+txtnimal add "寫季報" --due tomorrow --project work --context office --note "帶數字"
+txtnimal list                                   # 未完成任務
+txtnimal list --project work --json | jq .      # 給 agent 吃的結構化輸出
+txtnimal list --query 水電 --all                # 含已完成
+txtnimal done 3f9a                              # 用 id 前綴指定
+txtnimal delete 3f9a                            # 不會二次確認
+txtnimal list ensure roadmap                    # 確保 +roadmap 存在（重複執行安全）
+txtnimal tag ensure errands                     # 確保 @errands 存在
+```
+
+**任務檔位置**（依序取第一個命中的）：
+
+1. `--dir <路徑>`
+2. `$TXTNIMAL_DIR`
+3. App 儲存的檔案／資料夾位置（只有你在 App 裡搬過資料夾才會有）
+4. `~/Documents/txtnimal/tasks.txt`
+
+**任務 ID**：CLI 建立的任務會寫入一個 8 碼 `id:` token。App 建立的任務沒有這個 token，改以內容衍生的 `legacy-…` ID 定址（與 App 內建外掛所用的是同一套）。跑 `txtnimal list` 就會看到每筆任務當下的 ID，任何唯一前綴都能用。前綴撞到多筆時 CLI 會列出候選並中止，不會猜。
+
+**與 App 併用**：App 本來就會監看 tasks.txt 並在外部修改時重新載入，所以兩邊可以同時開著。CLI 每次執行都是一次完整的「讀 → 改 → 寫」，寫入走 App 同一套 journal + 原子寫入。
+
+**離開碼**：`0` 成功、`1` 執行期錯誤（找不到 ID、日期讀不懂）、`2` 用法錯誤。`--json` 時錯誤也會以 `{"error":"..."}` 印到 stderr，stdout 保持乾淨，可直接接 `jq`。
 
 ## 常用快捷鍵
 
@@ -334,10 +367,43 @@ Review landing page due:2026-07-25 +website @mac note:"check mobile spacing"
 | `note:"..."` | Task note |
 | `q:1`–`q:4` | Quadrant placement |
 | `focus:true` | The single focused task |
+| `id:xxxxxxxx` | Stable id, written when the `txtnimal` CLI creates a task |
 
 Quick capture accepts `due:today`, `due:tomorrow`, `due:fri`, `due:3d`, and ISO dates, then normalizes them to `YYYY-MM-DD` on disk.
 
 See the [todo.txt format specification](https://github.com/todotxt/todo.txt) for the full syntax and the original meaning of Project and Context.
+
+## Command line interface (`txtnimal` CLI)
+
+A non-interactive interface for scripts and coding agents, reading and writing the same tasks.txt. It is a separate binary from the app, pointed at the same file by default.
+
+```bash
+swift build -c release          # binary lands in .build/release/txtnimal
+```
+
+```bash
+txtnimal add "write the report" --due tomorrow --project work --context office --note "bring numbers"
+txtnimal list                                   # open tasks
+txtnimal list --project work --json | jq .      # structured output for agents
+txtnimal list --query plumber --all             # include completed
+txtnimal done 3f9a                              # address by id prefix
+txtnimal delete 3f9a                            # no confirmation prompt
+txtnimal list ensure roadmap                    # guarantee +roadmap exists (safe to repeat)
+txtnimal tag ensure errands                     # guarantee @errands exists
+```
+
+**Task file resolution** — first match wins:
+
+1. `--dir <path>`
+2. `$TXTNIMAL_DIR`
+3. the app's saved file/folder, if you have moved the data directory in the GUI
+4. `~/Documents/txtnimal/tasks.txt`
+
+**Task ids** — tasks created by the CLI carry an 8-character `id:` token. Tasks created in the app have none and are addressed by a content-derived `legacy-…` id, the same scheme the app's own plugin host uses. Run `txtnimal list` to see the current id for any task; any unique prefix works. An ambiguous prefix lists the candidates and stops rather than guessing.
+
+**Running alongside the app** — the app already watches tasks.txt and reloads on external edits, so both can be open at once. Each CLI invocation is one complete read → mutate → write, committed through the same journal and atomic write the app uses.
+
+**Exit codes** — `0` success, `1` runtime error (unknown id, unreadable date), `2` usage error. With `--json`, errors are emitted as `{"error":"..."}` on stderr so stdout stays clean for `jq`.
 
 ## Keyboard shortcuts
 
