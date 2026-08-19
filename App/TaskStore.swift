@@ -1741,7 +1741,10 @@ final class TaskStore: ObservableObject {
         density = Density(rawValue: max(0, min(2, density.rawValue + delta))) ?? density
     }
     func startEditing() {
-        guard view == .list, let i = cursor, lines.indices.contains(i), !lines[i].isDone else { return }
+        // 象限頁也要能行內編輯 —— catalog 的 `.inlineEdit` 宣告 `.listGridSelection`,
+        // 指令盤也照著列出來,只有這道守門把象限頁擋掉,於是 e / ⏎ 在象限頁靜靜地沒反應。
+        guard view == .list || view == .grid,
+              let i = cursor, lines.indices.contains(i), !lines[i].isDone else { return }
         editingIndex = i
     }
 

@@ -106,7 +106,7 @@ struct ContentView: View {
             guard let request, hostWindow?.isKeyWindow ?? true else { return }
             perform(request.identity)
         }
-        .onDisappear { if let m = monitor { NSEvent.removeMonitor(m) } }
+        .onDisappear { if let m = monitor { NSEvent.removeMonitor(m); monitor = nil } }
         .sheet(isPresented: $showingAddProject, onDismiss: { projectText = "" }) { addProjectSheet }
         .sheet(isPresented: $showingAddContext, onDismiss: { contextText = "" }) { addContextSheet }
         .sheet(isPresented: $showingScratch) { scratchSheet }
@@ -186,10 +186,11 @@ struct ContentView: View {
                 .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
                 .focused($searchFocused)
                 .onSubmit { searchFocused = false; store.ensureCursor() }   // ⏎ 保留篩選、回鍵盤流
-                .onExitCommand { store.clearSearch() }
+                // 卸載 searchBar 本來就會把 @FocusState 清掉,但我們不要依賴那個隱式路徑。
+                .onExitCommand { searchFocused = false; store.clearSearch() }
             if !store.searchQuery.isEmpty {
                 Text("✕").font(Theme.monoSmall).foregroundColor(Theme.dim)
-                    .onTapGesture { store.clearSearch() }
+                    .onTapGesture { searchFocused = false; store.clearSearch() }
             }
         }
         .font(Theme.mono)
@@ -443,7 +444,8 @@ struct ContentView: View {
                         Text("輸入任務指令  due:fri  +List  @Tag")
                             .foregroundColor(Theme.dim.opacity(0.62))
                     }
-                    TerminalInputField(text: $captureText, onSubmit: commitCapture, onCancel: closeCapture)
+                    TerminalInputField(text: $captureText, onSubmit: commitCapture, onCancel: closeCapture,
+                                       onFocusChange: { _ in })
                         .frame(height: 20)
                 }
             } else {
@@ -1092,6 +1094,9 @@ struct ContentView: View {
     }
 
     private func installMonitor() {
+        // .onAppear 可能重跑(視窗重建、側邊模式切換),舊的 monitor 不拆掉就會留著,
+        // 一次按鍵被處理兩次。與 Views.swift 的 RightClickView 同一個寫法。
+        if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in handle(e) }
     }
     private func handle(_ e: NSEvent) -> NSEvent? {

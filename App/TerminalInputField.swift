@@ -7,6 +7,10 @@ struct TerminalInputField: NSViewRepresentable {
     @Binding var text: String
     let onSubmit: () -> Void
     let onCancel: () -> Void
+    /// 回報底層 NSTextView 的 first responder 狀態。SwiftUI 的 `.focused()` 綁不到
+    /// NSViewRepresentable,而 `store.inlineAddActive` 必須跟著真實焦點走,
+    /// 否則使用者用滑鼠點走之後,旗標會永遠停在 true、快捷鍵全滅。
+    let onFocusChange: (Bool) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -22,6 +26,7 @@ struct TerminalInputField: NSViewRepresentable {
         input.delegate = context.coordinator
         input.onSubmit = onSubmit
         input.onCancel = onCancel
+        input.onFocusChange = onFocusChange
         input.isRichText = false
         input.importsGraphics = false
         input.drawsBackground = false
@@ -46,6 +51,7 @@ struct TerminalInputField: NSViewRepresentable {
         context.coordinator.parent = self
         input.onSubmit = onSubmit
         input.onCancel = onCancel
+        input.onFocusChange = onFocusChange
         input.font = NSFont.monospacedSystemFont(ofSize: 13.5, weight: .regular)
         input.textColor = NSColor(Theme.fg)
         // Codex-style caret: a high-contrast, fully opaque block rather than the
@@ -88,6 +94,7 @@ private final class TerminalInputScrollView: NSScrollView {
 private final class BlockCursorTextView: NSTextView {
     var onSubmit: (() -> Void)?
     var onCancel: (() -> Void)?
+    var onFocusChange: ((Bool) -> Void)?
     private let solidCaret = NSView()
     private var solidCaretInstalled = false
     var blockColor = NSColor.systemGreen {
@@ -101,6 +108,18 @@ private final class BlockCursorTextView: NSTextView {
         solidCaret.layer?.backgroundColor = blockColor.cgColor
         solidCaret.layer?.cornerRadius = 0
         addSubview(solidCaret, positioned: .above, relativeTo: nil)
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let ok = super.becomeFirstResponder()
+        if ok { DispatchQueue.main.async { [weak self] in self?.onFocusChange?(true) } }
+        return ok
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let ok = super.resignFirstResponder()
+        if ok { DispatchQueue.main.async { [weak self] in self?.onFocusChange?(false) } }
+        return ok
     }
 
     override func viewDidMoveToWindow() {

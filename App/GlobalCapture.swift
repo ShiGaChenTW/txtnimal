@@ -54,6 +54,9 @@ final class SidebarController {
         }
         // 點面板以外(其他 app / 桌面)→ 自動收起。全域監聽只在事件不屬於本 app 時觸發,
         // 也就是點在面板之外;面板內的點擊走 local、不會誤收。
+        // 同 didRegisterHotkey 的教訓:install() 會被每次 .onAppear 重跑。直接覆寫 property
+        // 會把舊 monitor 留在系統裡(token 丟了就再也拆不掉),一次點擊觸發 N 個 handler。
+        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             guard let self, self.panel?.isVisible == true, self.store?.windowMode == .sidebar else { return }
             // 延一個 runloop:讓切換焦點的事件先結束,滑動收起動畫才不會被吞掉(否則直接消失)。

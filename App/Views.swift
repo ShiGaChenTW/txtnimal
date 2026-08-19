@@ -231,7 +231,11 @@ struct ListView: View {
                         Text("輸入任務指令  due:fri  +List  @Tag")
                             .foregroundColor(Theme.dim.opacity(0.62))
                     }
-                    TerminalInputField(text: $addText, onSubmit: submitInlineAdd, onCancel: closeInlineAdd)
+                    TerminalInputField(text: $addText, onSubmit: submitInlineAdd, onCancel: closeInlineAdd,
+                                       onFocusChange: { focused in
+                                           store.inlineAddActive = focused
+                                           if !focused { store.ensureCursor() }   // 新增列會把 cursor 清成 nil
+                                       })
                         .frame(height: 20)
                 }
             } else {
@@ -520,24 +524,28 @@ struct EditRow: View {
     let index: Int
     @State private var draft: String
     @FocusState private var focused: Bool
+    private let compact: Bool
 
-    init(index: Int, initial: String) {
+    init(index: Int, initial: String, compact: Bool = false) {
         self.index = index
         _draft = State(initialValue: initial)
+        self.compact = compact
     }
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: compact ? 7 : 10) {
             Text("[ ]").foregroundColor(Theme.dim)
             TextField("", text: $draft)
-                .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
+                .textFieldStyle(.plain).font(compact ? store.taskFont : Theme.mono).foregroundColor(Theme.fg)
                 .focused($focused)
                 .onSubmit { store.updateTitle(index, draft) }
                 .onExitCommand { store.editingIndex = nil }
         }
-        .padding(.horizontal, 16).padding(.vertical, store.density.rowPad)
+        .padding(.horizontal, compact ? 4 : 16).padding(.vertical, compact ? 2 : store.density.rowPad)
         .background(Theme.selBg)
-        .overlay(Rectangle().fill(Theme.blue).frame(width: 3), alignment: .leading)
+        .overlay(alignment: .leading) {
+            if !compact { Rectangle().fill(Theme.blue).frame(width: 3) }
+        }
         .onAppear { focused = true }
     }
 }
@@ -612,27 +620,32 @@ struct QuadrantView: View {
     @ViewBuilder private func qRow(_ i: Int) -> some View {
         if store.lines.indices.contains(i) {   // 防過期 index 越界
             let t = store.lines[i]
-            HStack(spacing: 7) {
-                Text("[ ]").foregroundColor(Theme.dim)
-                Text(t.title).foregroundColor(t.isFocused ? Theme.focus : Theme.fg).lineLimit(1)
-                    .font(store.taskFont)
-                RecurrenceBadge(task: t)
-            }
-            .font(Theme.mono).padding(.horizontal, 4).padding(.vertical, 2)
-            .background(store.cursor == i ? Theme.selBg : .clear)
-            .contentShape(Rectangle())
-            .onTapGesture(count: 2) {
-                store.cursor = i
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
-                    completeAnnouncingRecurrence(t, in: store, announcer: recurrenceAnnouncer) { store.toggleDone() }
+            if store.editingIndex == i {
+                // 編輯中的那一列換成輸入框:點擊 / 拖曳 / 右鍵選單這時候都不該再攔按鍵。
+                EditRow(index: i, initial: t.title, compact: true)
+            } else {
+                HStack(spacing: 7) {
+                    Text("[ ]").foregroundColor(Theme.dim)
+                    Text(t.title).foregroundColor(t.isFocused ? Theme.focus : Theme.fg).lineLimit(1)
+                        .font(store.taskFont)
+                    RecurrenceBadge(task: t)
                 }
-            }
-            .onTapGesture { store.cursor = i }
-            .onDrag { NSItemProvider(object: store.dragPayload(for: i) as NSString) }
-            .background {
-                ThemedTaskContextMenuPresenter(handle: store.handle(for: i), task: t,
-                                               actions: contextActions, announcer: recurrenceAnnouncer,
-                                               store: store)
+                .font(Theme.mono).padding(.horizontal, 4).padding(.vertical, 2)
+                .background(store.cursor == i ? Theme.selBg : .clear)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    store.cursor = i
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
+                        completeAnnouncingRecurrence(t, in: store, announcer: recurrenceAnnouncer) { store.toggleDone() }
+                    }
+                }
+                .onTapGesture { store.cursor = i }
+                .onDrag { NSItemProvider(object: store.dragPayload(for: i) as NSString) }
+                .background {
+                    ThemedTaskContextMenuPresenter(handle: store.handle(for: i), task: t,
+                                                   actions: contextActions, announcer: recurrenceAnnouncer,
+                                                   store: store)
+                }
             }
         }
     }
@@ -1060,7 +1073,8 @@ struct AgentView: View {
                     TerminalInputField(
                         text: $prompt,
                         onSubmit: { if canSubmit(disclosure) { store.runAgentQuery(prompt: prompt) } },
-                        onCancel: { prompt = "" }
+                        onCancel: { prompt = "" },
+                        onFocusChange: { _ in }
                     )
                 }
                 .frame(height: 22)
@@ -2049,7 +2063,8 @@ private struct AgentChatView: View {
                 TerminalInputField(
                     text: $model.draft,
                     onSubmit: { if model.canSend { send() } },
-                    onCancel: { model.draft = "" }
+                    onCancel: { model.draft = "" },
+                    onFocusChange: { _ in }
                 )
                 .disabled(model.endpointIssue != nil || model.pendingReview != nil)
             }
