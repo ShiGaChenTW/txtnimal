@@ -99,6 +99,13 @@ struct ContentView: View {
         }
         .onChange(of: store.focusIndex) { _ in FocusHUD.shared.update(store: store) }
         .onChange(of: store.focusMode) { _ in FocusHUD.shared.update(store: store) }
+        // 選單列的指令走這條回到 perform() —— 選單按鈕構不到 ContentView 的私有狀態,
+        // 但 perform() 構得到,所以讓選單只負責「說要做什麼」,做什麼還是同一份實作。
+        // 側邊模式下同時有兩個 ContentView,只有 key window 那個可以吃,否則會做兩次。
+        .onChange(of: store.commandRequest) { request in
+            guard let request, hostWindow?.isKeyWindow ?? true else { return }
+            perform(request.identity)
+        }
         .onDisappear { if let m = monitor { NSEvent.removeMonitor(m) } }
         .sheet(isPresented: $showingAddProject, onDismiss: { projectText = "" }) { addProjectSheet }
         .sheet(isPresented: $showingAddContext, onDismiss: { contextText = "" }) { addContextSheet }
@@ -967,6 +974,16 @@ struct ContentView: View {
         DispatchQueue.main.async { perform(cmd.identity) }   // 面板收掉、焦點歸還後再執行
     }
 
+    /// 切頁必須把「只在上一頁成立」的鍵盤狀態一起清掉。
+    /// `searchFocused` 是 ContentView 的 @FocusState、`focusMode` 是 store 的旗標,
+    /// 兩者都不會因為 store.view 改變而自動歸零 —— 不清就會在下一頁繼續吞掉按鍵。
+    private func switchView(to target: AppView, ensureCursor: Bool = false) {
+        store.view = target
+        store.focusMode = false
+        searchFocused = false
+        if ensureCursor { store.ensureCursor() }
+    }
+
     private func perform(_ identity: CommandIdentity) {
         switch identity {
         case .builtin(let command):
@@ -993,12 +1010,12 @@ struct ContentView: View {
             case .densityTighter: store.cycleDensity(-1)
             case .densityLooser: store.cycleDensity(1)
             case .toggleListRail: store.listRailVisible.toggle()
-            case .viewList: store.view = .list; store.ensureCursor()
-            case .viewGrid: store.view = .grid; store.ensureCursor()
-            case .viewAgent: store.view = .agent
-            case .viewDash: store.view = .dash
-            case .viewSettings: store.view = .settings
-            case .viewTrash: store.view = .trash
+            case .viewList: switchView(to: .list, ensureCursor: true)
+            case .viewGrid: switchView(to: .grid, ensureCursor: true)
+            case .viewAgent: switchView(to: .agent)
+            case .viewDash: switchView(to: .dash)
+            case .viewSettings: switchView(to: .settings)
+            case .viewTrash: switchView(to: .trash)
             case .cycleAppearance: store.cycleAppearance()
             case .openPalette: openPalette()
             case .undo: store.undo()
@@ -1120,7 +1137,7 @@ struct ContentView: View {
         // agent 端點與模型。但狀態列白紙黑字寫著「esc / ⌘1 回清單」，而整頁放行讓那句話
         // 變成謊言 —— 這裡只把 esc 這一顆鍵挑出來處理，其餘按鍵維持原樣放行給欄位。
         if store.view == .settings, e.keyCode == 53 {
-            store.view = .list; store.ensureCursor(); return nil
+            switchView(to: .list, ensureCursor: true); return nil
         }
         // NSTextField 的 field editor 也是 NSTextView，且切頁後可能短暫保留；只在確實
         // 顯示文字輸入介面時放行，避免它吞掉清單的 n/e/x 等單鍵命令。
@@ -1135,6 +1152,9 @@ struct ContentView: View {
         if cmd {
             if let spec = CommandKeyMatcher.match(character: chars, command: true, shift: shift,
                                                   in: CommandCatalog.builtIns) {
+                // cmd 分支排在唯讀頁守門之前,所以必須自己檢查可用性,否則 ⌘E 會在統計/垃圾桶頁
+                // 作用到清單裡那個看不見的游標。`.always` 的 ⌘1–⌘6 不受影響。
+                guard spec.availability.isAvailable(in: store.commandContext) else { return e }
                 perform(spec.identity)
                 return nil
             }
@@ -1147,7 +1167,7 @@ struct ContentView: View {
         // 統計/設定/垃圾桶唯讀:單鍵動詞不得作用在看不見的游標上;esc 回清單
         // 垃圾桶特別重要——d(刪除)若在這裡生效,會作用到清單裡看不見的那個游標。
         if store.view == .dash || store.view == .settings || store.view == .trash {
-            if e.keyCode == 53 { store.view = .list; store.ensureCursor() }
+            if e.keyCode == 53 { switchView(to: .list, ensureCursor: true) }
             return nil
         }
         switch e.keyCode {
@@ -1173,19 +1193,6 @@ struct ContentView: View {
                 return nil
             }
             return e
-        }
-    }
-}
-
-private extension AppView {
-    var palettePage: CommandPalettePage {
-        switch self {
-        case .list: return .list
-        case .grid: return .grid
-        case .agent: return .agent
-        case .dash: return .dash
-        case .settings: return .settings
-        case .trash: return .trash
         }
     }
 }

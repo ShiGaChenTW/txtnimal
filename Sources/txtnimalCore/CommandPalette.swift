@@ -294,6 +294,49 @@ public enum CommandPaletteAssembler {
     }
 }
 
+/// 選單列項目的唯一來源。App 層只負責把它畫成 Button,不再手抄一份快捷鍵。
+public enum CommandMenuModel {
+    public struct Item: Equatable, Sendable, Identifiable {
+        public let identity: CommandIdentity
+        public let title: String
+        /// `nil` = 這個項目刻意不搶鍵(見 undo/redo 說明)。
+        public let key: String?
+        public let command: Bool
+        public let shift: Bool
+        public var id: String {
+            let identityID: String
+            switch identity {
+            case .builtin(let command): identityID = "builtin.\(command.rawValue)"
+            case .plugin(let pluginID, let commandID): identityID = "plugin.\(pluginID).\(commandID)"
+            }
+            return identityID + "|" + (key ?? "-") + (command ? "c" : "") + (shift ? "s" : "")
+        }
+    }
+
+    /// 系統 Edit 選單已經提供 ⌘Z / ⇧⌘Z（SwiftUI 只換掉 `.newItem`，`.undoRedo` 仍是預設）。
+    /// 我們再綁一次會讓同一顆鍵有兩個選單擁有者,且 File 選單排在 Edit 之前會贏 ——
+    /// 那會讓「在文字欄位裡按 ⌘Z」變成任務復原而不是復原打字,是退步。
+    /// 所以這兩個指令仍然進選單(可點、可被指令盤列出),但不帶鍵。
+    public static let keylessIdentities: Set<String> = ["builtin.undo", "builtin.redo"]
+
+    /// 每一個帶 ⌘ 的 catalog 綁定各生一個項目。`.viewSettings` 有 ⌘5 與 ⌘, 兩個綁定,
+    /// 就會生出兩個項目 —— 這是刻意的,兩顆鍵都要有選單擁有者。
+    public static var items: [Item] {
+        CommandCatalog.builtIns.flatMap { spec -> [Item] in
+            let cmdBindings = spec.bindings.filter(\.command)
+            if cmdBindings.isEmpty { return [] }
+            if keylessIdentities.contains(spec.id) {
+                return [Item(identity: spec.identity, title: spec.name,
+                             key: nil, command: false, shift: false)]
+            }
+            return cmdBindings.map { binding in
+                Item(identity: spec.identity, title: spec.name,
+                     key: binding.character, command: true, shift: binding.shift)
+            }
+        }
+    }
+}
+
 private func spec(_ id: BuiltinCommand, name: String, alias: String,
                   bindings: [CommandKeyBinding], availability: CommandAvailability,
                   showsInPalette: Bool = true) -> CommandSpec {

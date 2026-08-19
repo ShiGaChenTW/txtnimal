@@ -4,6 +4,12 @@ import txtnimalCore
 
 enum AppView { case list, grid, agent, dash, settings, trash }
 
+/// 一次指令派送。`seq` 只用來讓 `onChange` 一定看得到變化。
+struct CommandRequest: Equatable {
+    let seq: Int
+    let identity: CommandIdentity
+}
+
 struct AgentTaskDisclosure: Identifiable {
     let id: String
     let title: String
@@ -314,6 +320,20 @@ final class TaskStore: ObservableObject {
     @Published var inlineAddActive = false    // 新增列正在接收鍵盤事件
     @Published var requestNewList = false     // `l` 鍵 → 開 ListView 的「新增 List」視窗
     @Published var listEditorActive = false   // List 編輯視窗正在接收鍵盤事件
+    /// 選單列（與其他非 ContentView 的觸發點）把指令送回 ContentView.perform 的通道。
+    /// 用遞增序號而不是「設值後清 nil」：清 nil 會跟側邊模式下的第二個 ContentView 互搶,
+    /// 而序號讓同一個指令連按兩次也一定觸發 onChange。
+    @Published var commandRequest: CommandRequest?
+    private var commandRequestSeq = 0
+    /// 從選單列等外部入口派一個指令給 ContentView 執行。
+    func requestCommand(_ identity: CommandIdentity) {
+        commandRequestSeq += 1
+        commandRequest = CommandRequest(seq: commandRequestSeq, identity: identity)
+    }
+    /// 目前的頁面 / 選取狀態,給 `CommandAvailability.isAvailable` 用。
+    var commandContext: CommandPaletteContext {
+        CommandPaletteContext(page: view.palettePage, hasSelection: cursor != nil)
+    }
     /// `s` 鍵切換清單頁左側 List 導覽欄。預設顯示 —— 這是剛上線的功能,不該一啟動就是關的;
     /// 要不要看交給使用者按。讀取走 `object(forKey:)` 而非 `bool(forKey:)`:後者在鍵不存在時
     /// 回傳 false,會讓「預設顯示」在全新安裝上直接失效。
@@ -1779,5 +1799,18 @@ final class TaskStore: ObservableObject {
         let clean = name.split(whereSeparator: { $0 == " " || $0 == "+" || $0 == "@" }).joined()
         guard !clean.isEmpty, let i = cursor, lines.indices.contains(i) else { return }
         lines[i].addTag("@" + clean); save()
+    }
+}
+
+extension AppView {
+    var palettePage: CommandPalettePage {
+        switch self {
+        case .list: return .list
+        case .grid: return .grid
+        case .agent: return .agent
+        case .dash: return .dash
+        case .settings: return .settings
+        case .trash: return .trash
+        }
     }
 }

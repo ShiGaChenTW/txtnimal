@@ -16,12 +16,14 @@ struct txtnimalApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 740, height: 660)
         .commands {
+            // 選單項目全部由 CommandCatalog 生成 —— 手抄的那五顆 ⌘1–⌘5 曾經跟 handle() 走散過
+            // (見 CHANGELOG 的 ⌘2/⌘4 事故)。改成單一來源後,catalog 加一個帶 ⌘ 的綁定,
+            // 選單就自動多一個後備入口,不需要有人記得同步。
             CommandGroup(replacing: .newItem) {
-                Button("切到清單") { store.view = .list; store.ensureCursor() }.keyboardShortcut("1", modifiers: .command)
-                Button("切到象限") { store.view = .grid; store.ensureCursor() }.keyboardShortcut("2", modifiers: .command)
-                Button("切到 Agent") { store.view = .agent }.keyboardShortcut("3", modifiers: .command)
-                Button("切到統計") { store.view = .dash }.keyboardShortcut("4", modifiers: .command)
-                Button("切到設定") { store.view = .settings }.keyboardShortcut("5", modifiers: .command)
+                ForEach(CommandMenuModel.items) { item in
+                    menuButton(item)
+                }
+                Divider()
                 Button("從 Reminders 匯入") { store.importFromReminders() }
             }
         }
@@ -64,5 +66,34 @@ struct txtnimalApp: App {
                 }
         }
         .environment(\.locale, store.appLanguage.locale)
+    }
+
+    /// 選單只負責派工,實際動作一律回到 ContentView.perform —— 兩條路徑共用同一份實作。
+    @ViewBuilder private func menuButton(_ item: CommandMenuModel.Item) -> some View {
+        let available = specAvailability(item.identity)
+        let button = Button(LocalizedStringKey(item.title)) { store.requestCommand(item.identity) }
+            .disabled(!available)
+        if let key = item.key, let ch = Self.keyEquivalent(for: key) {
+            button.keyboardShortcut(ch, modifiers: item.shift ? [.command, .shift] : .command)
+        } else {
+            button
+        }
+    }
+
+    /// catalog 的 character 是字串,SwiftUI 要 KeyEquivalent;⏎ 與空白要轉成具名鍵。
+    private static func keyEquivalent(for character: String) -> KeyEquivalent? {
+        switch character {
+        case "\r": return .return
+        case " ": return .space
+        default: return character.first.map { KeyEquivalent($0) }
+        }
+    }
+
+    /// 目前這一頁不適用的指令要 disable,不然選單會讓 ⌘E 在統計頁生效 —— 那正是
+    /// handle() 那邊剛補起來的漏洞,不要從選單再開一個。
+    private func specAvailability(_ identity: CommandIdentity) -> Bool {
+        guard let spec = CommandCatalog.builtIns.first(where: { $0.identity == identity })
+        else { return true }
+        return spec.availability.isAvailable(in: store.commandContext)
     }
 }
