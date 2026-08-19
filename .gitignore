@@ -16,7 +16,11 @@ plans/
 openspec/
 
 # Internal design/process docs (kept out of the public repo)
-docs/
+# `docs/*` 而不是 `docs/` —— 忽略整個目錄時 git 不會走進去,後面的例外規則會失效。
+# ShortcutMap.md 是唯一的例外:README 的快捷鍵表直接連它,不追蹤等於公開 repo 裡
+# 掛著一條永遠 404 的連結。
+docs/*
+!docs/ShortcutMap.md
 SPEC.md
 CONTEXT.md
 scripts/measure-app-size.sh

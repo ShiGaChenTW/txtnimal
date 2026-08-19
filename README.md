@@ -160,6 +160,7 @@ txtnimal tag ensure errands                     # 確保 @errands 存在
 | `⌘3` | Agent |
 | `⌘4` | 統計 |
 | `⌘5` / `⌘,` | 設定 |
+| `⌘6` | 垃圾桶 |
 | `↑` / `↓` / `j` / `k` | 移動游標 |
 | `n` | 清單尾端新增任務 |
 | `Enter` / `e` | 行內編輯 |
@@ -183,6 +184,12 @@ txtnimal tag ensure errands                     # 確保 @errands 存在
 | `Esc` | 關閉面板、清除搜尋／篩選；統計與設定頁回清單 |
 | `⌥Space`（預設） | 全域快速捕捉（設定可重綁） |
 | `⌥T`（預設） | 側邊面板滑出／收回（設定可重綁） |
+
+> **⚠️ 專注模式（`z`）會吞掉所有未修飾單鍵。**
+> 進入專注模式後只有 `z` 與 `Esc` 有作用（都是離開），其他單鍵（`n`、`d`、`e`、`j`／`k` …）
+> 一律沒有反應也沒有提示——畫面上唯一的線索是變暗的遮罩。這是刻意的：專注模式就是
+> 「畫面只剩一件事」。帶 `⌘` 的快捷鍵仍然有效，所以 `⌘1` 可以直接切頁離開。
+> 忘記自己還在專注模式時，這看起來會很像「快捷鍵壞了」，按 `z` 或 `Esc` 即可。
 
 完整對照（含定義位置）見 [docs/ShortcutMap.md](docs/ShortcutMap.md)。
 全域快速捕捉與側邊面板熱鍵可在設定頁自行重綁。
@@ -419,6 +426,7 @@ txtnimal tag ensure errands                     # guarantee @errands exists
 | `⌘3` | Agent |
 | `⌘4` | Statistics |
 | `⌘5` / `⌘,` | Settings |
+| `⌘6` | Trash |
 | `↑` / `↓` / `j` / `k` | Move the cursor |
 | `n` | Add a task at the end of the list |
 | `Enter` / `e` | Edit inline |
@@ -442,6 +450,13 @@ txtnimal tag ensure errands                     # guarantee @errands exists
 | `Esc` | Dismiss a panel or clear search / filter; from Statistics or Settings, return to the list |
 | `⌥Space` (default) | Global quick capture (rebind in Settings) |
 | `⌥T` (default) | Show or hide the sidebar panel (rebind in Settings) |
+
+> **⚠️ Focus mode (`z`) swallows every unmodified single key.**
+> Once you are in focus mode only `z` and `Esc` do anything — both leave it. Every other
+> single key (`n`, `d`, `e`, `j`/`k`, …) does nothing, with no feedback; the dimming overlay
+> is the only clue. That is deliberate: focus mode exists to leave one thing on screen.
+> `⌘` shortcuts still work, so `⌘1` switches away directly. If you have forgotten you are
+> in focus mode this reads exactly like "the shortcuts broke" — press `z` or `Esc`.
 
 See [docs/ShortcutMap.md](docs/ShortcutMap.md) for the full map (including definition sites).
 The global capture and sidebar shortcuts can be rebound in Settings.
