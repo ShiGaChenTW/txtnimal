@@ -123,6 +123,7 @@ struct ListView: View {
         return VStack(alignment: .leading, spacing: 0) {
             if selectedList != nil { listInfoBar }
             if let i = store.focusIndex { focusBar(store.lines[i]) }
+            if store.lines.isEmpty && !addVisible { emptyHintRow }
             section("Today", g.today, group: "today", color: store.accent)    // 當下=強調色(設定頁可換)
             overdueSection(g.overdue)                                          // 逾期=紅(獨佔)
             section("Upcoming", g.upcoming, group: "up", color: Theme.yellow) // 未來=黃(呼應 q2 Schedule)
@@ -133,6 +134,19 @@ struct ListView: View {
             section("Done", g.done, group: "done", color: Theme.green)        // 完成=綠(色彩契約)
         }
         .padding(.top, 4).padding(.bottom, 14)
+    }
+
+    /// 任務全空時佔住「第一列任務」的位置 —— 讓空畫面讀起來是「還沒有的那一列」,
+    /// 不是一塊獨立橫幅。幾何刻意抄 RowView:外層 horizontal 16 + density.rowPad,
+    /// 內層再 leading 16,讓提示字與任務列的 [ ] 方框對到同一欄。
+    /// addVisible 為真代表使用者已按下 n、輸入列正佔著同一個視覺槽位,兩者不能並存。
+    private var emptyHintRow: some View {
+        Text("按 n 新增任務")
+            .font(store.taskFont)
+            .foregroundColor(Theme.dim.opacity(0.55))
+            .padding(.leading, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).padding(.vertical, store.density.rowPad)
     }
 
     private var selectedList: String? {

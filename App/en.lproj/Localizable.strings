@@ -68,6 +68,7 @@
 "選擇 .txt 檔案" = "Choose a .txt file";
 "開啟" = "Open";
 "新增任務…  due:fri  +List  @Tag" = "New task…  due:fri  +List  @Tag";
+"按 n 新增任務" = "Press n to add a task";
 "新任務…  due:fri  +List  @Tag" = "New task…  due:fri  +List  @Tag";
 "搜尋標題 / +project / @context…" = "Search title / +List / @Tag…";
 "沒有符合的指令" = "No matching commands";
