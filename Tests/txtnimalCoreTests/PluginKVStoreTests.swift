@@ -140,13 +140,13 @@ final class PluginKVStoreTests: XCTestCase {
                                            taskIDs: ["task-one"], due: "2026-07-22",
                                            expectedRevision: "rev",
                                            documentRevision: snapshot.documentRevision)
-        let baseline = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-21")
+        let baseline = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-21").lines
 
         // A KV write for the same plugin, against the same snapshot's world.
         try store.applyWrite(ValidatedPluginKVWrite(pluginID: "app.a", key: "streak", value: "1"))
 
         // The task lines are exactly the task-mutation result — the KV write changed nothing here.
-        let afterKV = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-21")
+        let afterKV = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-21").lines
         XCTAssertEqual(afterKV.map(\.raw), baseline.map(\.raw))
         XCTAssertEqual(afterKV.map(\.due), ["2026-07-22", "2026-07-20"])
         // And the KV side reflects only the KV write.

@@ -20,6 +20,7 @@ final class CLIRunTests: XCTestCase {
     // MARK: - Harness
 
     private var tasksURL: URL { dir.appendingPathComponent("tasks.txt") }
+    private var trashURL: URL { dir.appendingPathComponent("trash.txt") }
 
     private func seed(_ text: String) throws {
         try text.write(to: tasksURL, atomically: true, encoding: .utf8)
@@ -227,6 +228,29 @@ final class CLIRunTests: XCTestCase {
         let before = try fileText()
         XCTAssertNotEqual(run(["delete", "aaaa"]).exitCode, 0)
         XCTAssertEqual(try fileText(), before)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: trashURL.path))
+    }
+
+    func testDeleteMovesTheTaskToTrashRatherThanDestroyingIt() throws {
+        // The CLI has no confirmation prompt; trash.txt is what makes that safe.
+        try seed("alpha id:aaaa1111 due:2026-09-01 +work\nbeta id:aaaa2222\n")
+        let out = run(["delete", "aaaa11"])
+        XCTAssertEqual(out.exitCode, 0, out.stderr)
+
+        let trashed = TasksDocument.parse(try String(contentsOf: trashURL, encoding: .utf8))
+            .filter { !$0.isBlank }
+        XCTAssertEqual(trashed.map(\.title), ["alpha"])
+        XCTAssertEqual(trashed[0].deletedDate, "2026-08-19")
+        // Metadata survives so the GUI can restore it whole.
+        XCTAssertEqual(trashed[0].due, "2026-09-01")
+        XCTAssertEqual(trashed[0].projects, ["work"])
+    }
+
+    func testDeleteJsonReportsTheTrashRouting() throws {
+        try seed("alpha id:aaaa1111\n")
+        let payload = try json(run(["delete", "aaaa1111", "--json"]))
+        XCTAssertEqual(payload["deleted"] as? Bool, true)
+        XCTAssertEqual(payload["trashed"] as? Bool, true)
     }
 
     // MARK: - ensure

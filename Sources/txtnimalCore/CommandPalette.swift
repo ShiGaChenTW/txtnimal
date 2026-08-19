@@ -2,7 +2,7 @@ import Foundation
 
 /// Pages the command palette can filter against. Mirrors App-layer views without importing SwiftUI.
 public enum CommandPalettePage: String, Equatable, Sendable, CaseIterable {
-    case list, grid, agent, dash, settings
+    case list, grid, agent, dash, settings, trash
 }
 
 /// Snapshot of UI state the palette (and tests) use to decide what is runnable.
@@ -91,6 +91,7 @@ public enum BuiltinCommand: String, Equatable, Sendable, CaseIterable {
     case viewAgent
     case viewDash
     case viewSettings
+    case viewTrash
     case cycleAppearance
     case openPalette
     case undo
@@ -203,6 +204,10 @@ public enum CommandCatalog {
              availability: .always),
         spec(.viewSettings, name: "設定", alias: "settings preferences",
              bindings: [.init("5", command: true), .init(",", command: true)],
+             availability: .always),
+        // ⌘6 — ⌘1–⌘5 are the five original views and stay exactly where they are.
+        spec(.viewTrash, name: "垃圾桶", alias: "trash bin deleted recycle restore",
+             bindings: [.init("6", command: true)],
              availability: .always),
         spec(.cycleAppearance, name: "深 / 淺主題", alias: "theme dark light appearance",
              bindings: [.init("t", command: true, shift: true)],

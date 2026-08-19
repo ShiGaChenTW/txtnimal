@@ -272,7 +272,7 @@ final class AgentQueryBrokerTests: XCTestCase {
         XCTAssertEqual(intent.taskIDs, ["task-1"])
 
         // The review item, once applied through the ONLY writer, produces the new due date.
-        let lines = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-24")
+        let lines = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-24").lines
         XCTAssertEqual(lines.first?.due, "2026-07-25")
 
         // AgentQueryResult exposes no task-writing surface — only schema + text.

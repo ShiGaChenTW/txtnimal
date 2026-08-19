@@ -13,9 +13,22 @@ public enum PluginIntentApplyError: LocalizedError, Equatable, Sendable {
     }
 }
 
+/// What a batch of intents did to the document: the surviving lines, plus the raw lines the
+/// batch removed. Deletions are reported rather than silently dropped so the host can land them
+/// in trash.txt — an agent-driven delete must be as recoverable as a GUI or CLI one.
+public struct PluginIntentOutcome: Equatable {
+    public let lines: [TaskLine]
+    public let deleted: [TaskLine]
+
+    public init(lines: [TaskLine], deleted: [TaskLine] = []) {
+        self.lines = lines
+        self.deleted = deleted
+    }
+}
+
 public enum PluginIntentApplier {
     public static func apply(_ intent: ValidatedPluginIntent, to snapshot: TaskDocumentSnapshot,
-                             todayYMD: String) throws -> [TaskLine] {
+                             todayYMD: String) throws -> PluginIntentOutcome {
         try applyBatch([intent], to: snapshot, todayYMD: todayYMD)
     }
 
@@ -24,7 +37,7 @@ public enum PluginIntentApplier {
     /// document. In-place edits (reschedule/complete/retitle) run against stable indices; deletions
     /// are collected and removed last (highest index first) so they don't shift those indices.
     public static func applyBatch(_ intents: [ValidatedPluginIntent], to snapshot: TaskDocumentSnapshot,
-                                  todayYMD: String) throws -> [TaskLine] {
+                                  todayYMD: String) throws -> PluginIntentOutcome {
         for intent in intents where !(intent.documentRevision == nil || intent.documentRevision == snapshot.documentRevision) {
             throw PluginIntentApplyError.staleDocument
         }
@@ -87,8 +100,11 @@ public enum PluginIntentApplier {
                 lines[i].setTitle(safe)
             }
         }
-        for i in deleteIndices.sorted(by: >) { lines.remove(at: i) }
-        return lines
+        // Highest index first so removals don't shift the ones still pending. Collected in the
+        // document's own order so the caller writes them to trash.txt top-to-bottom.
+        var deleted: [TaskLine] = []
+        for i in deleteIndices.sorted(by: >) { deleted.append(lines.remove(at: i)) }
+        return PluginIntentOutcome(lines: lines, deleted: deleted.reversed())
     }
 
     private static var fixedCalendar: Calendar {

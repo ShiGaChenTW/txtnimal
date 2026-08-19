@@ -138,15 +138,15 @@ public enum CLIRunner {
         let title = snapshot.lines[index].title
 
         // No confirmation prompt on purpose: a CLI is non-interactive, and the caller
-        // owns the decision. This is deliberately unlike the GUI's confirm-before-delete.
+        // owns the decision. This is deliberately unlike the GUI's confirm-before-delete —
+        // and it is trash.txt that makes it safe: the task is recoverable, not destroyed.
         let handle = TaskHandle(generation: snapshot.generation, index: index)
-        let updated = try TaskWorkspace.apply(.delete(handle), to: snapshot,
-                                              todayYMD: todayYMD(context), calendar: context.calendar)
-        _ = try store.save(lines: updated, expectedGeneration: snapshot.generation)
+        _ = try store.trashTask(handle, deletedYMD: todayYMD(context),
+                                expectedGeneration: snapshot.generation)
 
         return CLIOutput(stdout: global.json
-            ? encode(["id": id, "deleted": true, "title": title])
-            : "deleted \(id)  \(title)\n")
+            ? encode(["id": id, "deleted": true, "trashed": true, "title": title])
+            : "deleted \(id)  \(title)  (moved to trash.txt)\n")
     }
 
     /// Idempotent: guarantees at least one task carries the tag. Already satisfied is a
@@ -298,7 +298,7 @@ public enum CLIRunner {
       list ensure <name>       Guarantee at least one task carries +<name>  (idempotent)
       tag ensure <name>        Guarantee at least one task carries @<name>  (idempotent)
       done <id-prefix>         Mark a task complete (recurring tasks roll forward)
-      delete <id-prefix>       Remove a task — no confirmation, the caller owns this
+      delete <id-prefix>       Move a task to trash.txt — no confirmation, the caller owns this
 
     OPTIONS
       --due <date>             2026-10-10, today, tomorrow, 3d, 2w, mon…  (add only)

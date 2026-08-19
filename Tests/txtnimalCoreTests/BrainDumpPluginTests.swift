@@ -201,7 +201,7 @@ final class BrainDumpPluginTests: XCTestCase {
 
         let snapshot = TaskDocumentSnapshot(lines: [], scratch: "", archiveLines: [],
                                             generation: 1, tasksText: "")
-        let applied = try PluginIntentApplier.applyBatch(intents, to: snapshot, todayYMD: today)
+        let applied = try PluginIntentApplier.applyBatch(intents, to: snapshot, todayYMD: today).lines
 
         XCTAssertEqual(applied.count, 2)
         XCTAssertEqual(applied[0].title, "交季報")
