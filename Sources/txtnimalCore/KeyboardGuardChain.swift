@@ -83,6 +83,15 @@ public enum KeyboardDecision: Equatable, Sendable {
 }
 
 public enum KeyboardGuardChain {
+    /// 這兩個指令刻意不參與「cmd 先於文字守門」那一步。系統 Edit 選單本來就擁有
+    /// ⌘Z / ⇧⌘Z，聚焦中的文字欄位靠它拿到標準的「復原打字」；把 undo/redo 也提前，
+    /// 等於在文字欄位裡把 ⌘Z 從「復原我剛打的字」換成「復原上一個任務動作」。
+    /// 這和 `CommandMenuModel.keylessIdentities`（CommandPalette.swift L320）是同一個
+    /// 理由的兩半：那邊不讓選單搶鍵，這邊不讓 monitor 搶鍵。
+    public static let commandsDeferredToTextEntry: [CommandIdentity] = [
+        .builtin(.undo), .builtin(.redo),
+    ]
+
     public static func decide(_ stroke: KeyStroke, state: KeyboardGuardState,
                               commands: [CommandSpec] = CommandCatalog.builtIns) -> KeyboardDecision {
         // ContentView 自己先攔掉 ↑ ↓ ⏎ esc 四顆導覽鍵,其餘一律給面板的輸入框 ——
@@ -108,24 +117,45 @@ public enum KeyboardGuardChain {
             return .act(.leaveToList)
         }
 
+        // 命中 catalog 的 cmd 綁定先算出來，下面兩個地方共用。
+        let commandSpec = stroke.command
+            ? CommandKeyMatcher.match(character: stroke.characters, command: true,
+                                      shift: stroke.shift, in: commands)
+            : nil
+
+        // cmd 分支排在文字守門之前。理由是側邊面板模式（⌥T）：面板是 nonactivating panel，
+        // 拿到鍵盤時 app 不是最前景，選單列屬於別的 app，所以「放行給選單」那條後備路徑
+        // 完全不會觸發 —— 在那些狀態下放行等於讓 ⌘K / ⌘E / ⌘6 沒有任何消費者。
+        // 代價是聚焦中的文字欄位不再吃得到這些鍵；這是知情後選的取捨。
+        // 唯一的例外是 ⌘Z / ⇧⌘Z，見 `commandsDeferredToTextEntry`。
+        if let spec = commandSpec, !commandsDeferredToTextEntry.contains(spec.identity) {
+            guard spec.availability.isAvailable(in: state.commandContext) else { return .passThrough }
+            return .act(.command(spec.identity))
+        }
+
         // NSTextField 的 field editor 也是 NSTextView，且切頁後可能短暫保留；只在確實
         // 顯示文字輸入介面時放行，避免它吞掉清單的 n/e/x 等單鍵命令。
         //
         // 搜尋看的是「欄位是不是真的有焦點」，不是「搜尋列在不在」：⏎ 之後篩選與搜尋列
         // 都還在（`store.searchActive` 仍為 true，這是刻意的），但鍵盤流已經交還清單，
-        // 此時單鍵與 cmd 快捷鍵必須全部恢復作用。看 `searchActive` 會讓按過 ⏎ 的使用者
+        // 此時單鍵必須全部恢復作用。看 `searchActive` 會讓按過 ⏎ 的使用者
         // 卡在一個所有快捷鍵都失效、連 esc 都救不回來的狀態。
+        //
+        // 走到這裡的只剩下：非 cmd 的單鍵，以及刻意留給文字欄位的 ⌘Z / ⇧⌘Z。
         if state.inlineAddActive || state.page == .agent || state.page == .settings || state.searchFocused {
             return .passThrough
         }
 
-        // cmd 分支排在唯讀頁守門之前,所以必須自己檢查可用性,否則 ⌘E 會在統計/垃圾桶頁
-        // 作用到清單裡那個看不見的游標。`.always` 的 ⌘1–⌘6 不受影響。
+        // 剛剛被放行的 ⌘Z / ⇧⌘Z 在這裡把 cmd 分支走完。這一步仍排在唯讀頁守門之前，
+        // 所以必須自己檢查可用性，否則指令會作用到清單裡那個看不見的游標。
+        //
+        // 這裡刻意用 `if stroke.command` 而不是 `if let spec = commandSpec`：任何帶 ⌘ 的
+        // 按鍵都必須在這裡結束，沒命中 catalog 的（⌘A / ⌘C / ⌘V …）要放行給系統。
+        // 只看 commandSpec 會讓它們掉進下面的專注模式與唯讀頁守門被 `.swallow` 吃掉，
+        // 等於在統計／垃圾桶頁和專注模式下弄壞複製貼上 —— 那是這次重排不該有的副作用。
         if stroke.command {
-            guard let spec = CommandKeyMatcher.match(character: stroke.characters, command: true,
-                                                     shift: stroke.shift, in: commands)
-            else { return .passThrough }
-            guard spec.availability.isAvailable(in: state.commandContext) else { return .passThrough }
+            guard let spec = commandSpec,
+                  spec.availability.isAvailable(in: state.commandContext) else { return .passThrough }
             return .act(.command(spec.identity))
         }
 

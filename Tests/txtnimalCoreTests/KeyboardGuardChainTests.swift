@@ -47,8 +47,6 @@ final class KeyboardGuardChainTests: XCTestCase {
             ("editPopupOpen", { $0.editPopupOpen = true }),
             ("textEntryOverlayOpen", { $0.textEntryOverlayOpen = true }),
             ("inlineEditActive", { $0.inlineEditActive = true }),
-            ("inlineAddActive", { $0.inlineAddActive = true }),
-            ("searchFocused", { $0.searchFocused = true }),
         ]
         for spec in CommandCatalog.builtIns {
             for binding in spec.bindings {
@@ -61,6 +59,118 @@ final class KeyboardGuardChainTests: XCTestCase {
                         "\(spec.id) / \(binding.display) blocked by \(flag)"
                     )
                 }
+            }
+        }
+    }
+
+    func testCommandShortcutsSurviveInlineAddAndSearchFocusExceptUndoRedo() {
+        let flags: [(String, (inout KeyboardGuardState) -> Void)] = [
+            ("inlineAddActive", { $0.inlineAddActive = true }),
+            ("searchFocused", { $0.searchFocused = true }),
+        ]
+        for spec in CommandCatalog.builtIns {
+            for binding in spec.bindings where binding.command {
+                for (flag, apply) in flags {
+                    var state = enablingState(for: spec)
+                    apply(&state)
+                    let expected: KeyboardDecision =
+                        KeyboardGuardChain.commandsDeferredToTextEntry.contains(spec.identity)
+                        ? .passThrough
+                        : .act(.command(spec.identity))
+                    XCTAssertEqual(
+                        decide(stroke(from: binding), state),
+                        expected,
+                        "\(spec.id) / \(binding.display) under \(flag)"
+                    )
+                }
+            }
+        }
+    }
+
+    func testSingleKeyBindingsStillYieldToInlineAddAndSearchFocus() {
+        let flags: [(String, (inout KeyboardGuardState) -> Void)] = [
+            ("inlineAddActive", { $0.inlineAddActive = true }),
+            ("searchFocused", { $0.searchFocused = true }),
+        ]
+        for spec in CommandCatalog.builtIns {
+            for binding in spec.bindings where !binding.command {
+                for (flag, apply) in flags {
+                    var state = enablingState(for: spec)
+                    apply(&state)
+                    XCTAssertEqual(
+                        decide(stroke(from: binding), state),
+                        .passThrough,
+                        "\(spec.id) / \(binding.display) still yields to \(flag)"
+                    )
+                }
+            }
+        }
+    }
+
+    /// 刻意的例外：把事件放行，AppKit 的 responder chain / Edit 選單才能對焦點中的
+    /// 文字做「復原打字」。提前攔截 ⌘Z 會把「復原我剛打的字」換成「復原上一個任務動作」。
+    func testUndoAndRedoStillPassToTheFocusedTextFieldSoSystemUndoKeepsWorking() {
+        let strokes = [
+            KeyStroke(characters: "z", command: true),
+            KeyStroke(characters: "z", command: true, shift: true),
+        ]
+        let states: [(String, KeyboardGuardState)] = [
+            ("inlineAddActive", KeyboardGuardState(inlineAddActive: true)),
+            ("searchFocused", KeyboardGuardState(searchFocused: true)),
+            ("page.agent", KeyboardGuardState(page: .agent)),
+            ("page.settings", KeyboardGuardState(page: .settings)),
+            ("textEntryOverlayOpen", KeyboardGuardState(textEntryOverlayOpen: true)),
+            ("inlineEditActive", KeyboardGuardState(inlineEditActive: true)),
+        ]
+        for (label, state) in states {
+            for stroke in strokes {
+                XCTAssertEqual(
+                    decide(stroke, state),
+                    .passThrough,
+                    "\(label) / \(stroke.shift ? "⇧⌘Z" : "⌘Z")"
+                )
+            }
+        }
+    }
+
+    func testUndoStillFiresAsATaskCommandOutsideTextEntry() {
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "z", command: true), KeyboardGuardState()),
+            .act(.command(.builtin(.undo)))
+        )
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "z", command: true), KeyboardGuardState(focusMode: true)),
+            .act(.command(.builtin(.undo)))
+        )
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "z", command: true), KeyboardGuardState(page: .dash)),
+            .act(.command(.builtin(.undo)))
+        )
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "z", command: true, shift: true), KeyboardGuardState()),
+            .act(.command(.builtin(.redo)))
+        )
+    }
+
+    /// 重排守門鏈時差點弄丟的性質：帶 ⌘ 但沒命中 catalog 的按鍵（⌘A / ⌘C / ⌘V …）
+    /// 一律放行給系統。它們必須在 cmd 分支就結束，不能掉進專注模式或唯讀頁守門 ——
+    /// 掉進去就會被 `.swallow` 吃掉，統計頁與專注模式下的複製貼上就壞了。
+    func testUnmatchedCommandKeysAlwaysPassThroughToTheSystem() {
+        let states: [(String, KeyboardGuardState)] = [
+            ("list", KeyboardGuardState()),
+            ("focusMode", KeyboardGuardState(focusMode: true)),
+            ("page.dash", KeyboardGuardState(page: .dash)),
+            ("page.trash", KeyboardGuardState(page: .trash)),
+            ("page.settings", KeyboardGuardState(page: .settings)),
+            ("searchFocused", KeyboardGuardState(searchFocused: true)),
+        ]
+        for ch in ["a", "c", "v", "w", "q"] {
+            for (label, state) in states {
+                XCTAssertEqual(
+                    decide(KeyStroke(characters: ch, command: true), state),
+                    .passThrough,
+                    "\(label) / ⌘\(ch.uppercased())"
+                )
             }
         }
     }
@@ -99,13 +209,14 @@ final class KeyboardGuardChainTests: XCTestCase {
         }
     }
 
-    /// 這是刻意的:agent / 設定兩頁把整副鍵盤交給欄位,所以 catalog 生出來的選單才是消費者,
-    /// `CommandMenuModel` 是保證選單入口存在的那一端。
-    func testViewSwitchShortcutsPassToTheMenuOnAgentAndSettings() {
+    /// 側邊面板模式（⌥T）下選單後備路徑觸發不到：面板是 nonactivating panel，
+    /// 拿到鍵盤時 app 不是最前景。所以 monitor 現在直接處理 cmd 快捷鍵，
+    /// 唯一例外是 ⌘Z / ⇧⌘Z（留給系統 Edit 選單做「復原打字」）。
+    func testViewSwitchShortcutsFireDirectlyOnAgentAndSettings() {
         for page in [CommandPalettePage.agent, .settings] {
             XCTAssertEqual(
                 decide(KeyStroke(characters: "1", command: true), KeyboardGuardState(page: page)),
-                .passThrough,
+                .act(.command(.builtin(.viewList))),
                 "\(page) / ⌘1"
             )
         }
