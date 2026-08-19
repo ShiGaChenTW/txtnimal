@@ -128,7 +128,6 @@ struct ListView: View {
             section("Upcoming", g.upcoming, group: "up", color: Theme.yellow) // 未來=黃(呼應 q2 Schedule)
             // No date 區塊 + 尾端新增列;帶 due: 的新任務由重新分組自動跳到對應區塊
             if !g.noDate.isEmpty { sectionHeader("No date", g.noDate.count, color: Theme.dim, neutral: true) }
-            else { sectionHeader("No date", 0, color: Theme.dim, neutral: true) }
             ForEach(g.noDate, id: \.self) { rowOrEdit($0, "nd") }
             if addVisible { addRow }   // 預設隱藏,按 n 才出現
             section("Done", g.done, group: "done", color: Theme.green)        // 完成=綠(色彩契約)

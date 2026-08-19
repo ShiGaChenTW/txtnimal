@@ -2,7 +2,7 @@ import SwiftUI
 import ServiceManagement
 import txtnimalCore
 
-enum AppView { case list, grid, agent, dash, settings }
+enum AppView { case list, grid, agent, dash, settings, trash }
 
 struct AgentTaskDisclosure: Identifiable {
     let id: String
@@ -39,6 +39,7 @@ enum ImportReviewState {
 enum ExternalEditConflict: Equatable {
     case save
     case archive(TaskHandle)
+    case trash(TaskHandle)
 }
 
 /// 視窗承載模式：一般視窗 或 常駐螢幕邊緣的滑出面板。兩者共用同一個 TaskStore。
@@ -248,6 +249,17 @@ final class TaskStore: ObservableObject {
     }
     @Published private(set) var lines: [TaskLine] = []
     @Published private(set) var archiveLines: [TaskLine] = []
+    @Published private(set) var trashLines: [TaskLine] = []
+    /// 垃圾桶保留天數(7/15/30)。改小要立刻生效 —— 不能等到下一次換日才清。
+    @Published var trashRetentionDays: Int = {
+        Trash.normalizedRetentionDays(
+            (UserDefaults.standard.object(forKey: "trashRetentionDays") as? Int) ?? Trash.defaultRetentionDays)
+    }() {
+        didSet {
+            UserDefaults.standard.set(trashRetentionDays, forKey: "trashRetentionDays")
+            purgeExpiredTrash()
+        }
+    }
     @Published var lastError: String?
     @Published var externalEditConflict: ExternalEditConflict?
     @Published private(set) var reloadNotice: String?
@@ -481,6 +493,7 @@ final class TaskStore: ObservableObject {
     private(set) var fileURL: URL
     private(set) var scratchURL: URL
     private(set) var archiveURL: URL
+    private(set) var trashURL: URL
     private var documentStore: FileSystemTaskDocumentStore
     private var pluginPackageStore: PluginPackageStore?
     private var kvStore: PluginKVStore?
@@ -526,7 +539,7 @@ final class TaskStore: ObservableObject {
             let fm = FileManager.default
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
             if !fm.fileExists(atPath: dir.appendingPathComponent("tasks.txt").path) {
-                for name in ["tasks.txt", "scratch.txt", "archive.txt"] {
+                for name in ["tasks.txt", "scratch.txt", "archive.txt", "trash.txt"] {
                     let src = current.appendingPathComponent(name)
                     if fm.fileExists(atPath: src.path) {
                         try fm.copyItem(at: src, to: dir.appendingPathComponent(name))
@@ -536,7 +549,8 @@ final class TaskStore: ObservableObject {
             documentStore = try FileSystemTaskDocumentStore(directory: dir)
             UserDefaults.standard.set(dir.path, forKey: "dataDir")
             UserDefaults.standard.set(documentStore.tasksURL.path, forKey: "activeTaskFile")
-            fileURL = documentStore.tasksURL; scratchURL = documentStore.scratchURL; archiveURL = documentStore.archiveURL
+            fileURL = documentStore.tasksURL; scratchURL = documentStore.scratchURL
+            archiveURL = documentStore.archiveURL; trashURL = documentStore.trashURL
             kvStore = PluginKVStore(fileURL: dir.appendingPathComponent(".plugins", isDirectory: true).appendingPathComponent("kv.json"))
         } catch { report(error); return }
         bootstrapIfMissing()
@@ -552,6 +566,7 @@ final class TaskStore: ObservableObject {
         fileURL = selectedFile
         scratchURL = dir.appendingPathComponent("scratch.txt")
         archiveURL = dir.appendingPathComponent("archive.txt")
+        trashURL = dir.appendingPathComponent("trash.txt")
         do { documentStore = try FileSystemTaskDocumentStore(directory: dir, tasksFilename: selectedFile.lastPathComponent) }
         catch { fatalError("Cannot initialize task document store: \(error)") }
         pluginPackageStore = try? PluginPackageStore(directory: dir.appendingPathComponent(".plugins", isDirectory: true))
@@ -562,11 +577,13 @@ final class TaskStore: ObservableObject {
         bootstrapIfMissing()
         load()
         archiveOldDone()
+        purgeExpiredTrash()
         cursor = listOrder().first
         startWatching()
         // 換日(含跨夜掛著)即歸檔
         NotificationCenter.default.addObserver(forName: .NSCalendarDayChanged, object: nil, queue: .main) { [weak self] _ in
             self?.archiveOldDone()
+            self?.purgeExpiredTrash()
         }
     }
 
@@ -641,9 +658,10 @@ final class TaskStore: ObservableObject {
             do {
                 let intent = try await coordinator.execute(manifest: manifest, request: request,
                                                            taskRevisions: taskRevisions, documentRevision: snapshot.documentRevision)
-                let changed: [TaskLine]
+                let today = RelativeDate.todayYMD()
+                let changed: PluginIntentOutcome
                 do {
-                    changed = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: RelativeDate.todayYMD())
+                    changed = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: today)
                 } catch {
                     await coordinator.recordPersistFailed(error)
                     await self.commitLatestExecutionRecord(from: coordinator)
@@ -652,7 +670,10 @@ final class TaskStore: ObservableObject {
                 }
                 do {
                     try await MainActor.run {
-                        self.apply(try self.documentStore.save(lines: changed, expectedGeneration: self.generation))
+                        // 外掛刪掉的任務同樣落 trash.txt —— 與 GUI / CLI 同一條救援路徑。
+                        self.apply(try self.documentStore.save(lines: changed.lines, trashing: changed.deleted,
+                                                               deletedYMD: today,
+                                                               expectedGeneration: self.generation))
                     }
                     await coordinator.recordPersistSucceeded()
                 } catch {
@@ -787,11 +808,15 @@ final class TaskStore: ObservableObject {
             lines: self.lines,
             scratch: scratch,
             archiveLines: archiveLines,
+            trashLines: trashLines,
             generation: generation,
             tasksText: original.tasksText
         )
-        let lines = try PluginIntentApplier.applyBatch(intents, to: snapshot, todayYMD: RelativeDate.todayYMD())
-        apply(try documentStore.save(lines: lines, expectedGeneration: expectedGeneration))
+        let today = RelativeDate.todayYMD()
+        let outcome = try PluginIntentApplier.applyBatch(intents, to: snapshot, todayYMD: today)
+        // Agent-chat 的 delete_tasks 也走垃圾桶 —— AI 誤刪是最需要救援的情境。
+        apply(try documentStore.save(lines: outcome.lines, trashing: outcome.deleted, deletedYMD: today,
+                                     expectedGeneration: expectedGeneration))
         return intents.count
     }
 
@@ -921,12 +946,14 @@ final class TaskStore: ObservableObject {
                 lines: self.lines,
                 scratch: scratch,
                 archiveLines: archiveLines,
+                trashLines: trashLines,
                 generation: generation,
                 tasksText: original.tasksText
             )
-            let lines = try PluginIntentApplier.applyBatch(items.map(\.intent), to: snapshot,
-                                                           todayYMD: RelativeDate.todayYMD())
-            self.apply(try documentStore.save(lines: lines, expectedGeneration: generation))
+            let today = RelativeDate.todayYMD()
+            let outcome = try PluginIntentApplier.applyBatch(items.map(\.intent), to: snapshot, todayYMD: today)
+            self.apply(try documentStore.save(lines: outcome.lines, trashing: outcome.deleted, deletedYMD: today,
+                                              expectedGeneration: generation))
             refreshPluginExecutionRecords()
             agentState = .idle
         } catch {
@@ -956,16 +983,18 @@ final class TaskStore: ObservableObject {
     private struct PluginRequestEnvelope: Codable { let source: String; let inputJSON: String }
 
     private func documentStoreSnapshot() -> TaskDocumentSnapshot {
-        TaskDocumentSnapshot(lines: lines, scratch: scratch, archiveLines: archiveLines, generation: generation,
-                             tasksText: TasksDocument.serialize(lines))
+        TaskDocumentSnapshot(lines: lines, scratch: scratch, archiveLines: archiveLines, trashLines: trashLines,
+                             generation: generation, tasksText: TasksDocument.serialize(lines))
     }
 
     /// Page plugin 按鈕的 tasks.* intent 統一套用路徑(與 reschedule-tomorrow / agent review 同一條):
     /// PluginIntentApplier 與 agent-chat 套用都以 documentRevision 判定 stale；save 用 revision 對上的當前 generation。
     func applyPluginPageIntent(_ intent: ValidatedPluginIntent) {
         do {
-            let changed = try PluginIntentApplier.apply(intent, to: documentStoreSnapshot(), todayYMD: RelativeDate.todayYMD())
-            apply(try documentStore.save(lines: changed, expectedGeneration: generation))
+            let today = RelativeDate.todayYMD()
+            let changed = try PluginIntentApplier.apply(intent, to: documentStoreSnapshot(), todayYMD: today)
+            apply(try documentStore.save(lines: changed.lines, trashing: changed.deleted, deletedYMD: today,
+                                         expectedGeneration: generation))
             ensureCursor()
         } catch { report(error) }
     }
@@ -1272,6 +1301,7 @@ final class TaskStore: ObservableObject {
         // the same hazard external edits get cleared for. Same rule, one choke point.
         if !applyingViaSave && snapshot.tasksText != committedTasksText { clearUndoHistory() }
         lines = snapshot.lines; scratch = snapshot.scratch; archiveLines = snapshot.archiveLines
+        trashLines = snapshot.trashLines
         generation = snapshot.generation; documentRevision = snapshot.documentRevision; lastError = nil
         committedTasksText = snapshot.tasksText
     }
@@ -1333,6 +1363,17 @@ final class TaskStore: ObservableObject {
                                                      expectedGeneration: generation))
                 hasUnsavedChanges = false
                 externalEditConflict = nil
+            case .trash(let oldHandle):
+                // 與 .archive 同一套「用原始 raw 在新版檔案裡重新定位」,只是落點是 trash.txt。
+                guard localLines.indices.contains(oldHandle.index) else { throw TaskWorkspaceError.missingTask }
+                let trashedRaw = localLines[oldHandle.index].raw
+                guard let index = lines.indices.first(where: { lines[$0].raw == trashedRaw }) else {
+                    throw TaskWorkspaceError.missingTask
+                }
+                apply(try documentStore.trashTask(TaskHandle(generation: generation, index: index),
+                                                  deletedYMD: todayYMD, expectedGeneration: generation))
+                hasUnsavedChanges = false
+                externalEditConflict = nil
             }
             clearUndoHistory()
             editingIndex = nil
@@ -1369,10 +1410,12 @@ final class TaskStore: ObservableObject {
             let next = try FileSystemTaskDocumentStore(
                 directory: target.deletingLastPathComponent(), tasksFilename: target.lastPathComponent)
             documentStore = next
-            fileURL = next.tasksURL; scratchURL = next.scratchURL; archiveURL = next.archiveURL
+            fileURL = next.tasksURL; scratchURL = next.scratchURL
+            archiveURL = next.archiveURL; trashURL = next.trashURL
             UserDefaults.standard.set(fileURL.path, forKey: "activeTaskFile")
             UserDefaults.standard.set(fileURL.deletingLastPathComponent().path, forKey: "dataDir")
-            load(); archiveOldDone(); cursor = listOrder().first; ensureCursor(); startWatching()
+            load(); archiveOldDone(); purgeExpiredTrash()
+            cursor = listOrder().first; ensureCursor(); startWatching()
         } catch { report(error); startWatching() }
     }
 
@@ -1551,12 +1594,58 @@ final class TaskStore: ObservableObject {
     func setTag(_ tag: String, enabled: Bool, using handle: TaskHandle) {
         apply(.setTag(handle, tag, enabled))
     }
+    /// 刪除 = 移到垃圾桶。走的是 `archiveTask` 那條 bypass 路徑(直接進 documentStore,不經 `save()`),
+    /// 所以 ⌘Z 不再撤銷刪除 —— 取而代之的救援入口是垃圾桶的「還原」。
     func deleteTask(using handle: TaskHandle) {
         let nextCursor = cursorAfterRemoving(handle.index)
         do {
-            lines = try TaskWorkspace.apply(.delete(handle), to: currentSnapshot, todayYMD: todayYMD)
-            save(); editingIndex = nil; cursor = nextCursor; ensureCursor()
+            apply(try documentStore.trashTask(handle, deletedYMD: todayYMD, expectedGeneration: generation))
+            editingIndex = nil; cursor = nextCursor; ensureCursor()
+            hasUnsavedChanges = false
+            externalEditConflict = nil
+        } catch { handleWriteError(error, conflict: .trash(handle)) }
+    }
+
+    // MARK: 垃圾桶
+
+    /// 垃圾桶列表(略過空行),依檔案順序。
+    var trashTasks: [TaskLine] { trashLines.filter { !$0.isBlank } }
+
+    /// 這一筆還有幾天被永久刪除。無法判讀 `deleted:` 時回 nil —— 寧可不顯示,也不顯示錯的倒數。
+    func trashDaysRemaining(_ line: TaskLine) -> Int? {
+        Trash.daysRemaining(line, todayYMD: todayYMD, retentionDays: trashRetentionDays)
+    }
+
+    /// UI 的索引是 `trashTasks` 的(已略過空行),檔案的索引才是 store 要的。
+    private func trashFileIndex(forVisible index: Int) -> Int? {
+        let realIndices = trashLines.indices.filter { !trashLines[$0].isBlank }
+        return realIndices.indices.contains(index) ? realIndices[index] : nil
+    }
+
+    func restoreTask(at visibleIndex: Int) {
+        guard let index = trashFileIndex(forVisible: visibleIndex) else { return }
+        do {
+            apply(try documentStore.restoreFromTrash(at: index, expectedGeneration: generation))
+            ensureCursor()
         } catch { report(error) }
+    }
+
+    func permanentlyDeleteTask(at visibleIndex: Int) {
+        guard let index = trashFileIndex(forVisible: visibleIndex) else { return }
+        do { apply(try documentStore.deleteFromTrash(at: index, expectedGeneration: generation)) }
+        catch { report(error) }
+    }
+
+    func emptyTrash() {
+        do { apply(try documentStore.emptyTrash(expectedGeneration: generation)) }
+        catch { report(error) }
+    }
+
+    /// 每日清掃 + 保留天數變更時立刻重跑。沒有過期項目時 store 端整個 no-op,不寫檔。
+    func purgeExpiredTrash() {
+        guard let cutoff = Trash.cutoffYMD(todayYMD: todayYMD, retentionDays: trashRetentionDays) else { return }
+        do { apply(try documentStore.purgeExpiredTrash(before: cutoff, expectedGeneration: generation)) }
+        catch { report(error) }
     }
     func archiveTask(using handle: TaskHandle) {
         let nextCursor = cursorAfterRemoving(handle.index)
@@ -1612,7 +1701,8 @@ final class TaskStore: ObservableObject {
         catch { report(error) }
     }
     private var currentSnapshot: TaskDocumentSnapshot {
-        TaskDocumentSnapshot(lines: lines, scratch: scratch, archiveLines: archiveLines, generation: generation)
+        TaskDocumentSnapshot(lines: lines, scratch: scratch, archiveLines: archiveLines, trashLines: trashLines,
+                             generation: generation)
     }
     func rescheduleOverdue() {
         do { lines = try TaskWorkspace.apply(.rescheduleOverdue, to: currentSnapshot, todayYMD: todayYMD); save(); ensureCursor() }

@@ -7,7 +7,7 @@ final class PluginIntentApplierTests: XCTestCase {
         let snapshot = TaskDocumentSnapshot(lines: lines)
         let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .rescheduleTask,
                                            taskIDs: ["task-one"], due: "2026-07-22", expectedRevision: "rev", documentRevision: snapshot.documentRevision)
-        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-21")
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-21").lines
         XCTAssertEqual(result.map(\.due), ["2026-07-22", "2026-07-20"])
     }
 
@@ -16,7 +16,7 @@ final class PluginIntentApplierTests: XCTestCase {
         let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("澆水 due:2026-07-20 rec:3d id:water-1"))
         let intent = ValidatedPluginIntent(pluginID: "t", command: .completeTask, taskIDs: ["water-1"],
                                            due: nil, expectedRevision: nil, documentRevision: snapshot.documentRevision)
-        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-24")
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-24").lines
         XCTAssertEqual(result.count, 2)                       // completed + one successor
         XCTAssertTrue(result[0].isDone)
         let successor = result[1]
@@ -30,7 +30,7 @@ final class PluginIntentApplierTests: XCTestCase {
         let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("一次性 due:2026-07-20 id:once-1"))
         let intent = ValidatedPluginIntent(pluginID: "t", command: .completeTask, taskIDs: ["once-1"],
                                            due: nil, expectedRevision: nil, documentRevision: snapshot.documentRevision)
-        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-24")
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-24").lines
         XCTAssertEqual(result.count, 1)                       // no recurrence
         XCTAssertTrue(result[0].isDone)
     }
@@ -45,7 +45,7 @@ final class PluginIntentApplierTests: XCTestCase {
                                            taskIDs: [legacyID], due: "2026-07-25", expectedRevision: "rev",
                                            documentRevision: snapshot.documentRevision)
 
-        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-21")
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-21").lines
 
         XCTAssertEqual(result[0].due, "2026-07-25")
         XCTAssertNil(result[0].stableID)                   // no id: token stamped into the file
@@ -63,7 +63,7 @@ final class PluginIntentApplierTests: XCTestCase {
             ValidatedPluginIntent(pluginID: "t", command: .rescheduleTask, taskIDs: [built.tasks[1].id],
                                   title: nil, due: "2026-07-26", expectedRevision: "r", documentRevision: snapshot.documentRevision),
         ]
-        let result = try PluginIntentApplier.applyBatch(intents, to: snapshot, todayYMD: "2026-07-20")
+        let result = try PluginIntentApplier.applyBatch(intents, to: snapshot, todayYMD: "2026-07-20").lines
         XCTAssertEqual(result.map { $0.due }, ["2026-07-25", "2026-07-26"])
     }
 
@@ -72,7 +72,7 @@ final class PluginIntentApplierTests: XCTestCase {
         let intent = ValidatedPluginIntent(pluginID: "t", command: .retitleTask, taskIDs: ["task-one"],
                                            title: "x Pwned due:2099-12-31 id:other\nsecond line", due: nil,
                                            expectedRevision: nil, documentRevision: snapshot.documentRevision)
-        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23").lines
         XCTAssertEqual(result.count, 1)                 // no extra line injected via newline
         XCTAssertFalse(result[0].isDone)                // leading "x" neutralized
         XCTAssertEqual(result[0].due, "2026-07-20")     // due: token not injected
@@ -85,7 +85,7 @@ final class PluginIntentApplierTests: XCTestCase {
         let intent = ValidatedPluginIntent(pluginID: "t", command: .retitleTask, taskIDs: ["task-one"],
                                            title: "x\tPwned\tdue:2099-12-31\tnote:\"hacked\"", due: nil,
                                            expectedRevision: nil, documentRevision: snapshot.documentRevision)
-        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23").lines
         XCTAssertEqual(result.count, 1)
         XCTAssertFalse(result[0].isDone)                  // tab-separated "x" neutralized
         XCTAssertNil(result[0].due)                       // tab-separated due: not injected
@@ -109,7 +109,7 @@ final class PluginIntentApplierTests: XCTestCase {
                                            taskIDs: [], title: "Write launch notes", due: "2026-07-24",
                                            expectedRevision: nil, documentRevision: snapshot.documentRevision)
 
-        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23").lines
 
         XCTAssertEqual(result.count, snapshot.lines.count + 1)
         XCTAssertEqual(result.first, snapshot.lines.first)
@@ -123,7 +123,7 @@ final class PluginIntentApplierTests: XCTestCase {
         let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .completeTask,
                                            taskIDs: ["task-one"], title: nil, due: nil,
                                            expectedRevision: nil, documentRevision: snapshot.documentRevision)
-        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23").lines
         XCTAssertTrue(result[0].isDone)
         XCTAssertFalse(result[1].isDone)
     }
@@ -133,8 +133,34 @@ final class PluginIntentApplierTests: XCTestCase {
         let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .deleteTask,
                                            taskIDs: ["task-one", "task-three"], title: nil, due: nil,
                                            expectedRevision: nil, documentRevision: snapshot.documentRevision)
-        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23").lines
         XCTAssertEqual(result.map(\.title), ["Two"])
+    }
+
+    func testDeleteTaskSurfacesRemovedLinesInDocumentOrder() throws {
+        // The host lands these in trash.txt — a plugin/agent delete must be as recoverable as a
+        // GUI or CLI one, so the raw lines have to come back out of the applier, not be dropped.
+        let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse(
+            "One id:task-one +work\nTwo id:task-two\nThree id:task-three due:2026-08-01"))
+        let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .deleteTask,
+                                           taskIDs: ["task-three", "task-one"], title: nil, due: nil,
+                                           expectedRevision: nil, documentRevision: snapshot.documentRevision)
+
+        let outcome = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+
+        XCTAssertEqual(outcome.lines.map(\.title), ["Two"])
+        // Document order, not intent order, so trash.txt reads top-to-bottom like the file did.
+        XCTAssertEqual(outcome.deleted.map(\.title), ["One", "Three"])
+        // Raw lines come back verbatim — every token survives for the restore round trip.
+        XCTAssertEqual(outcome.deleted.map(\.raw), ["One id:task-one +work", "Three id:task-three due:2026-08-01"])
+    }
+
+    func testNonDeleteIntentsReportNothingDeleted() throws {
+        let snapshot = TaskDocumentSnapshot(lines: TasksDocument.parse("One id:task-one due:2026-07-20"))
+        let intent = ValidatedPluginIntent(pluginID: "t", command: .rescheduleTask, taskIDs: ["task-one"],
+                                           due: "2026-07-22", expectedRevision: nil,
+                                           documentRevision: snapshot.documentRevision)
+        XCTAssertTrue(try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-21").deleted.isEmpty)
     }
 
     func testRescheduleDoneTaskIsRejected() throws {
@@ -164,7 +190,7 @@ final class PluginIntentApplierTests: XCTestCase {
         let intent = ValidatedPluginIntent(pluginID: "app.txtnimal.test", command: .retitleTask,
                                            taskIDs: ["task-one"], title: "New title", due: nil,
                                            expectedRevision: nil, documentRevision: snapshot.documentRevision)
-        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23").lines
         XCTAssertEqual(result[0].title, "New title")
         XCTAssertEqual(result[0].due, "2026-07-20")
         XCTAssertEqual(result[0].stableID, "task-one")
@@ -177,7 +203,7 @@ final class PluginIntentApplierTests: XCTestCase {
                                            due: nil, expectedRevision: nil,
                                            documentRevision: snapshot.documentRevision)
 
-        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23")
+        let result = try PluginIntentApplier.apply(intent, to: snapshot, todayYMD: "2026-07-23").lines
 
         XCTAssertEqual(result.count, 1)
         XCTAssertNil(result[0].due)

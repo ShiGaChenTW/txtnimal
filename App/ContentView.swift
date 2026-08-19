@@ -137,7 +137,7 @@ struct ContentView: View {
                 Button("封存任務") { store.archiveTask(using: handle); pendingTaskAction = nil }
             }
             if case .delete(let handle, _) = pendingTaskAction {
-                Button("永久刪除", role: .destructive) { store.deleteTask(using: handle); pendingTaskAction = nil }
+                Button("刪除", role: .destructive) { store.deleteTask(using: handle); pendingTaskAction = nil }
             }
             Button("取消", role: .cancel) { pendingTaskAction = nil }
         } message: {
@@ -145,7 +145,7 @@ struct ContentView: View {
             case .archive(_, let title):
                 Text("「\(title)」將移至 archive.txt，可從封存檔找回。")
             case .delete(_, let title):
-                Text("確定永久刪除「\(title)」？此任務不會移至 archive.txt。")
+                Text("「\(title)」將移至垃圾桶，\(store.trashRetentionDays) 天後才永久刪除，期間可在垃圾桶還原。")
             case nil:
                 EmptyView()
             }
@@ -233,6 +233,7 @@ struct ContentView: View {
         case .agent: AgentWorkspaceView()
         case .dash: DashboardView()
         case .settings: SettingsView()
+        case .trash: TrashView()
         }
     }
 
@@ -269,7 +270,7 @@ struct ContentView: View {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
                     tab("⌘1 清單", .list); tab("⌘2 象限", .grid); tab("⌘3 Agent", .agent)
-                    tab("⌘4 統計", .dash); tab("⌘5 設定", .settings)
+                    tab("⌘4 統計", .dash); tab("⌘5 設定", .settings); tab("⌘6 垃圾桶", .trash)
                 }
                 tabMenu
             }
@@ -278,7 +279,8 @@ struct ContentView: View {
     }
 
     private static let headerTabs: [(String, AppView)] = [
-        ("⌘1 清單", .list), ("⌘2 象限", .grid), ("⌘3 Agent", .agent), ("⌘4 統計", .dash), ("⌘5 設定", .settings)
+        ("⌘1 清單", .list), ("⌘2 象限", .grid), ("⌘3 Agent", .agent), ("⌘4 統計", .dash),
+        ("⌘5 設定", .settings), ("⌘6 垃圾桶", .trash)
     ]
     /// 窄版下拉選單:按鈕顯示目前頁面,展開的清單用 Theme 配色,與頁籤視覺一致。
     private var tabMenu: some View {
@@ -369,19 +371,21 @@ struct ContentView: View {
     private var statusText: String {
         if store.appLanguage == .english {
             switch store.view {
-            case .list: return "↑↓ Move   ⌘E Edit   x Done   f Focus   n Add   / Search   ⌘K Commands"
+            case .list: return "↑↓ Move   ⌘E Edit   x Done   f Focus   n Add   d Delete   t Due   p +List   @ Tag   s Rail   / Search   ⌘K Commands"
             case .grid: return "1–4 Assign   0 Unassign   f Focus   z Zen   ⌘K Commands   ⌘1 List"
             case .agent: return "Agent · review every proposal before applying   ⌘1 Back to list"
             case .dash: return "Read-only stats · calculated from done: dates   esc / ⌘1 Back to list"
             case .settings: return "Settings · applied instantly   esc / ⌘1 Back to list"
+            case .trash: return "Trash · restore or delete for good   esc / ⌘1 Back to list"
             }
         }
         switch store.view {
-        case .list: return "↑↓ 移動   ⌘E 編輯   x 完成   f Focus   n 新增   / 搜尋   ⌘K 指令"
+        case .list: return "↑↓ 移動   ⌘E 編輯   x 完成   f Focus   n 新增   d 刪除   t 到期   p +List   @ Tag   s 導覽欄   / 搜尋   ⌘K 指令"
         case .grid: return "1–4 指派   0 回池   f Focus   z 專注   ⌘K 指令   ⌘1 清單"
         case .agent: return "Agent · 提議一律先審後套   ⌘1 回清單"
         case .dash: return "唯讀統計 · 依 done: 日期計算   esc / ⌘1 回清單"
         case .settings: return "設定 · 即時生效   esc / ⌘1 回清單"
+        case .trash: return "垃圾桶 · 可還原或永久刪除   esc / ⌘1 回清單"
         }
     }
 
@@ -989,6 +993,7 @@ struct ContentView: View {
             case .viewAgent: store.view = .agent
             case .viewDash: store.view = .dash
             case .viewSettings: store.view = .settings
+            case .viewTrash: store.view = .trash
             case .cycleAppearance: store.cycleAppearance()
             case .openPalette: openPalette()
             case .undo: store.undo()
@@ -1123,8 +1128,9 @@ struct ContentView: View {
             if chars == "z" || e.keyCode == 53 { store.focusMode = false }
             return nil
         }
-        // 統計視圖唯讀:單鍵動詞不得作用在看不見的游標上;esc 回清單
-        if store.view == .dash || store.view == .settings {
+        // 統計/設定/垃圾桶唯讀:單鍵動詞不得作用在看不見的游標上;esc 回清單
+        // 垃圾桶特別重要——d(刪除)若在這裡生效,會作用到清單裡看不見的那個游標。
+        if store.view == .dash || store.view == .settings || store.view == .trash {
             if e.keyCode == 53 { store.view = .list; store.ensureCursor() }
             return nil
         }
@@ -1163,6 +1169,7 @@ private extension AppView {
         case .agent: return .agent
         case .dash: return .dash
         case .settings: return .settings
+        case .trash: return .trash
         }
     }
 }

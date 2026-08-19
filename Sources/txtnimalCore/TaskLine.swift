@@ -17,7 +17,7 @@ public struct TaskLine: Equatable {
     /// whitespace) reproduces `raw` exactly.
     private struct Segment { var ws: String; var word: String }
 
-    private static let knownKeys: Set<String> = ["due", "q", "focus", "created", "done", "id", "rec"]
+    private static let knownKeys: Set<String> = ["due", "q", "focus", "created", "done", "id", "rec", "deleted"]
 
     private func tokenize() -> (segs: [Segment], trailing: String) {
         var segs: [Segment] = []
@@ -76,6 +76,9 @@ public struct TaskLine: Equatable {
     public var completedDate: String? { value(forKey: "done") }
     /// Stable identity persisted as an `id:` metadata token when available.
     public var stableID: String? { value(forKey: "id") }
+    /// The date this line entered trash.txt, stamped as `deleted:`. Only lines living in
+    /// trash.txt carry it; `restoreFromTrash` clears it on the way back out.
+    public var deletedDate: String? { value(forKey: "deleted") }
 
     public var projects: [String] {
         words.filter { $0.hasPrefix("+") && $0.count > 1 }.map { String($0.dropFirst()) }
@@ -157,6 +160,12 @@ public struct TaskLine: Equatable {
 
     public mutating func setStableID(_ id: String?) {
         if let id, !id.isEmpty { setValue(id, forKey: "id") } else { removeKey("id") }
+    }
+
+    /// Stamp (or clear) the `deleted:` token. Every other token is left untouched, so a line
+    /// survives the trash → restore round trip byte-identical apart from this one token.
+    public mutating func setDeleted(_ ymd: String?) {
+        if let ymd, !ymd.isEmpty { setValue(ymd, forKey: "deleted") } else { removeKey("deleted") }
     }
 
     /// Reduce untrusted text to a safe single-line title: no line breaks, and no words that would

@@ -1081,7 +1081,7 @@ struct SettingsView: View {
                 KeyboardShortcuts.Recorder("", name: .capture)
             }
             hint("在任何 app 按此熱鍵即可快速記一筆")
-            hint("app 內快速鍵固定：⌘1 清單 · ⌘2 象限 · ⌘3 Agent · ⌘4 統計 · ⌘E 編輯 · ⌘K 指令")
+            hint("app 內快速鍵固定：⌘1 清單 · ⌘2 象限 · ⌘3 Agent · ⌘4 統計 · ⌘6 垃圾桶 · ⌘E 編輯 · ⌘K 指令")
 
             section("視窗")
             HStack(spacing: 8) {
@@ -1199,6 +1199,15 @@ struct SettingsView: View {
                                          set: { store.setLaunchAtLogin($0) })).labelsHidden()
             }
 
+            section("垃圾桶")
+            HStack(spacing: 8) {
+                Text("保留天數").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                Picker("", selection: $store.trashRetentionDays) {
+                    ForEach(Trash.retentionOptions, id: \.self) { Text("\($0) 天").tag($0) }
+                }.labelsHidden().frame(width: 150)
+            }
+            hint("刪除的任務先移到 trash.txt，超過保留天數才永久刪除；改短會立即清掉已過期的項目")
+
             section("檔案")
             HStack(spacing: 8) {
                 Text("資料夾").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
@@ -1207,7 +1216,7 @@ struct SettingsView: View {
                     .lineLimit(1).truncationMode(.middle)
                 Button("更改…") { pickFolder() }
             }
-            hint("tasks.txt / scratch.txt / archive.txt 所在資料夾；搬到空資料夾會自動帶檔（複製，原檔保留）")
+            hint("tasks.txt / scratch.txt / archive.txt / trash.txt 所在資料夾；搬到空資料夾會自動帶檔（複製，原檔保留）")
             HStack(spacing: 8) {
                 Text("任務檔案").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
                 Text(store.fileURL.lastPathComponent)
