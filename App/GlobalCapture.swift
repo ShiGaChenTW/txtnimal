@@ -41,10 +41,17 @@ final class SidebarController {
     /// reveal 當下鎖定的螢幕;收回前都用它,避免焦點切螢幕導致座標飛掉(雙螢幕 bug)。
     private var activeScreen: NSScreen?
     private var outsideClickMonitor: Any?
+    /// `KeyboardShortcuts.onKeyUp` 是附加不是取代，而 install() 會被每次 ContentView
+    /// 的 .onAppear 重跑。註冊兩份 handler，一次實體按鍵就 toggle 兩次 —— 收起後立刻
+    /// 又滑出，⌥T 看起來像壞掉。註冊只做一次，install() 其餘部分照舊每次都跑。
+    private var didRegisterHotkey = false
 
     func install(store: TaskStore) {
         self.store = store
-        KeyboardShortcuts.onKeyUp(for: .toggleSidebar) { [weak self] in self?.toggle() }
+        if !didRegisterHotkey {
+            didRegisterHotkey = true
+            KeyboardShortcuts.onKeyUp(for: .toggleSidebar) { [weak self] in self?.toggle() }
+        }
         // 點面板以外(其他 app / 桌面)→ 自動收起。全域監聽只在事件不屬於本 app 時觸發,
         // 也就是點在面板之外;面板內的點擊走 local、不會誤收。
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
@@ -573,9 +580,16 @@ final class GlobalCapture {
     private let panelWidth: CGFloat = 520
     private var panel: NSPanel?
     private weak var store: TaskStore?
+    /// 同 SidebarController：install() 有三個呼叫點（WindowGroup、選單列 label、
+    /// 「快速捕捉」按鈕），每次都註冊會讓 ⌥Space 一按 toggle 多次。開啟那條路徑有
+    /// 延遲重查可見性擋著，關閉那條沒有 —— 第二個 handler 看到面板已隱藏就又打開，
+    /// 於是關不掉。註冊只做一次，store 的重新指派維持每次都做。
+    private var didRegisterHotkey = false
 
     func install(store: TaskStore) {
         self.store = store
+        guard !didRegisterHotkey else { return }
+        didRegisterHotkey = true
         KeyboardShortcuts.onKeyUp(for: .capture) { [weak self] in self?.toggle() }
     }
 

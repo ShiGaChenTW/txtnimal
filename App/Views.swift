@@ -240,6 +240,14 @@ struct ListView: View {
                           prompt: Text("新增任務…  due:fri  +List  @Tag").foregroundColor(Theme.dim.opacity(0.35)))
                     .textFieldStyle(.plain).font(store.taskFont).foregroundColor(Theme.fg)
                     .focused($addFocused)
+                    // 焦點是唯一真相。原本只有 esc（closeInlineAdd）與 ListView 消失會清掉
+                    // inlineAddActive，使用者若改用滑鼠點走，旗標會永遠停在 true，
+                    // ContentView 的鍵盤守門就一路吃掉所有快捷鍵。改成跟著焦點兩邊同步：
+                    // submitInlineAdd 送出後會 addFocused = true，連打流程照舊不受影響。
+                    .onChange(of: addFocused) { focused in
+                        store.inlineAddActive = focused
+                        if !focused { store.ensureCursor() }   // 新增列會把 cursor 清成 nil，交還鍵盤前補回
+                    }
                     .onSubmit { submitInlineAdd() }
                     .onExitCommand { closeInlineAdd() }
             }

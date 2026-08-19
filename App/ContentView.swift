@@ -983,7 +983,12 @@ struct ContentView: View {
             case .newList: store.view = .list; store.requestNewList = true
             case .deleteTask: confirmDeleteCursor()
             case .quickDue: openEditOnDueField()
-            case .search: store.searchActive = true
+            // 搜尋列已經開著但焦點在清單時（⏎ 之後的常態），再按一次 `/` 必須回到欄位；
+            // 只設 searchActive 的話 searchBar 的 .onAppear 不會再觸發，按鍵等於沒反應。
+            // 延一個 runloop：首次開啟時欄位還沒掛上，同步指派會被 SwiftUI 丟掉。
+            case .search:
+                store.searchActive = true
+                DispatchQueue.main.async { searchFocused = true }
             case .rescheduleOverdue: store.rescheduleOverdue()
             case .densityTighter: store.cycleDensity(-1)
             case .densityLooser: store.cycleDensity(1)
@@ -1111,9 +1116,20 @@ struct ContentView: View {
         // 沒有這道守門,在裡面打名稱會誤觸 d（刪除確認）等破壞性單鍵。
         if showingCapture || showingAddProject || showingAddContext
             || showingScratch || store.listEditorActive { return e }
+        // 設定頁整頁放行（見下方守門）是因為它有可編輯欄位：使用者名稱、兩個熱鍵錄製器、
+        // agent 端點與模型。但狀態列白紙黑字寫著「esc / ⌘1 回清單」，而整頁放行讓那句話
+        // 變成謊言 —— 這裡只把 esc 這一顆鍵挑出來處理，其餘按鍵維持原樣放行給欄位。
+        if store.view == .settings, e.keyCode == 53 {
+            store.view = .list; store.ensureCursor(); return nil
+        }
         // NSTextField 的 field editor 也是 NSTextView，且切頁後可能短暫保留；只在確實
         // 顯示文字輸入介面時放行，避免它吞掉清單的 n/e/x 等單鍵命令。
-        if store.inlineAddActive || store.view == .agent || store.view == .settings || store.searchActive { return e }
+        //
+        // 搜尋看的是「欄位是不是真的有焦點」，不是「搜尋列在不在」：⏎ 之後篩選與搜尋列
+        // 都還在（`store.searchActive` 仍為 true，這是刻意的），但鍵盤流已經交還清單，
+        // 此時單鍵與 cmd 快捷鍵必須全部恢復作用。看 `searchActive` 會讓按過 ⏎ 的使用者
+        // 卡在一個所有快捷鍵都失效、連 esc 都救不回來的狀態。
+        if store.inlineAddActive || store.view == .agent || store.view == .settings || searchFocused { return e }
         let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)
         let chars = e.charactersIgnoringModifiers ?? ""
         if cmd {
