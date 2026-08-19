@@ -347,14 +347,95 @@ final class CommandPaletteTests: XCTestCase {
         XCTAssertEqual(CommandCatalog.builtIn(.redo).keyDisplay, "⇧⌘Z")
     }
 
-    // MARK: - Scenario: 選單綁定對齊主契約
+    // MARK: - Scenario: 選單綁定對齊 CommandMenuModel（選單真正的生成來源）
 
-    func testViewSwitchBindingsMatchMenuContract() {
-        XCTAssertEqual(CommandCatalog.builtIn(.viewList).bindings.map(\.display), ["⌘1"])
-        XCTAssertEqual(CommandCatalog.builtIn(.viewGrid).bindings.map(\.display), ["⌘2"])
-        XCTAssertEqual(CommandCatalog.builtIn(.viewAgent).bindings.map(\.display), ["⌘3"])
-        XCTAssertEqual(CommandCatalog.builtIn(.viewDash).bindings.map(\.display), ["⌘4"])
-        XCTAssertEqual(CommandCatalog.builtIn(.viewSettings).bindings.map(\.display), ["⌘5", "⌘,"])
+    func testMenuCoversEveryCommandModifierBindingInTheCatalog() {
+        for spec in CommandCatalog.builtIns {
+            for binding in spec.bindings where binding.command {
+                if CommandMenuModel.keylessIdentities.contains(spec.id) {
+                    let items = CommandMenuModel.items.filter { $0.identity == spec.identity }
+                    XCTAssertEqual(items.count, 1, "\(spec.id) / \(binding.display) keyless")
+                    XCTAssertNil(items.first?.key, "\(spec.id) / \(binding.display) keyless")
+                } else {
+                    XCTAssertTrue(
+                        CommandMenuModel.items.contains {
+                            $0.identity == spec.identity
+                                && $0.key == binding.character
+                                && $0.command
+                                && $0.shift == binding.shift
+                        },
+                        "\(spec.id) / \(binding.display)"
+                    )
+                }
+            }
+        }
+    }
+
+    func testMenuHasNoItemThatTheCatalogDoesNotDeclare() {
+        for item in CommandMenuModel.items {
+            guard let spec = CommandCatalog.builtIns.first(where: { $0.identity == item.identity }) else {
+                XCTFail("menu item \(item.id) has no catalog spec")
+                continue
+            }
+            if CommandMenuModel.keylessIdentities.contains(spec.id) {
+                XCTAssertNil(item.key, item.id)
+            } else {
+                XCTAssertTrue(
+                    spec.bindings.contains {
+                        $0.command && $0.character == item.key && $0.shift == item.shift
+                    },
+                    item.id
+                )
+            }
+        }
+    }
+
+    func testMenuOmitsCommandsWithNoCommandModifierBinding() {
+        for id in [BuiltinCommand.inlineEdit, .newList, .openScratch] {
+            XCTAssertFalse(
+                CommandMenuModel.items.contains { $0.identity == .builtin(id) },
+                "\(id)"
+            )
+        }
+    }
+
+    /// 系統 Edit 選單已經提供 ⌘Z / ⇧⌘Z；File 排在 Edit 之前,
+    /// 再綁一次會讓文字欄位裡的 ⌘Z 變成任務復原。
+    func testMenuKeepsUndoAndRedoKeyless() {
+        for id in [BuiltinCommand.undo, .redo] {
+            let items = CommandMenuModel.items.filter { $0.identity == .builtin(id) }
+            XCTAssertEqual(items.count, 1, "\(id)")
+            XCTAssertNil(items.first?.key, "\(id)")
+        }
+    }
+
+    func testMenuItemIdsAreUnique() {
+        let ids = CommandMenuModel.items.map(\.id)
+        XCTAssertEqual(ids.count, Set(ids).count, "duplicate menu item id silently drops a ForEach entry")
+    }
+
+    func testMenuIncludesThePaletteAndTrashEscapeHatches() {
+        XCTAssertTrue(CommandMenuModel.items.contains {
+            $0.identity == .builtin(.openPalette) && $0.key == "k" && $0.command && !$0.shift
+        }, "⌘K")
+        XCTAssertTrue(CommandMenuModel.items.contains {
+            $0.identity == .builtin(.viewTrash) && $0.key == "6" && $0.command && !$0.shift
+        }, "⌘6")
+    }
+
+    func testMenuHasDedicatedItemsForViewSwitchBindings() {
+        let expected: [(BuiltinCommand, String)] = [
+            (.viewList, "1"), (.viewGrid, "2"), (.viewAgent, "3"),
+            (.viewDash, "4"), (.viewSettings, "5"), (.viewSettings, ","),
+        ]
+        for (id, key) in expected {
+            XCTAssertTrue(
+                CommandMenuModel.items.contains {
+                    $0.identity == .builtin(id) && $0.key == key && $0.command
+                },
+                "\(id) ⌘\(key)"
+            )
+        }
     }
 
     // MARK: - fuzzy + query

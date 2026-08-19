@@ -1029,6 +1029,21 @@ struct ContentView: View {
         }
     }
 
+    /// 守門鏈只做判斷,對 store 的實際呼叫留在這裡 —— 純函式那邊才測得動。
+    private func apply(_ action: KeyboardAction) {
+        switch action {
+        case .command(let identity): perform(identity)
+        case .moveCursor(let delta): store.move(delta)
+        case .startInlineEdit: store.startEditing()
+        case .clearSearch: store.clearSearch()
+        case .clearTagFilter: store.tagFilter = nil; store.ensureCursor()
+        case .clearFocus: store.clearFocus()
+        case .leaveToList: switchView(to: .list, ensureCursor: true)
+        case .exitFocusMode: store.focusMode = false
+        case .setQuadrant(let q): store.setQuadrant(q)
+        }
+    }
+
     // MARK: keyboard (macOS 13 無 onKeyPress，用 NSEvent local monitor)
 
     private func animatedDone() {
@@ -1133,71 +1148,30 @@ struct ContentView: View {
             }
             return e
         }
-        // 任何正在收文字的浮窗都要先放行,否則使用者打的字會被當成單鍵命令吃掉。
-        // `listEditorActive` 是 ListView 的 List 編輯視窗 — `l` 讓它變成一個按鍵就到得了,
-        // 沒有這道守門,在裡面打名稱會誤觸 d（刪除確認）等破壞性單鍵。
-        if showingCapture || showingAddProject || showingAddContext
-            || showingScratch || store.listEditorActive { return e }
-        // 設定頁整頁放行（見下方守門）是因為它有可編輯欄位：使用者名稱、兩個熱鍵錄製器、
-        // agent 端點與模型。但狀態列白紙黑字寫著「esc / ⌘1 回清單」，而整頁放行讓那句話
-        // 變成謊言 —— 這裡只把 esc 這一顆鍵挑出來處理，其餘按鍵維持原樣放行給欄位。
-        if store.view == .settings, e.keyCode == 53 {
-            switchView(to: .list, ensureCursor: true); return nil
-        }
-        // NSTextField 的 field editor 也是 NSTextView，且切頁後可能短暫保留；只在確實
-        // 顯示文字輸入介面時放行，避免它吞掉清單的 n/e/x 等單鍵命令。
-        //
-        // 搜尋看的是「欄位是不是真的有焦點」，不是「搜尋列在不在」：⏎ 之後篩選與搜尋列
-        // 都還在（`store.searchActive` 仍為 true，這是刻意的），但鍵盤流已經交還清單，
-        // 此時單鍵與 cmd 快捷鍵必須全部恢復作用。看 `searchActive` 會讓按過 ⏎ 的使用者
-        // 卡在一個所有快捷鍵都失效、連 esc 都救不回來的狀態。
-        if store.inlineAddActive || store.view == .agent || store.view == .settings || searchFocused { return e }
-        let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)
-        let chars = e.charactersIgnoringModifiers ?? ""
-        if cmd {
-            if let spec = CommandKeyMatcher.match(character: chars, command: true, shift: shift,
-                                                  in: CommandCatalog.builtIns) {
-                // cmd 分支排在唯讀頁守門之前,所以必須自己檢查可用性,否則 ⌘E 會在統計/垃圾桶頁
-                // 作用到清單裡那個看不見的游標。`.always` 的 ⌘1–⌘6 不受影響。
-                guard spec.availability.isAvailable(in: store.commandContext) else { return e }
-                perform(spec.identity)
-                return nil
-            }
-            return e
-        }
-        if store.focusMode {
-            if chars == "z" || e.keyCode == 53 { store.focusMode = false }
-            return nil
-        }
-        // 統計/設定/垃圾桶唯讀:單鍵動詞不得作用在看不見的游標上;esc 回清單
-        // 垃圾桶特別重要——d(刪除)若在這裡生效,會作用到清單裡看不見的那個游標。
-        if store.view == .dash || store.view == .settings || store.view == .trash {
-            if e.keyCode == 53 { switchView(to: .list, ensureCursor: true) }
-            return nil
-        }
-        switch e.keyCode {
-        case 126: store.move(-1); return nil     // ↑
-        case 125: store.move(1); return nil      // ↓
-        case 36:  store.startEditing(); return nil // ⏎ 行內編輯
-        case 53:                                 // esc：搜尋 → 標籤篩選 → Focus,逐層清
-            if store.searchActive { store.clearSearch() }
-            else if store.tagFilter != nil { store.tagFilter = nil; store.ensureCursor() }
-            else { store.clearFocus() }
-            return nil
-        default: break
-        }
-        switch chars {
-        case "k": store.move(-1); return nil
-        case "j": store.move(1); return nil
-        case "1", "2", "3", "4": if store.view == .grid { store.setQuadrant(Int(chars)); return nil }; return e
-        case "0": if store.view == .grid { store.setQuadrant(nil); return nil }; return e
-        default:
-            if let spec = CommandKeyMatcher.match(character: chars, command: false, shift: false,
-                                                  in: CommandCatalog.builtIns) {
-                perform(spec.identity)
-                return nil
-            }
-            return e
+        // showingPalette / showingEdit 上面已經各自處理完了,不會走到守門鏈;
+        // 仍寫進 snapshot,讓 KeyboardGuardState 是完整、誠實的當下狀態。
+        let state = KeyboardGuardState(
+            paletteOpen: showingPalette,
+            editPopupOpen: showingEdit,
+            textEntryOverlayOpen: showingCapture || showingAddProject || showingAddContext
+                || showingScratch || store.listEditorActive,
+            inlineEditActive: store.editingIndex != nil,
+            inlineAddActive: store.inlineAddActive,
+            searchFocused: searchFocused,
+            focusMode: store.focusMode,
+            searchActive: store.searchActive,
+            tagFilterActive: store.tagFilter != nil,
+            page: store.view.palettePage,
+            hasSelection: store.cursor != nil
+        )
+        let stroke = KeyStroke(characters: e.charactersIgnoringModifiers ?? "",
+                               keyCode: e.keyCode,
+                               command: e.modifierFlags.contains(.command),
+                               shift: e.modifierFlags.contains(.shift))
+        switch KeyboardGuardChain.decide(stroke, state: state) {
+        case .passThrough: return e
+        case .swallow: return nil
+        case .act(let action): apply(action); return nil
         }
     }
 }
