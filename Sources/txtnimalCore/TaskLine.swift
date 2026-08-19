@@ -283,7 +283,8 @@ public struct TaskLine: Equatable {
 /// Parse/serialize a whole file, preserving blank lines and the trailing newline exactly.
 public enum TasksDocument {
     public static func parse(_ text: String) -> [TaskLine] {
-        text.split(separator: "\n", omittingEmptySubsequences: false).map { TaskLine(String($0)) }
+        guard !text.isEmpty else { return [] }
+        return text.split(separator: "\n", omittingEmptySubsequences: false).map { TaskLine(String($0)) }
     }
 
     public static func serialize(_ lines: [TaskLine]) -> String {

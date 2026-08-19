@@ -19,6 +19,22 @@ final class TaskLineTests: XCTestCase {
         XCTAssertEqual(TasksDocument.serialize(lines), sample)
     }
 
+    // A 0-byte file is zero lines, not Swift split's phantom `[""]`.
+    // serialize([]) == "" already held; parse("") == [] makes the round-trip mutual.
+    func testEmptyFileParsesToNoLines() {
+        XCTAssertTrue(TasksDocument.parse("").isEmpty)
+        XCTAssertEqual(TasksDocument.serialize([]), "")
+        XCTAssertEqual(TasksDocument.parse("").filter { !$0.isDone }.count, 0)
+    }
+
+    // The empty-file guard must not change non-empty input: a trailing newline is still a blank line.
+    func testNonEmptyInputPreservesTrailingNewline() {
+        let text = "a\n"
+        let lines = TasksDocument.parse(text)
+        XCTAssertEqual(lines.map(\.raw), ["a", ""])
+        XCTAssertEqual(TasksDocument.serialize(lines), text)
+    }
+
     func testParseFields() {
         let t = TaskLine(#"Finish landing page due:2026-07-04 note:"update colors" focus:true q:1"#)
         XCTAssertEqual(t.title, "Finish landing page")
