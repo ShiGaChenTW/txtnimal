@@ -10,6 +10,7 @@ struct txtnimalApp: App {
             ContentView().environmentObject(store)
                 .onAppear {
                     GlobalCapture.shared.install(store: store)
+                    GlobalNoteCapture.shared.install(store: store)
                     SidebarController.shared.install(store: store)
                 }
         }
@@ -51,6 +52,10 @@ struct txtnimalApp: App {
                 GlobalCapture.shared.install(store: store)
                 GlobalCapture.shared.toggle()
             }
+            Button("捕捉筆記") {
+                GlobalNoteCapture.shared.install(store: store)
+                GlobalNoteCapture.shared.toggle()
+            }
             Toggle("開機自啟", isOn: Binding(
                 get: { store.launchAtLogin },
                 set: { store.setLaunchAtLogin($0) }))
@@ -63,6 +68,7 @@ struct txtnimalApp: App {
                     // The menu extra outlives every WindowGroup window, so it owns
                     // installation of the truly global capture shortcut/panel.
                     GlobalCapture.shared.install(store: store)
+                    GlobalNoteCapture.shared.install(store: store)
                 }
         }
         .environment(\.locale, store.appLanguage.locale)

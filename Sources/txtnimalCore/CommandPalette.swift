@@ -2,7 +2,7 @@ import Foundation
 
 /// Pages the command palette can filter against. Mirrors App-layer views without importing SwiftUI.
 public enum CommandPalettePage: String, Equatable, Sendable, CaseIterable {
-    case list, grid, agent, dash, settings, trash
+    case list, grid, agent, dash, settings, trash, notes
 }
 
 /// Snapshot of UI state the palette (and tests) use to decide what is runnable.
@@ -24,6 +24,8 @@ public struct CommandAvailability: Equatable, Sendable {
     public static let always = CommandAvailability(pages: nil, requiresSelection: false)
     public static let listGrid = CommandAvailability(pages: [.list, .grid], requiresSelection: false)
     public static let listGridSelection = CommandAvailability(pages: [.list, .grid], requiresSelection: true)
+    public static let notes = CommandAvailability(pages: [.notes], requiresSelection: false)
+    public static let notesSelection = CommandAvailability(pages: [.notes], requiresSelection: true)
 
     public init(pages: Set<CommandPalettePage>?, requiresSelection: Bool) {
         self.pages = pages
@@ -92,11 +94,17 @@ public enum BuiltinCommand: String, Equatable, Sendable, CaseIterable {
     case viewDash
     case viewSettings
     case viewTrash
+    case viewNotes
     case cycleAppearance
     case openPalette
     case undo
     case redo
     case openScratch
+    case inlineAddNote
+    case deleteNote
+    case editNote
+    case addNoteTag
+    case openNoteCapture
 }
 
 public enum CommandIdentity: Equatable, Sendable {
@@ -169,7 +177,7 @@ public enum CommandCatalog {
         spec(.newList, name: "新增 List", alias: "new list create project",
              bindings: [.init("l")],
              availability: .listGrid),
-        spec(.deleteTask, name: "刪除任務", alias: "delete remove task",
+        spec(.deleteTask, name: "刪除任務", alias: "delete remove task dd",
              bindings: [.init("d")],
              availability: .listGridSelection),
         spec(.quickDue, name: "改到期日", alias: "due date reschedule when time",
@@ -208,6 +216,25 @@ public enum CommandCatalog {
         // ⌘6 — ⌘1–⌘5 are the five original views and stay exactly where they are.
         spec(.viewTrash, name: "垃圾桶", alias: "trash bin deleted recycle restore",
              bindings: [.init("6", command: true)],
+             availability: .always),
+        // ⌘7 — notes is an independent feature, not a seventh task view.
+        spec(.viewNotes, name: "筆記", alias: "notes memo jot",
+             bindings: [.init("7", command: true)],
+             availability: .always),
+        spec(.inlineAddNote, name: "新增筆記", alias: "new add note inline",
+             bindings: [.init("n")],
+             availability: .notes),
+        spec(.deleteNote, name: "刪除筆記", alias: "delete remove note dd",
+             bindings: [.init("d")],
+             availability: .notesSelection),
+        spec(.editNote, name: "編輯筆記", alias: "edit note popup",
+             bindings: [.init("e")],
+             availability: .notesSelection),
+        spec(.addNoteTag, name: "加 #Tag", alias: "note tag hash",
+             bindings: [.init("#")],
+             availability: .notesSelection),
+        spec(.openNoteCapture, name: "捕捉筆記", alias: "note capture quick add",
+             bindings: [],
              availability: .always),
         spec(.cycleAppearance, name: "深 / 淺主題", alias: "theme dark light appearance",
              bindings: [.init("t", command: true, shift: true)],
@@ -262,21 +289,51 @@ public enum CommandFuzzy {
     }
 }
 
-/// Resolve a key event against the catalog. Command keys compare case-insensitively and honor Shift;
-/// single keys compare the character as produced by `charactersIgnoringModifiers` (so `R` stays `R`).
+/// Resolve a key event against the catalog. Command keys compare case-insensitively and honor Shift.
+///
+/// Single-key letters cannot use raw `charactersIgnoringModifiers` equality:
+/// Caps Lock turns `n` into `"N"` without setting `.shift`, so every lowercase
+/// shortcut died, and `r` quietly became「逾期全改今天」. Lowercase letter
+/// bindings match the key ignoring Caps Lock, but not when Shift is held.
+/// Uppercase letter bindings (`R`) require Shift — Caps Lock alone must not
+/// fire them. Non-letters (`@`, `/`, `[`) still compare the produced character.
 public enum CommandKeyMatcher {
     public static func match(character: String, command: Bool, shift: Bool,
-                             in commands: [CommandSpec]) -> CommandSpec? {
+                             in commands: [CommandSpec],
+                             availableIn context: CommandPaletteContext? = nil) -> CommandSpec? {
         commands.first { spec in
-            spec.bindings.contains { binding in
-                if binding.command {
-                    return command
-                        && binding.character.lowercased() == character.lowercased()
-                        && binding.shift == shift
-                }
-                return !command && binding.character == character
+            if let context, !spec.availability.isAvailable(in: context) { return false }
+            return spec.bindings.contains { binding in
+                keysMatch(binding: binding, character: character, command: command, shift: shift)
             }
         }
+    }
+
+    public static func keysMatch(binding: CommandKeyBinding, character: String,
+                                 command: Bool, shift: Bool) -> Bool {
+        if binding.command {
+            return command
+                && binding.character.lowercased() == character.lowercased()
+                && binding.shift == shift
+        }
+        guard !command else { return false }
+        return singleKeyMatches(bindingCharacter: binding.character, typed: character, shift: shift)
+    }
+
+    public static func singleKeyMatches(bindingCharacter: String, typed: String, shift: Bool) -> Bool {
+        if isSingleLetter(bindingCharacter), isSingleLetter(typed) {
+            guard bindingCharacter.lowercased() == typed.lowercased() else { return false }
+            return isUppercaseLetter(bindingCharacter) ? shift : !shift
+        }
+        return bindingCharacter == typed
+    }
+
+    public static func isSingleLetter(_ s: String) -> Bool {
+        s.count == 1 && s.unicodeScalars.allSatisfy { CharacterSet.letters.contains($0) }
+    }
+
+    public static func isUppercaseLetter(_ s: String) -> Bool {
+        isSingleLetter(s) && s == s.uppercased()
     }
 }
 

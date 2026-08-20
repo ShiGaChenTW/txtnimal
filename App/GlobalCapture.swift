@@ -16,6 +16,8 @@ extension EnvironmentValues {
 extension KeyboardShortcuts.Name {
     /// 全域捕捉，預設 ⌥Space;可在「設定」重綁。
     static let capture = Self("globalCapture", default: .init(.space, modifiers: [.option]))
+    /// 全域筆記捕捉，預設 ⌥N;可在「設定」重綁。
+    static let noteCapture = Self("globalNoteCapture", default: .init(.n, modifiers: [.option]))
     /// 側邊面板滑出/收回，預設 ⌥T;可在「設定」重綁。
     static let toggleSidebar = Self("toggleSidebar", default: .init(.t, modifiers: [.option]))
 }
@@ -654,6 +656,144 @@ final class GlobalCapture {
     private func hide() { panel?.orderOut(nil) }
 }
 
+/// 全域熱鍵 → 與任務捕捉同級的筆記輸入框。獨立面板、獨立快捷鍵，不走 tasks.txt。
+final class GlobalNoteCapture {
+    static let shared = GlobalNoteCapture()
+    private let panelWidth: CGFloat = 560
+    private var panel: NSPanel?
+    private weak var store: TaskStore?
+    private var didRegisterHotkey = false
+
+    func install(store: TaskStore) {
+        self.store = store
+        guard !didRegisterHotkey else { return }
+        didRegisterHotkey = true
+        KeyboardShortcuts.onKeyUp(for: .noteCapture) { [weak self] in self?.toggle() }
+    }
+
+    func toggle() {
+        if panel?.isVisible == true { hide(); return }
+        DispatchQueue.main.async { [weak self] in
+            guard self?.panel?.isVisible != true else { return }
+            self?.show()
+        }
+    }
+
+    private func show() {
+        guard let store else { return }
+        if panel == nil {
+            let p = KeyablePanel(contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: 92),
+                                 styleMask: [.borderless, .nonactivatingPanel],
+                                 backing: .buffered, defer: false)
+            p.isFloatingPanel = true
+            p.level = .floating
+            p.backgroundColor = .clear
+            p.hasShadow = true
+            p.hidesOnDeactivate = false
+            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            let host = NSHostingView(rootView: GlobalNoteCaptureView(
+                onCommit: { [weak self] text in
+                    store.addNote(from: text)
+                    self?.hide()
+                },
+                onCancel: { [weak self] in self?.hide() },
+                onHeightChange: { [weak self] height in self?.resizePanel(to: height) }
+            ).environmentObject(store))
+            host.frame = p.contentView?.bounds ?? .zero
+            host.autoresizingMask = [.width, .height]
+            p.contentView?.addSubview(host)
+            panel = p
+        }
+        if let f = NSScreen.main?.visibleFrame, let p = panel {
+            p.setContentSize(NSSize(width: panelWidth, height: 92))
+            p.setFrameOrigin(NSPoint(x: f.midX - p.frame.width / 2, y: f.maxY - f.height * 0.28))
+        }
+        panel?.makeKeyAndOrderFront(nil)
+    }
+
+    private func resizePanel(to height: CGFloat) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let p = self.panel, p.isVisible,
+                  abs(p.frame.height - height) > 0.5 else { return }
+            let top = p.frame.maxY
+            p.setFrame(NSRect(x: p.frame.minX, y: top - height, width: self.panelWidth, height: height), display: true)
+        }
+    }
+
+    private func hide() { panel?.orderOut(nil) }
+}
+
+private struct GlobalNoteCaptureView: View {
+    @EnvironmentObject var store: TaskStore
+    let onCommit: (String) -> Void
+    let onCancel: () -> Void
+    let onHeightChange: (CGFloat) -> Void
+    @State private var text = ""
+    @State private var cursorUTF16Offset = 0
+
+    private var draft: NoteDraft? { NoteCapture.parse(text) }
+    private var kindLabel: String {
+        switch draft?.kind {
+        case .list: return "條列"
+        case .quote: return "引言"
+        case .block: return "區塊"
+        case .plain: return "段落"
+        case nil: return ""
+        }
+    }
+    private var desiredHeight: CGFloat { draft == nil ? 92 : 126 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("note >").foregroundColor(Theme.cyan).font(Theme.monoSmall)
+                CaptureInputField(
+                    text: $text,
+                    cursorUTF16Offset: $cursorUTF16Offset,
+                    placeholder: "-條列-   \"引言\"   |區塊|   #tag",
+                    onSubmit: { _, _ in commit() },
+                    onCancel: onCancel,
+                    onMoveSelection: { _, _, _ in false },
+                    onAcceptCompletion: { _, _ in false }
+                )
+                .frame(height: 22)
+                if !kindLabel.isEmpty {
+                    Text(kindLabel).font(Theme.monoSmall).foregroundColor(Theme.cyan)
+                }
+                Text("⏎ 加入 · esc 取消").font(Theme.monoSmall).foregroundColor(Theme.dim)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 58)
+
+            HStack(spacing: 8) {
+                Text("-…- 條列").foregroundColor(Theme.cyan)
+                Text("\"…\" 引言").foregroundColor(Theme.yellow)
+                Text("|…| 區塊").foregroundColor(Theme.mag)
+                if let tags = draft?.tags, !tags.isEmpty {
+                    Text(tags.map { "#\($0)" }.joined(separator: " ")).foregroundColor(Theme.cyan)
+                }
+                Spacer()
+                Text("notes.txt").font(Theme.monoSmall).foregroundColor(Theme.dim)
+            }
+            .font(Theme.monoSmall)
+            .padding(.horizontal, 16)
+            .frame(height: 34)
+            .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
+        }
+        .background(Theme.bg)
+        .overlay(Rectangle().stroke(Theme.border))
+        .clipShape(Rectangle())
+        .onAppear { text = ""; cursorUTF16Offset = 0; onHeightChange(desiredHeight) }
+        .onChange(of: text) { _ in onHeightChange(desiredHeight) }
+    }
+
+    private func commit() {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        text = ""
+        if t.isEmpty { onCancel() } else { onCommit(t) }
+    }
+}
+
 private struct GlobalCaptureView: View {
     @EnvironmentObject var store: TaskStore
     let onCommit: (String) -> Void
@@ -1097,8 +1237,13 @@ struct SettingsView: View {
                 Text("全域捕捉").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
                 KeyboardShortcuts.Recorder("", name: .capture)
             }
-            hint("在任何 app 按此熱鍵即可快速記一筆")
-            hint("app 內快速鍵固定：⌘1 清單 · ⌘2 象限 · ⌘3 Agent · ⌘4 統計 · ⌘6 垃圾桶 · ⌘E 編輯 · ⌘K 指令")
+            hint("在任何 app 按此熱鍵即可快速記一筆任務")
+            HStack(spacing: 8) {
+                Text("筆記捕捉").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
+                KeyboardShortcuts.Recorder("", name: .noteCapture)
+            }
+            hint("在任何 app 按此熱鍵即可快速記一則筆記")
+            hint("app 內快速鍵固定：⌘1 清單 · ⌘2 象限 · ⌘3 Agent · ⌘4 統計 · ⌘6 垃圾桶 · ⌘7 筆記 · ⌘E 編輯 · ⌘K 指令")
 
             section("視窗")
             HStack(spacing: 8) {
@@ -1233,7 +1378,7 @@ struct SettingsView: View {
                     .lineLimit(1).truncationMode(.middle)
                 Button("更改…") { pickFolder() }
             }
-            hint("tasks.txt / scratch.txt / archive.txt / trash.txt 所在資料夾；搬到空資料夾會自動帶檔（複製，原檔保留）")
+            hint("tasks.txt / notes.txt / scratch.txt / archive.txt / trash.txt 所在資料夾；搬到空資料夾會自動帶檔（複製，原檔保留）")
             HStack(spacing: 8) {
                 Text("任務檔案").frame(width: 96, alignment: .trailing).foregroundColor(Theme.dim)
                 Text(store.fileURL.lastPathComponent)

@@ -25,7 +25,8 @@ final class KeyboardGuardChainTests: XCTestCase {
     }
 
     private func stroke(from binding: CommandKeyBinding) -> KeyStroke {
-        KeyStroke(characters: binding.character, command: binding.command, shift: binding.shift)
+        let shift = binding.shift || CommandKeyMatcher.isUppercaseLetter(binding.character)
+        return KeyStroke(characters: binding.character, command: binding.command, shift: shift)
     }
 
     func testEveryCommandBindingReachesItsCommandInAnEnablingState() {
@@ -46,7 +47,6 @@ final class KeyboardGuardChainTests: XCTestCase {
             ("paletteOpen", { $0.paletteOpen = true }),
             ("editPopupOpen", { $0.editPopupOpen = true }),
             ("textEntryOverlayOpen", { $0.textEntryOverlayOpen = true }),
-            ("inlineEditActive", { $0.inlineEditActive = true }),
         ]
         for spec in CommandCatalog.builtIns {
             for binding in spec.bindings {
@@ -64,47 +64,125 @@ final class KeyboardGuardChainTests: XCTestCase {
     }
 
     func testCommandShortcutsSurviveInlineAddAndSearchFocusExceptUndoRedo() {
-        let flags: [(String, (inout KeyboardGuardState) -> Void)] = [
-            ("inlineAddActive", { $0.inlineAddActive = true }),
-            ("searchFocused", { $0.searchFocused = true }),
-        ]
         for spec in CommandCatalog.builtIns {
             for binding in spec.bindings where binding.command {
-                for (flag, apply) in flags {
-                    var state = enablingState(for: spec)
-                    apply(&state)
-                    let expected: KeyboardDecision =
-                        KeyboardGuardChain.commandsDeferredToTextEntry.contains(spec.identity)
-                        ? .passThrough
-                        : .act(.command(spec.identity))
-                    XCTAssertEqual(
-                        decide(stroke(from: binding), state),
-                        expected,
-                        "\(spec.id) / \(binding.display) under \(flag)"
-                    )
-                }
+                var typing = enablingState(for: spec)
+                typing.fieldEditorActive = true
+                typing.searchFocused = true
+                let expectedWhileTyping: KeyboardDecision =
+                    KeyboardGuardChain.commandsDeferredToTextEntry.contains(spec.identity)
+                    ? .passThrough
+                    : .act(.command(spec.identity))
+                XCTAssertEqual(
+                    decide(stroke(from: binding), typing),
+                    expectedWhileTyping,
+                    "\(spec.id) / \(binding.display) under fieldEditorActive"
+                )
+
+                var stale = enablingState(for: spec)
+                stale.inlineAddActive = true
+                stale.searchFocused = true
+                stale.inlineEditActive = true
+                XCTAssertEqual(
+                    decide(stroke(from: binding), stale),
+                    .act(.command(spec.identity)),
+                    "\(spec.id) / \(binding.display) must survive stale text flags"
+                )
             }
         }
     }
 
-    func testSingleKeyBindingsStillYieldToInlineAddAndSearchFocus() {
-        let flags: [(String, (inout KeyboardGuardState) -> Void)] = [
-            ("inlineAddActive", { $0.inlineAddActive = true }),
-            ("searchFocused", { $0.searchFocused = true }),
-        ]
+    func testSingleKeyBindingsStillYieldToAConfirmedTextSurface() {
         for spec in CommandCatalog.builtIns {
             for binding in spec.bindings where !binding.command {
-                for (flag, apply) in flags {
-                    var state = enablingState(for: spec)
-                    apply(&state)
-                    XCTAssertEqual(
-                        decide(stroke(from: binding), state),
-                        .passThrough,
-                        "\(spec.id) / \(binding.display) still yields to \(flag)"
-                    )
-                }
+                var state = enablingState(for: spec)
+                state.fieldEditorActive = true
+                state.searchFocused = true
+                XCTAssertEqual(
+                    decide(stroke(from: binding), state),
+                    .passThrough,
+                    "\(spec.id) / \(binding.display) yields only when field + surface agree"
+                )
             }
         }
+    }
+
+    func testStaleFieldEditorAloneDoesNotBlockListRailOrAdd() {
+        let staleEditor = KeyboardGuardState(fieldEditorActive: true, hasSelection: true)
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "s"), staleEditor),
+            .act(.command(.builtin(.toggleListRail)))
+        )
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "n"), staleEditor),
+            .act(.command(.builtin(.inlineAdd)))
+        )
+    }
+
+    func testSTogglesTheListRailOnTheListPage() {
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "s")),
+            .act(.command(.builtin(.toggleListRail)))
+        )
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "S")),
+            .act(.command(.builtin(.toggleListRail)))
+        )
+    }
+
+    /// 過期旗標不得再擋住單鍵。這是「n 常常失效」那一整類的迴歸：
+    /// 代理人說還在打字，first responder 已經不是欄位，按鍵被放行到沒人收。
+    func testStaleTextFlagsDoNotBlockSingleKeys() {
+        let stale: [(String, KeyboardGuardState)] = [
+            ("inlineAddActive", KeyboardGuardState(inlineAddActive: true, hasSelection: true)),
+            ("searchFocused", KeyboardGuardState(searchFocused: true, hasSelection: true)),
+            ("inlineEditActive", KeyboardGuardState(inlineEditActive: true, hasSelection: true)),
+        ]
+        for (label, state) in stale {
+            XCTAssertEqual(
+                decide(KeyStroke(characters: "n"), state),
+                .act(.command(.builtin(.inlineAdd))),
+                "\(label) must not swallow n"
+            )
+            XCTAssertEqual(
+                decide(KeyStroke(characters: "d"), state),
+                .act(.command(.builtin(.deleteTask))),
+                "\(label) must not swallow d"
+            )
+            XCTAssertEqual(
+                decide(KeyStroke(characters: "x"), state),
+                .act(.command(.builtin(.toggleDone))),
+                "\(label) must not swallow x"
+            )
+        }
+    }
+
+    func testCapsLockLetterShortcutsStillFireAndShiftRIsRequiredForReschedule() {
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "N")),
+            .act(.command(.builtin(.inlineAdd)))
+        )
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "D"), KeyboardGuardState(hasSelection: true)),
+            .act(.command(.builtin(.deleteTask)))
+        )
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "K")),
+            .act(.moveCursor(-1))
+        )
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "N", shift: true)),
+            .passThrough
+        )
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "R")),
+            .passThrough,
+            "Caps Lock + r must not reschedule every overdue task"
+        )
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "R", shift: true)),
+            .act(.command(.builtin(.rescheduleOverdue)))
+        )
     }
 
     /// 刻意的例外：把事件放行，AppKit 的 responder chain / Edit 選單才能對焦點中的
@@ -115,12 +193,10 @@ final class KeyboardGuardChainTests: XCTestCase {
             KeyStroke(characters: "z", command: true, shift: true),
         ]
         let states: [(String, KeyboardGuardState)] = [
-            ("inlineAddActive", KeyboardGuardState(inlineAddActive: true)),
-            ("searchFocused", KeyboardGuardState(searchFocused: true)),
+            ("confirmedSearch", KeyboardGuardState(searchFocused: true, fieldEditorActive: true)),
             ("page.agent", KeyboardGuardState(page: .agent)),
             ("page.settings", KeyboardGuardState(page: .settings)),
             ("textEntryOverlayOpen", KeyboardGuardState(textEntryOverlayOpen: true)),
-            ("inlineEditActive", KeyboardGuardState(inlineEditActive: true)),
         ]
         for (label, state) in states {
             for stroke in strokes {
@@ -162,7 +238,7 @@ final class KeyboardGuardChainTests: XCTestCase {
             ("page.dash", KeyboardGuardState(page: .dash)),
             ("page.trash", KeyboardGuardState(page: .trash)),
             ("page.settings", KeyboardGuardState(page: .settings)),
-            ("searchFocused", KeyboardGuardState(searchFocused: true)),
+            ("fieldEditorActive", KeyboardGuardState(fieldEditorActive: true)),
         ]
         for ch in ["a", "c", "v", "w", "q"] {
             for (label, state) in states {
@@ -196,6 +272,7 @@ final class KeyboardGuardChainTests: XCTestCase {
         let views: [(String, BuiltinCommand)] = [
             ("1", .viewList), ("2", .viewGrid), ("3", .viewAgent),
             ("4", .viewDash), ("5", .viewSettings), ("6", .viewTrash),
+            ("7", .viewNotes),
         ]
         for page in [CommandPalettePage.dash, .trash] {
             for (ch, id) in views {
@@ -242,6 +319,38 @@ final class KeyboardGuardChainTests: XCTestCase {
         }
     }
 
+    func testNotesPageUsesNoteVerbsAndDoesNotMutateHiddenTaskCursor() {
+        let selected = KeyboardGuardState(page: .notes, hasSelection: true)
+        XCTAssertEqual(decide(KeyStroke(characters: "n"), selected),
+                       .act(.command(.builtin(.inlineAddNote))))
+        XCTAssertEqual(decide(KeyStroke(characters: "d"), selected),
+                       .act(.command(.builtin(.deleteNote))))
+        XCTAssertEqual(decide(KeyStroke(characters: "e"), selected),
+                       .act(.command(.builtin(.editNote))))
+        XCTAssertEqual(decide(KeyStroke(characters: "#"), selected),
+                       .act(.command(.builtin(.addNoteTag))))
+        XCTAssertEqual(decide(KeyStroke(characters: "x"), selected), .swallow)
+        XCTAssertEqual(decide(KeyStroke(characters: "p"), selected), .swallow)
+        XCTAssertEqual(decide(KeyStroke(characters: "j"), selected), .act(.moveCursor(1)))
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "7", command: true), selected),
+            .act(.command(.builtin(.viewNotes)))
+        )
+
+        let empty = KeyboardGuardState(page: .notes, hasSelection: false)
+        XCTAssertEqual(decide(KeyStroke(characters: "n"), empty),
+                       .act(.command(.builtin(.inlineAddNote))))
+        XCTAssertEqual(decide(KeyStroke(characters: "d"), empty), .swallow)
+        XCTAssertEqual(decide(KeyStroke(keyCode: KeyCodes.escape), empty),
+                       .act(.leaveToList))
+
+        XCTAssertEqual(
+            decide(KeyStroke(characters: "#"), KeyboardGuardState(page: .list, hasSelection: true)),
+            .passThrough,
+            "# on the list page must not open the note-tag sheet"
+        )
+    }
+
     func testFocusModeSwallowsEverythingExceptZAndEscape() {
         let focused = KeyboardGuardState(focusMode: true)
         XCTAssertEqual(decide(KeyStroke(characters: "z"), focused), .act(.exitFocusMode))
@@ -257,7 +366,7 @@ final class KeyboardGuardChainTests: XCTestCase {
     }
 
     func testInlineEditPassesTypingThroughInsteadOfRunningVerbs() {
-        let editing = KeyboardGuardState(inlineEditActive: true)
+        let editing = KeyboardGuardState(inlineEditActive: true, fieldEditorActive: true)
         XCTAssertEqual(decide(KeyStroke(characters: "d"), editing), .passThrough)
         XCTAssertEqual(decide(KeyStroke(characters: "x"), editing), .passThrough)
     }
@@ -303,6 +412,18 @@ final class KeyboardGuardChainTests: XCTestCase {
             decide(KeyStroke(characters: "1"), KeyboardGuardState(page: .list)),
             .passThrough
         )
+    }
+
+    func testDoubleTapDIsRecognizedOnlyOnTheSameTargetInsideTheWindow() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        XCTAssertFalse(RepeatKey.isDoubleTap(previous: nil, now: t0, sameTarget: true))
+        XCTAssertTrue(RepeatKey.isDoubleTap(
+            previous: t0, now: t0.addingTimeInterval(0.2), sameTarget: true))
+        XCTAssertFalse(RepeatKey.isDoubleTap(
+            previous: t0, now: t0.addingTimeInterval(0.2), sameTarget: false))
+        XCTAssertFalse(RepeatKey.isDoubleTap(
+            previous: t0, now: t0.addingTimeInterval(0.41), sameTarget: true))
+        XCTAssertEqual(RepeatKey.doubleTapWindow, 0.4)
     }
 
     func testArrowsAndVimKeysMoveTheCursor() {

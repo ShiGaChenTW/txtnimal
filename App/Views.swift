@@ -76,7 +76,6 @@ struct RecurrenceBadge: View {
 
 struct ListView: View {
     @EnvironmentObject var store: TaskStore
-    @Environment(\.isSidebarPanel) private var isSidebarPanel
     @State private var addText = ""
     @State private var addVisible = false
     @State private var showingListEditor = false
@@ -107,15 +106,19 @@ struct ListView: View {
             if store.requestInlineAdd { activateInlineAdd() }
             if store.requestNewList { activateNewList() }
         }
-        .onDisappear { store.inlineAddActive = false; store.listEditorActive = false }
+        .onDisappear {
+            // 側邊模式有兩個 ListView 共用 store。只清「自己開過」的旗標，
+            // 否則主視窗切到統計會把面板裡正在新增的那一列連坐關掉。
+            if addVisible { store.inlineAddActive = false }
+            if showingListEditor { store.listEditorActive = false }
+        }
         .sheet(isPresented: $showingListEditor, onDismiss: { store.listEditorActive = false }) { listEditor }
     }
 
-    /// 側邊面板模式最窄只有 100pt,塞不下導覽欄;一個 list 都還沒有時它也只是一格空裝飾。
-    /// `s` 鍵(`listRailVisible`)是使用者的明示意願,擺在最後 —— 前兩個條件是「放不下 / 沒東西放」,
-    /// 這個是「我不想看」,三者任一成立都不顯示。
+    /// 只聽 `s`（`listRailVisible`）。側邊面板預設寬約 680pt，放得下 172pt 導覽欄；
+    /// 以前用 `isSidebarPanel` 整欄禁掉，側邊模式下按 s 只改一個看不見的旗標。
     private var showsRail: Bool {
-        !isSidebarPanel && !store.allProjects().isEmpty && store.listRailVisible
+        store.listRailVisible
     }
 
     private var taskColumn: some View {
@@ -554,6 +557,11 @@ struct EditRow: View {
                 .focused($focused)
                 .onSubmit { store.updateTitle(index, draft) }
                 .onExitCommand { store.editingIndex = nil }
+                .onChange(of: focused) { isFocused in
+                    if !isFocused, store.editingIndex == index {
+                        store.editingIndex = nil
+                    }
+                }
         }
         .padding(.horizontal, compact ? 4 : 16).padding(.vertical, compact ? 2 : store.density.rowPad)
         .background(Theme.selBg)
@@ -1238,7 +1246,7 @@ struct AgentView: View {
                 Text("尚未設定 Agent Endpoint。請先到設定填入 Base URL、API Key 與 Model。")
                     .font(Theme.monoSmall).foregroundColor(Theme.yellow)
                 Spacer()
-                agentButton("前往設定", color: Theme.yellow) { store.view = .settings }
+                agentButton("前往設定", color: Theme.yellow) { store.switchView(to: .settings) }
             }
             .padding(12)
             .background(Theme.yellow.opacity(0.08))
@@ -1908,7 +1916,7 @@ private struct AgentChatView: View {
                 HStack(spacing: 10) {
                     Text(endpointIssue).font(Theme.monoSmall).foregroundColor(Theme.yellow)
                     Spacer()
-                    chatButton("前往設定", color: Theme.yellow) { store.view = .settings }
+                    chatButton("前往設定", color: Theme.yellow) { store.switchView(to: .settings) }
                 }
                 .padding(.horizontal, 14).padding(.vertical, 9)
                 .background(Theme.yellow.opacity(0.07))

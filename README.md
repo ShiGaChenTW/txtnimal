@@ -80,6 +80,7 @@ xcodegen generate
 ```text
 ~/Documents/txtnimal/
 ├── tasks.txt    # 目前任務
+├── notes.txt    # 獨立筆記（⌘7 / ⌥N）
 ├── scratch.txt  # 便箋檔（⌘K「開啟便箋」）
 └── archive.txt  # 歷史完成項目
 ```
@@ -161,8 +162,9 @@ txtnimal tag ensure errands                     # 確保 @errands 存在
 | `⌘4` | 統計 |
 | `⌘5` / `⌘,` | 設定 |
 | `⌘6` | 垃圾桶 |
+| `⌘7` | 筆記 |
 | `↑` / `↓` / `j` / `k` | 移動游標 |
-| `n` | 清單尾端新增任務 |
+| `n` | 清單尾端新增任務；筆記頁則新增筆記 |
 | `Enter` / `e` | 行內編輯 |
 | `⌘E` | 開啟完整編輯器 |
 | `x` / `Space` / `⌘Enter` | 完成或取消完成 |
@@ -174,6 +176,7 @@ txtnimal tag ensure errands                     # 確保 @errands 存在
 | `l` | 新增 List |
 | `t` | 改到期日（開日曆） |
 | `d` | 刪除任務（需二次確認） |
+| `d` `d` | 連按兩下小寫 d：直接刪除、不跳確認框（筆記頁同樣） |
 | `s` | 顯示／隱藏清單頁左側 List 導覽欄 |
 | `R` | 將所有逾期任務改為今天 |
 | `[` / `]` | 調整行距 |
@@ -182,7 +185,8 @@ txtnimal tag ensure errands                     # 確保 @errands 存在
 | `⌘Z` / `⇧⌘Z` | 復原／重做 |
 | `⌘⇧T` | 切換深／淺色 |
 | `Esc` | 關閉面板、清除搜尋／篩選；統計與設定頁回清單 |
-| `⌥Space`（預設） | 全域快速捕捉（設定可重綁） |
+| `⌥Space`（預設） | 全域快速捕捉任務（設定可重綁） |
+| `⌥N`（預設） | 全域快速捕捉筆記（設定可重綁） |
 | `⌥T`（預設） | 側邊面板滑出／收回（設定可重綁） |
 
 > **⚠️ 專注模式（`z`）會吞掉所有未修飾單鍵。**
@@ -346,6 +350,7 @@ The default data directory is:
 ```text
 ~/Documents/txtnimal/
 ├── tasks.txt    # Active tasks
+├── notes.txt    # Independent notes (⌘7 / ⌥N)
 ├── scratch.txt  # Scratch file (⌘K “Open scratch”)
 └── archive.txt  # Completed history
 ```
@@ -427,8 +432,9 @@ txtnimal tag ensure errands                     # guarantee @errands exists
 | `⌘4` | Statistics |
 | `⌘5` / `⌘,` | Settings |
 | `⌘6` | Trash |
+| `⌘7` | Notes |
 | `↑` / `↓` / `j` / `k` | Move the cursor |
-| `n` | Add a task at the end of the list |
+| `n` | Add a task at the end of the list; on the Notes page, add a note |
 | `Enter` / `e` | Edit inline |
 | `⌘E` | Open the full editor |
 | `x` / `Space` / `⌘Enter` | Complete or uncomplete |
@@ -440,6 +446,7 @@ txtnimal tag ensure errands                     # guarantee @errands exists
 | `l` | Create a new List |
 | `t` | Change the due date (opens the calendar) |
 | `d` | Delete the task (asks for confirmation) |
+| `d` `d` | Double-tap `d` to delete immediately, skipping the confirmation (notes page too) |
 | `s` | Show/hide the left-hand List navigation rail |
 | `R` | Reschedule every overdue task to today |
 | `[` / `]` | Adjust row spacing |
@@ -448,7 +455,8 @@ txtnimal tag ensure errands                     # guarantee @errands exists
 | `⌘Z` / `⇧⌘Z` | Undo / redo |
 | `⌘⇧T` | Cycle dark / light appearance |
 | `Esc` | Dismiss a panel or clear search / filter; from Statistics or Settings, return to the list |
-| `⌥Space` (default) | Global quick capture (rebind in Settings) |
+| `⌥Space` (default) | Global quick capture for tasks (rebind in Settings) |
+| `⌥N` (default) | Global quick capture for notes (rebind in Settings) |
 | `⌥T` (default) | Show or hide the sidebar panel (rebind in Settings) |
 
 > **⚠️ Focus mode (`z`) swallows every unmodified single key.**

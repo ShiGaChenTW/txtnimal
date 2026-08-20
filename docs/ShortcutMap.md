@@ -3,7 +3,7 @@
 > **契約**：本文件的行號對應當下 `App/` 與 `Sources/txtnimalCore/` 的原始碼。
 > 改動鍵盤相關程式碼時一併更新行號；行號漂掉的文件比沒有文件更糟。
 >
-> 最後校對：2026-08-19（cmd 分支提前到文字守門之前）
+> 最後校對：2026-08-20（獨立筆記頁 ⌘7；全域筆記捕捉 ⌥N）
 
 ## 唯一真相在哪裡
 
@@ -12,9 +12,10 @@
 | **綁定表**（哪顆鍵對應哪個指令、在哪些頁面可用） | `Sources/txtnimalCore/CommandPalette.swift` | `CommandCatalog.builtIns`，L140 |
 | **守門鏈**（某個狀態下這顆鍵會被吃掉、放行、還是執行） | `Sources/txtnimalCore/KeyboardGuardChain.swift` | `KeyboardGuardChain.decide`，L95 |
 | **選單列項目**（每個帶 ⌘ 的綁定的後備入口） | `Sources/txtnimalCore/CommandPalette.swift` | `CommandMenuModel.items`，L324 |
-| NSEvent 轉接層 | `App/ContentView.swift` | `handle(_:)`，L1117 |
-| 判定 → 對 store 的實際呼叫 | `App/ContentView.swift` | `apply(_:)`，L1033 |
-| 指令實作 | `App/ContentView.swift` | `perform(_:)`，L989 |
+| NSEvent 轉接層 | `App/ContentView.swift` | `handle(_:)` |
+| 判定 → 對 store 的實際呼叫 | `App/ContentView.swift` | `apply(_:)` |
+| 指令實作 | `App/ContentView.swift` | `perform(_:)` |
+| **切頁**（唯一入口；會清 focusMode／editingIndex／searchFocused） | `App/TaskStore.swift` | `switchView(to:ensureCursor:)` |
 | 選單列繪製 | `App/txtnimalApp.swift` | `CommandGroup(replacing: .newItem)` L22、`menuButton(_:)` L72 |
 
 新增一顆快捷鍵**只**要改 `CommandCatalog.builtIns`：守門鏈、指令面板與選單列都是從它生出來的。
@@ -46,17 +47,21 @@
 |---|------|------|
 | 1 | 指令面板開著 | 放行（面板自己先攔 ↑ ↓ ⏎ esc） |
 | 2 | ⌘E 編輯彈窗開著 | 放行（彈窗自己處理 ↓ / esc / Tab） |
-| 3 | 捕捉列 / 加 List / 加 Tag / 便箋 / List 編輯視窗 / **行內編輯中** | 放行 |
+| 3 | 捕捉列 / sheet / 便箋 / List 編輯視窗 / 系統 alert | 放行 |
 | 4 | 設定頁 + esc | 回清單 |
 | 5 | 帶 ⌘ 且命中 catalog 且該頁可用（⌘Z / ⇧⌘Z 除外） | 執行指令 |
-| 6 | 行內新增中 / Agent 頁 / 設定頁 / 搜尋欄位有焦點 | 放行 |
+| 6 | **確認中的文字面**（field editor + 搜尋／新增／改名）／ Agent 頁 / 設定頁 | 放行 |
 | 7 | 專注模式 | `z` 或 esc 離開，**其餘全吞** |
 | 8 | 統計 / 設定 / 垃圾桶頁 | esc 回清單，其餘全吞 |
 | 9 | ↑ ↓ ⏎ esc | 移動游標 / 行內編輯 / esc 分層清除 |
 | 10 | `j` `k` `0`–`4` | 移動游標 / 象限指派（`0`–`4` 只在象限頁） |
 | 11 | 命中 catalog 單鍵 | 執行指令 |
 
-第 3 步的「行內編輯中」是 2026-08-19 補的：在改任務名稱時打到 `d` 會跳出刪除確認。
+第 6 步必須 **field editor 與文字面旗標同時成立**。只認 field editor：SwiftUI 常把共用
+NSTextView 留成 first responder，`s`／`n` 會被放行到沒人收的地方。只認旗標：旗標過期時同一顆鍵也會死。
+
+單鍵字母比對忽略 Caps Lock（`N` 仍是新增），但 `R`（逾期全改今天）必須真的按 Shift；
+只開 Caps Lock 不會觸發。`j`／`k` 同樣忽略 Caps Lock。
 
 第 5 步的例外是 ⌘Z / ⇧⌘Z：它們刻意不參與「cmd 先於文字守門」，
 見 `KeyboardGuardChain.commandsDeferredToTextEntry`（L91）。
@@ -67,10 +72,11 @@
 統計頁與專注模式下的複製貼上會無聲失效。
 `testUnmatchedCommandKeysAlwaysPassThroughToTheSystem` 是它的圍籬。
 
-第 6 步的搜尋看的是**欄位是不是真的有焦點**，不是「搜尋列在不在」。
 按 ⏎ 之後篩選與搜尋列都還在（`searchActive` 仍為 true，這是刻意的），
 但鍵盤流已經交還清單，單鍵必須全部恢復作用。
 走到這一步的只剩下非 cmd 單鍵，以及刻意留給文字欄位的 ⌘Z / ⇧⌘Z。
+
+`s` 只聽 `listRailVisible`。沒有 +List 時欄裡仍有 All tasks。側邊面板（⌥T）同樣顯示／隱藏導覽欄；面板太窄時打開會一併拉寬。
 
 ## ⚠️ 專注模式會吞掉所有未修飾單鍵
 
@@ -89,14 +95,16 @@
 
 ## 切頁會清掉的狀態
 
-`ContentView.switchView(to:ensureCursor:)`（L982）。六個切頁指令與兩條
-esc-回清單路徑都走它，它會清掉：
+**唯一切頁入口**是 `TaskStore.switchView(to:ensureCursor:)`。頁籤點擊、窄版下拉、
+統計 drill-down、Agent「前往設定」、`n`／`l`、⌘1–⌘7 都必須走它，`view` 是
+`private(set)`。它會：
 
-- `store.focusMode` —— 否則新頁面繼續吞掉所有單鍵。
-- `searchFocused`（`ContentView` 的 `@FocusState`，L181）—— 否則守門鏈第 6 步
-  會在新頁面繼續放行，下一顆單鍵直接消失。
+- 清 `store.focusMode` —— 否則新頁面繼續吞掉所有單鍵。
+- 清 `store.editingIndex` —— 否則行內改名的旗標跨頁存活。
+- 遞增 `keyboardResetSeq`，ContentView 的 `onChange` 據此把 `@FocusState searchFocused`
+  設回 false。
 
-兩者都不會因為 `store.view` 改變而自動歸零：`ContentView` 從頭到尾沒有被拆掉重建。
+即使目標頁跟現在同一頁也會跑一次，所以在清單上按 ⌘1 仍能離開專注模式。
 
 ## 側邊面板模式：cmd 快捷鍵改由 monitor 直接處理
 
@@ -111,7 +119,7 @@ esc-回清單路徑都走它，它會清掉：
 - 選單後備（路徑 2）**完全不會觸發**。
 
 已選定並落地第二條路：把 cmd 分支排到文字守門之前（現在的第 5 步）。
-行內新增 / Agent 頁 / 設定頁 / 搜尋欄位有焦點時，⌘K / ⌘E / ⌘6 由 monitor 直接執行。
+行內新增 / Agent 頁 / 設定頁 / 搜尋欄位有焦點時，⌘K / ⌘E / ⌘6 / ⌘7 由 monitor 直接執行。
 知情的代價是：這些狀態不再把 ⌘ 鍵交給聚焦中的文字欄位。
 
 唯一刻意的例外是 ⌘Z / ⇧⌘Z。系統 Edit 選單本來就擁有它們；
@@ -119,3 +127,27 @@ esc-回清單路徑都走它，它會清掉：
 這和 `KeyboardGuardChain.commandsDeferredToTextEntry`（L91）與
 `CommandMenuModel.keylessIdentities`（`CommandPalette.swift` L320）是同一個理由的兩半：
 那邊不讓選單搶鍵，這邊不讓 monitor 搶鍵。
+
+## 獨立筆記（⌘7 / ⌥N）
+
+筆記不是 task 的 `note:"…"`，也不是 `scratch.txt`。資料在同資料夾的 `notes.txt`。
+
+| 鍵 | 行為 |
+|---|---|
+| `⌘7` | 切到筆記頁 |
+| `⌥N`（設定可重綁） | 全域捕捉筆記，與 ⌥Space 任務捕捉分開 |
+| `n`（僅筆記頁） | 行內新增 |
+| `e` / `Enter`（僅筆記頁） | 編輯選中筆記 |
+| `d`（僅筆記頁） | 刪除選中筆記（確認框） |
+| `d` `d` | 0.4 秒內連按兩下：直接刪、不跳確認。清單／象限／筆記頁都一樣。單次 `d` 仍確認。實作在 `ContentView.handleTaskDeleteKey` / `handleNoteDeleteKey`，判定在 `RepeatKey.isDoubleTap`。 |
+| `#`（僅筆記頁） | 加 tag |
+| `s` / `x` / `p` / `@` | 在筆記頁被吞掉，不會打到清單裡看不見的游標 |
+
+捕捉時用前後符號決定呈現：
+
+- `- 牛奶; 雞蛋 -` → 條列
+- `"一句話"` 或 `> 一句話 <` → 引言
+- `| 整塊 |` → 區塊
+- 其餘 → 段落
+
+`#tag` 會從正文剝出來，用來篩選與「依 #Tag 分組」。

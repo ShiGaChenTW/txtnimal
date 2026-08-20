@@ -59,7 +59,8 @@ struct TerminalInputField: NSViewRepresentable {
         input.insertionPointColor = .clear
         input.blockColor = NSColor(Theme.fg)
         input.updateSolidCaret()
-        input.focusWhenAttached()
+        // 不要在每次 SwiftUI 重繪時搶 first responder。連打新增時 store 一更新
+        // 就會把焦點從清單搶回來，inlineAddActive 再被設回 true，單鍵全滅。
         if input.string != text {
             let selection = input.selectedRange()
             input.string = text

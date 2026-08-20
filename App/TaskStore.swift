@@ -2,7 +2,7 @@ import SwiftUI
 import ServiceManagement
 import txtnimalCore
 
-enum AppView { case list, grid, agent, dash, settings, trash }
+enum AppView { case list, grid, agent, dash, settings, trash, notes }
 
 /// 一次指令派送。`seq` 只用來讓 `onChange` 一定看得到變化。
 struct CommandRequest: Equatable {
@@ -300,10 +300,20 @@ final class TaskStore: ObservableObject {
         hasCompletedOnboarding = true
         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
     }
-    @Published var view: AppView = .list
+    @Published private(set) var view: AppView = .list
+    /// 每次切頁加一。ContentView 用它清掉自己的 `@FocusState searchFocused`，
+    /// 因為那個旗標不在 store 裡，任何 `store.view =` 都動不到。
+    @Published private(set) var keyboardResetSeq = 0
     @Published private(set) var agentState: AgentState = .idle
     @Published private(set) var importReview: ImportReviewState = .idle
-    @Published var cursor: Int? = nil          // index into `lines`
+    @Published var cursor: Int? = nil {        // index into `lines`
+        didSet {
+            // 點到另一列時結束行內改名，否則 editingIndex 會永遠卡住、單鍵全放行。
+            if let editingIndex, cursor != editingIndex {
+                self.editingIndex = nil
+            }
+        }
+    }
     @Published var reportSelection: Set<String> = []
     @Published var focusMode = false
     @Published var scratch = ""
@@ -320,6 +330,14 @@ final class TaskStore: ObservableObject {
     @Published var inlineAddActive = false    // 新增列正在接收鍵盤事件
     @Published var requestNewList = false     // `l` 鍵 → 開 ListView 的「新增 List」視窗
     @Published var listEditorActive = false   // List 編輯視窗正在接收鍵盤事件
+    @Published var notes: [Note] = []
+    @Published var noteCursorID: String?
+    @Published var noteTagFilter: String? = nil
+    @Published var noteGroupByTag = false
+    @Published var requestInlineAddNote = false
+    @Published var requestDeleteNote = false
+    @Published var noteConfirmOpen = false
+    @Published var editingNoteID: String?
     /// 選單列（與其他非 ContentView 的觸發點）把指令送回 ContentView.perform 的通道。
     /// 用遞增序號而不是「設值後清 nil」：清 nil 會跟側邊模式下的第二個 ContentView 互搶,
     /// 而序號讓同一個指令連按兩次也一定觸發 onChange。
@@ -330,9 +348,25 @@ final class TaskStore: ObservableObject {
         commandRequestSeq += 1
         commandRequest = CommandRequest(seq: commandRequestSeq, identity: identity)
     }
+
+    /// 唯一切頁入口。直接寫 `view =` 會留下上一頁的專注模式與搜尋焦點，
+    /// 下一頁的 n/d/e 就全部失效。即使目標頁跟現在同一頁也要跑一次，
+    /// 這樣 ⌘1 在清單上仍能清掉 focusMode。
+    func switchView(to target: AppView, ensureCursor: Bool = false) {
+        view = target
+        focusMode = false
+        editingIndex = nil
+        editingNoteID = nil
+        keyboardResetSeq += 1
+        if ensureCursor { self.ensureCursor() }
+        if target == .notes { ensureNoteCursor() }
+    }
     /// 目前的頁面 / 選取狀態,給 `CommandAvailability.isAvailable` 用。
     var commandContext: CommandPaletteContext {
-        CommandPaletteContext(page: view.palettePage, hasSelection: cursor != nil)
+        if view == .notes {
+            return CommandPaletteContext(page: .notes, hasSelection: noteCursorID != nil)
+        }
+        return CommandPaletteContext(page: view.palettePage, hasSelection: cursor != nil)
     }
     /// `s` 鍵切換清單頁左側 List 導覽欄。預設顯示 —— 這是剛上線的功能,不該一啟動就是關的;
     /// 要不要看交給使用者按。讀取走 `object(forKey:)` 而非 `bool(forKey:)`:後者在鍵不存在時
@@ -559,7 +593,7 @@ final class TaskStore: ObservableObject {
             let fm = FileManager.default
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
             if !fm.fileExists(atPath: dir.appendingPathComponent("tasks.txt").path) {
-                for name in ["tasks.txt", "scratch.txt", "archive.txt", "trash.txt"] {
+                for name in ["tasks.txt", "scratch.txt", "archive.txt", "trash.txt", "notes.txt"] {
                     let src = current.appendingPathComponent(name)
                     if fm.fileExists(atPath: src.path) {
                         try fm.copyItem(at: src, to: dir.appendingPathComponent(name))
@@ -575,6 +609,7 @@ final class TaskStore: ObservableObject {
         } catch { report(error); return }
         bootstrapIfMissing()
         load()
+        loadNotes()
         cursor = listOrder().first
         ensureCursor()
         startWatching()
@@ -596,6 +631,7 @@ final class TaskStore: ObservableObject {
         refreshPluginExecutionRecords()
         bootstrapIfMissing()
         load()
+        loadNotes()
         archiveOldDone()
         purgeExpiredTrash()
         cursor = listOrder().first
@@ -1434,7 +1470,7 @@ final class TaskStore: ObservableObject {
             archiveURL = next.archiveURL; trashURL = next.trashURL
             UserDefaults.standard.set(fileURL.path, forKey: "activeTaskFile")
             UserDefaults.standard.set(fileURL.deletingLastPathComponent().path, forKey: "dataDir")
-            load(); archiveOldDone(); purgeExpiredTrash()
+            load(); loadNotes(); archiveOldDone(); purgeExpiredTrash()
             cursor = listOrder().first; ensureCursor(); startWatching()
         } catch { report(error); startWatching() }
     }
@@ -1582,6 +1618,7 @@ final class TaskStore: ObservableObject {
     // MARK: ops (全部即時存檔)
 
     func move(_ delta: Int) {
+        if view == .notes { moveNote(delta); return }
         let o = currentOrder(); guard !o.isEmpty else { cursor = nil; return }
         let i = max(0, min(o.count - 1, (o.firstIndex(of: cursor ?? o[0]) ?? 0) + delta))
         cursor = o[i]
@@ -1731,7 +1768,7 @@ final class TaskStore: ObservableObject {
     func addFromCapture(_ input: String) {
         guard let raw = Capture.makeTaskLine(from: input, today: Date(), createdYMD: todayYMD) else { return }
         lines.append(TaskLine(raw))
-        view = .list; cursor = lines.count - 1; ensureCursor(); save()
+        switchView(to: .list); cursor = lines.count - 1; ensureCursor(); save()
     }
     func toggleFocusMode() {
         guard focusIndex != nil else { return }
@@ -1741,6 +1778,10 @@ final class TaskStore: ObservableObject {
         density = Density(rawValue: max(0, min(2, density.rawValue + delta))) ?? density
     }
     func startEditing() {
+        if view == .notes {
+            startEditingNote()
+            return
+        }
         // 象限頁也要能行內編輯 —— catalog 的 `.inlineEdit` 宣告 `.listGridSelection`,
         // 指令盤也照著列出來,只有這道守門把象限頁擋掉,於是 e / ⏎ 在象限頁靜靜地沒反應。
         guard view == .list || view == .grid,
@@ -1803,6 +1844,120 @@ final class TaskStore: ObservableObject {
         guard !clean.isEmpty, let i = cursor, lines.indices.contains(i) else { return }
         lines[i].addTag("@" + clean); save()
     }
+
+    // MARK: - Notes (independent of tasks.txt)
+
+    var notesURL: URL { fileURL.deletingLastPathComponent().appendingPathComponent("notes.txt") }
+
+    var allNoteTags: [String] { NoteDocument.allTags(in: notes) }
+
+    func filteredNotes() -> [Note] {
+        var items = notes
+        if let tag = noteTagFilter {
+            items = items.filter { $0.hasTag(tag) }
+        }
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if searchActive && !query.isEmpty {
+            let q = query.lowercased()
+            items = items.filter { note in
+                note.body.lowercased().contains(q)
+                    || note.tags.contains { $0.lowercased().contains(q) }
+                    || note.kind.rawValue.lowercased().contains(q)
+            }
+        }
+        return items
+    }
+
+    func displayedNotes() -> [Note] {
+        filteredNotes().reversed()
+    }
+
+    func groupedNotes() -> [(tag: String, notes: [Note])] {
+        NoteDocument.grouped(filteredNotes().reversed(), tagFilter: nil)
+    }
+
+    func ensureNoteCursor() {
+        let visible = displayedNotes()
+        if let id = noteCursorID, visible.contains(where: { $0.id == id }) { return }
+        noteCursorID = visible.first?.id
+    }
+
+    func moveNote(_ delta: Int) {
+        let visible = displayedNotes()
+        guard !visible.isEmpty else { noteCursorID = nil; return }
+        let current = noteCursorID.flatMap { id in visible.firstIndex(where: { $0.id == id }) } ?? 0
+        let next = max(0, min(visible.count - 1, current + delta))
+        noteCursorID = visible[next].id
+    }
+
+    func addNote(from input: String) {
+        guard let draft = NoteCapture.parse(input) else { return }
+        let note = Note(id: Note.makeID(), created: todayYMD, kind: draft.kind,
+                        tags: draft.tags, body: draft.body)
+        notes.append(note)
+        noteCursorID = note.id
+        switchView(to: .notes)
+        saveNotes()
+    }
+
+    func deleteSelectedNote() {
+        guard let id = noteCursorID else { return }
+        notes.removeAll { $0.id == id }
+        ensureNoteCursor()
+        saveNotes()
+    }
+
+    func updateNote(_ note: Note) {
+        guard let index = notes.firstIndex(where: { $0.id == note.id }) else { return }
+        var next = note
+        next.tags = Note.normalizedTags(next.tags)
+        next.body = LinkMarkup.rewrite(next.body)
+        notes[index] = next
+        saveNotes()
+    }
+
+    func addTagToSelectedNote(_ raw: String) {
+        let tags = Note.normalizedTags([raw])
+        guard let tag = tags.first, let id = noteCursorID,
+              let index = notes.firstIndex(where: { $0.id == id }) else { return }
+        if !notes[index].tags.contains(tag) {
+            notes[index].tags.append(tag)
+            saveNotes()
+        }
+    }
+
+    func toggleNoteTagFilter(_ tag: String) {
+        noteTagFilter = (noteTagFilter == tag) ? nil : tag
+        ensureNoteCursor()
+    }
+
+    func startEditingNote() {
+        guard view == .notes, noteCursorID != nil else { return }
+        editingNoteID = noteCursorID
+    }
+
+    func loadNotes() {
+        let url = notesURL
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            notes = []
+            return
+        }
+        do {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            notes = NoteDocument.parse(text)
+            ensureNoteCursor()
+        } catch {
+            report(error)
+        }
+    }
+
+    func saveNotes() {
+        do {
+            try NoteDocument.serialize(notes).write(to: notesURL, atomically: true, encoding: .utf8)
+        } catch {
+            report(error)
+        }
+    }
 }
 
 extension AppView {
@@ -1814,6 +1969,7 @@ extension AppView {
         case .dash: return .dash
         case .settings: return .settings
         case .trash: return .trash
+        case .notes: return .notes
         }
     }
 }

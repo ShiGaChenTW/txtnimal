@@ -8,6 +8,18 @@ public enum KeyCodes {
     public static let arrowDown: UInt16 = 125
 }
 
+/// `d` `d` within this window skips the delete confirmation. Single `d` still confirms.
+public enum RepeatKey {
+    public static let doubleTapWindow: TimeInterval = 0.4
+
+    /// `true` when this tap is the second on the same target inside the window.
+    public static func isDoubleTap(previous: Date?, now: Date, sameTarget: Bool,
+                                  window: TimeInterval = doubleTapWindow) -> Bool {
+        guard sameTarget, let previous else { return false }
+        return now.timeIntervalSince(previous) <= window
+    }
+}
+
 /// 一次按鍵的物理描述。`characters` 對應 NSEvent.charactersIgnoringModifiers。
 public struct KeyStroke: Equatable, Sendable {
     public var characters: String
@@ -29,9 +41,10 @@ public struct KeyboardGuardState: Equatable, Sendable {
     public var paletteOpen: Bool           // ⌘K 面板
     public var editPopupOpen: Bool         // ⌘E 編輯彈窗
     public var textEntryOverlayOpen: Bool  // 捕捉列 / 加 List / 加 Tag / 便箋 / List 編輯視窗
-    public var inlineEditActive: Bool      // 行內編輯中(store.editingIndex != nil)
-    public var inlineAddActive: Bool
-    public var searchFocused: Bool         // 搜尋欄位「真的有焦點」,不是「搜尋列在不在」
+    public var inlineEditActive: Bool      // 行內編輯中(store.editingIndex != nil)；守門不再採信它
+    public var inlineAddActive: Bool       // 守門不再採信；改看 fieldEditorActive
+    public var searchFocused: Bool         // 守門不再採信；改看 fieldEditorActive
+    public var fieldEditorActive: Bool     // 目前 first responder 真的是 NSTextView／NSTextField
     public var focusMode: Bool
     public var searchActive: Bool          // esc 分層清除用
     public var tagFilterActive: Bool       // esc 分層清除用
@@ -41,6 +54,7 @@ public struct KeyboardGuardState: Equatable, Sendable {
     public init(paletteOpen: Bool = false, editPopupOpen: Bool = false,
                 textEntryOverlayOpen: Bool = false, inlineEditActive: Bool = false,
                 inlineAddActive: Bool = false, searchFocused: Bool = false,
+                fieldEditorActive: Bool = false,
                 focusMode: Bool = false, searchActive: Bool = false,
                 tagFilterActive: Bool = false, page: CommandPalettePage = .list,
                 hasSelection: Bool = false) {
@@ -50,6 +64,7 @@ public struct KeyboardGuardState: Equatable, Sendable {
         self.inlineEditActive = inlineEditActive
         self.inlineAddActive = inlineAddActive
         self.searchFocused = searchFocused
+        self.fieldEditorActive = fieldEditorActive
         self.focusMode = focusMode
         self.searchActive = searchActive
         self.tagFilterActive = tagFilterActive
@@ -101,14 +116,10 @@ public enum KeyboardGuardChain {
         // 彈窗自己處理 ↓ / esc / Tab,其餘給欄位。
         if state.editPopupOpen { return .passThrough }
 
-        // 任何正在收文字的浮窗都要先放行,否則使用者打的字會被當成單鍵命令吃掉。
-        // `listEditorActive` 是 ListView 的 List 編輯視窗 — `l` 讓它變成一個按鍵就到得了,
-        // 沒有這道守門,在裡面打名稱會誤觸 d（刪除確認）等破壞性單鍵。
-        //
-        // `inlineEditActive` 這一條是新加的。行內編輯的 TextField 有焦點時,`handle()`
-        // 仍然先看到按鍵,而 `d`/`x`/`e` 都是 catalog 單鍵 —— 打字打到 `d` 會跳出刪除確認。
-        // 原本的守門只擋捕捉列與 List 編輯視窗,漏了行內編輯。
-        if state.textEntryOverlayOpen || state.inlineEditActive { return .passThrough }
+        // 真正掛著的浮窗（捕捉列 / sheet / 便箋 / List 編輯）先放行。行內編輯與
+        // 搜尋／新增列不再走這一步：它們的旗標會過期，過期時會把整排單鍵放行到
+        // 沒人收的地方。真實文字焦點改由第 6 步的 `fieldEditorActive` 處理。
+        if state.textEntryOverlayOpen { return .passThrough }
 
         // 設定頁整頁放行（見下一條守門）是因為它有可編輯欄位：使用者名稱、兩個熱鍵錄製器、
         // agent 端點與模型。但狀態列白紙黑字寫著「esc / ⌘1 回清單」，而整頁放行讓那句話
@@ -120,7 +131,8 @@ public enum KeyboardGuardChain {
         // 命中 catalog 的 cmd 綁定先算出來，下面兩個地方共用。
         let commandSpec = stroke.command
             ? CommandKeyMatcher.match(character: stroke.characters, command: true,
-                                      shift: stroke.shift, in: commands)
+                                      shift: stroke.shift, in: commands,
+                                      availableIn: state.commandContext)
             : nil
 
         // cmd 分支排在文字守門之前。理由是側邊面板模式（⌥T）：面板是 nonactivating panel，
@@ -133,16 +145,15 @@ public enum KeyboardGuardChain {
             return .act(.command(spec.identity))
         }
 
-        // NSTextField 的 field editor 也是 NSTextView，且切頁後可能短暫保留；只在確實
-        // 顯示文字輸入介面時放行，避免它吞掉清單的 n/e/x 等單鍵命令。
-        //
-        // 搜尋看的是「欄位是不是真的有焦點」，不是「搜尋列在不在」：⏎ 之後篩選與搜尋列
-        // 都還在（`store.searchActive` 仍為 true，這是刻意的），但鍵盤流已經交還清單，
-        // 此時單鍵必須全部恢復作用。看 `searchActive` 會讓按過 ⏎ 的使用者
-        // 卡在一個所有快捷鍵都失效、連 esc 都救不回來的狀態。
-        //
         // 走到這裡的只剩下：非 cmd 的單鍵，以及刻意留給文字欄位的 ⌘Z / ⇧⌘Z。
-        if state.inlineAddActive || state.page == .agent || state.page == .settings || state.searchFocused {
+        //
+        // 單鍵放行必須「AppKit 真的在打字」且「我們認得那個文字面」。
+        // 只認 fieldEditorActive：SwiftUI 視窗常把共用 field editor（NSTextView）
+        // 留成 first responder，s/n/d 會被放行到沒人收的地方。
+        // 只認 searchFocused 等旗標：旗標過期時同一顆鍵也會死。
+        // 兩邊同時成立才是使用者正在搜尋／新增／改名。
+        if state.page == .agent || state.page == .settings { return .passThrough }
+        if state.fieldEditorActive && (state.searchFocused || state.inlineAddActive || state.inlineEditActive) {
             return .passThrough
         }
 
@@ -173,6 +184,11 @@ public enum KeyboardGuardChain {
             return .swallow
         }
 
+        // 筆記頁有自己的 n/d/e/#，但任務單鍵（x、p、@…）絕不能打到清單裡看不見的游標。
+        if state.page == .notes {
+            return decideNotes(stroke, state: state, commands: commands)
+        }
+
         switch stroke.keyCode {
         case KeyCodes.arrowUp: return .act(.moveCursor(-1))
         case KeyCodes.arrowDown: return .act(.moveCursor(1))
@@ -185,21 +201,57 @@ public enum KeyboardGuardChain {
         default: break
         }
 
+        // Caps Lock 把 j/k 變成 J/K；只在沒按 Shift 時當 vim 移動，Shift+j 不移動。
+        if !stroke.shift {
+            switch stroke.characters.lowercased() {
+            case "k": return .act(.moveCursor(-1))
+            case "j": return .act(.moveCursor(1))
+            default: break
+            }
+        }
         switch stroke.characters {
-        case "k": return .act(.moveCursor(-1))
-        case "j": return .act(.moveCursor(1))
         case "1", "2", "3", "4":
             return state.page == .grid ? .act(.setQuadrant(Int(stroke.characters))) : .passThrough
         case "0":
             return state.page == .grid ? .act(.setQuadrant(nil)) : .passThrough
         default:
-            // 這裡不加 availability 檢查。第 8 步已經吞掉唯讀頁;
-            // 加上去會改變今天「沒選中那一列」時單鍵動詞仍會觸發的行為。
+            // 不看 requiresSelection：沒選中時 `d` 仍觸發，由 perform 自己守門。
+            // 但跨頁綁定（筆記的 `#`）不能在清單頁打到別的功能。
             if let spec = CommandKeyMatcher.match(character: stroke.characters, command: false,
-                                                  shift: false, in: commands) {
+                                                  shift: stroke.shift, in: commands) {
+                if let pages = spec.availability.pages, !pages.contains(state.page) {
+                    return .passThrough
+                }
                 return .act(.command(spec.identity))
             }
             return .passThrough
         }
+    }
+
+    private static func decideNotes(_ stroke: KeyStroke, state: KeyboardGuardState,
+                                    commands: [CommandSpec]) -> KeyboardDecision {
+        switch stroke.keyCode {
+        case KeyCodes.arrowUp: return .act(.moveCursor(-1))
+        case KeyCodes.arrowDown: return .act(.moveCursor(1))
+        case KeyCodes.returnKey: return .act(.startInlineEdit)
+        case KeyCodes.escape:
+            if state.searchActive { return .act(.clearSearch) }
+            if state.tagFilterActive { return .act(.clearTagFilter) }
+            return .act(.leaveToList)
+        default: break
+        }
+        if !stroke.shift {
+            switch stroke.characters.lowercased() {
+            case "k": return .act(.moveCursor(-1))
+            case "j": return .act(.moveCursor(1))
+            default: break
+            }
+        }
+        if let spec = CommandKeyMatcher.match(character: stroke.characters, command: false,
+                                              shift: stroke.shift, in: commands,
+                                              availableIn: state.commandContext) {
+            return .act(.command(spec.identity))
+        }
+        return .swallow
     }
 }

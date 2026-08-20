@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		01DD209FFC3196F4225E59AD /* task-report in Resources */ = {isa = PBXBuildFile; fileRef = 60FA87DE7F9834AE69676A84 /* task-report */; };
+		03F556089ABE7C0DE46F3427 /* LinkText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2236B69F28D3A735C72D1C89 /* LinkText.swift */; };
 		1C685CDEBEED82FDDE355AC8 /* brain-dump in Resources */ = {isa = PBXBuildFile; fileRef = 8336E28299055F85E391048D /* brain-dump */; };
 		1DE8F139E12ACC8835CDE867 /* smart-triage in Resources */ = {isa = PBXBuildFile; fileRef = 5D324614D2E965F0FAC63692 /* smart-triage */; };
 		3056FF3F9130FA9B9559A9AD /* PluginPagePrototypeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93729848FDFF0B9D971D71A /* PluginPagePrototypeView.swift */; };
@@ -37,6 +38,7 @@
 		A2F38F194E2266B2ADBBC28E /* TaskFileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A2F40506DB1D415F559833 /* TaskFileBrowserView.swift */; };
 		AF44C1BB72B56D1C72476069 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42BF4B8D51ECE4F88443711C /* main.swift */; };
 		B07F30EF19EDC6792257A08F /* TerminalInputField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219CA0CE4DF8FD68D4B8568F /* TerminalInputField.swift */; };
+		C0400F6C7A7D122EBCCC57AB /* NotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 147EDBDEC635B67583AD7B5D /* NotesView.swift */; };
 		C2E32B3B751B498AE95DEFBA /* TrashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCB2A0ED659C112264F82D7E /* TrashView.swift */; };
 		CC034D83221EC1850719B6AD /* importers in Resources */ = {isa = PBXBuildFile; fileRef = F9BBF3E86BE274228D744A42 /* importers */; };
 		D002B7EC05F0F888006ABDDE /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C38AA616E57879F425E8BE9 /* ContentView.swift */; };
@@ -101,10 +103,12 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		147EDBDEC635B67583AD7B5D /* NotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesView.swift; sourceTree = "<group>"; };
 		14FC886CBBD039FF8370D324 /* TaskStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskStore.swift; sourceTree = "<group>"; };
 		15410508AFEB60F532BD2DEA /* reschedule-tomorrow */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "reschedule-tomorrow"; path = "PluginFixtures/reschedule-tomorrow"; sourceTree = SOURCE_ROOT; };
 		219CA0CE4DF8FD68D4B8568F /* TerminalInputField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInputField.swift; sourceTree = "<group>"; };
 		222BB1F05B96A3C8737A37FD /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		2236B69F28D3A735C72D1C89 /* LinkText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkText.swift; sourceTree = "<group>"; };
 		295F1982A84AA63A55E90EB0 /* weekly-review */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "weekly-review"; path = "PluginFixtures/weekly-review"; sourceTree = SOURCE_ROOT; };
 		2EDD46564191FB0212C311B8 /* PluginRunnerSpikeHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PluginRunnerSpikeHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		30208CDC0896C7B20C5B2049 /* habit-tracker */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "habit-tracker"; path = "PluginFixtures/habit-tracker"; sourceTree = SOURCE_ROOT; };
@@ -114,6 +118,7 @@
 		3D7BE821495251F903C1400A /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
 		42BF4B8D51ECE4F88443711C /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		434D01CD265E5A2ED23A2AC6 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		44BB0E917D79D58DEF4D9B66 /* Project_txtnimal */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Project_txtnimal; path = .; sourceTree = SOURCE_ROOT; };
 		5D324614D2E965F0FAC63692 /* smart-triage */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "smart-triage"; path = "PluginFixtures/smart-triage"; sourceTree = SOURCE_ROOT; };
 		60FA87DE7F9834AE69676A84 /* task-report */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "task-report"; path = "PluginFixtures/task-report"; sourceTree = SOURCE_ROOT; };
 		65E3671ABD9D348F3E335022 /* PluginBrokerXPCTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginBrokerXPCTransport.swift; sourceTree = "<group>"; };
@@ -140,7 +145,6 @@
 		DCB2A0ED659C112264F82D7E /* TrashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashView.swift; sourceTree = "<group>"; };
 		E178D2B7AB168AB4A021F84B /* PluginGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginGalleryView.swift; sourceTree = "<group>"; };
 		EC4B51654C0253094C5E5EFE /* methodology */ = {isa = PBXFileReference; lastKnownFileType = folder; name = methodology; path = PluginFixtures/methodology; sourceTree = SOURCE_ROOT; };
-		F0BA12715A1C5AB8E7F6F488 /* agent-a7258f1c695e63c8a */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "agent-a7258f1c695e63c8a"; path = .; sourceTree = SOURCE_ROOT; };
 		F2541EEF4FFB5E806B8C6406 /* export-pack */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "export-pack"; path = "PluginFixtures/export-pack"; sourceTree = SOURCE_ROOT; };
 		F9BBF3E86BE274228D744A42 /* importers */ = {isa = PBXFileReference; lastKnownFileType = folder; name = importers; path = PluginFixtures/importers; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -175,7 +179,9 @@
 				3C944F52C42BFBF12BA4BA2F /* EventKitRemindersSource.swift */,
 				7AAF2DDFF26B26E6D0E3F2C9 /* FocusHUD.swift */,
 				C63036A2C8D51ED40F089374 /* GlobalCapture.swift */,
+				2236B69F28D3A735C72D1C89 /* LinkText.swift */,
 				872010864B3BC1540FB2F3C2 /* Localizable.strings */,
+				147EDBDEC635B67583AD7B5D /* NotesView.swift */,
 				93A2F40506DB1D415F559833 /* TaskFileBrowserView.swift */,
 				14FC886CBBD039FF8370D324 /* TaskStore.swift */,
 				219CA0CE4DF8FD68D4B8568F /* TerminalInputField.swift */,
@@ -212,7 +218,7 @@
 		3D997C92112A149F71446EC9 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				F0BA12715A1C5AB8E7F6F488 /* agent-a7258f1c695e63c8a */,
+				44BB0E917D79D58DEF4D9B66 /* Project_txtnimal */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -479,6 +485,8 @@
 				355D911F36770778F13407CC /* EventKitRemindersSource.swift in Sources */,
 				3EE1907F9AF4A7DE8DCAEE6A /* FocusHUD.swift in Sources */,
 				3AD6F3F8DA29D965702C96C2 /* GlobalCapture.swift in Sources */,
+				03F556089ABE7C0DE46F3427 /* LinkText.swift in Sources */,
+				C0400F6C7A7D122EBCCC57AB /* NotesView.swift in Sources */,
 				32FD79E4C9573B8830615A88 /* PluginBrokerXPCTransport.swift in Sources */,
 				DE2DE168B6C2A9F07403ADF7 /* PluginGalleryView.swift in Sources */,
 				7A5663D0CBC4DBD56005C8BF /* PluginPageHostView.swift in Sources */,

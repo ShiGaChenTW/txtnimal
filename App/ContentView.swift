@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import txtnimalCore
 
 private enum PendingTaskAction {
@@ -13,13 +14,17 @@ struct ContentView: View {
     @State private var captureText = ""
     @State private var showingAddProject = false
     @State private var showingAddContext = false
+    @State private var showingAddNoteTag = false
     @State private var showingScratch = false
     @State private var projectText = ""
     @State private var contextText = ""
+    @State private var noteTagText = ""
     @State private var monitor: Any?
     @State private var hostWindow: NSWindow?
     @State private var showTabMenu = false
     @State private var pendingTaskAction: PendingTaskAction?
+    @State private var deleteTapToken = 0
+    @State private var lastDeleteTap: (at: Date, target: String)?
 
     /// 清單內容本身要的寬度,不含左側導覽欄。
     private static let contentMinWidth: CGFloat = 660
@@ -53,7 +58,7 @@ struct ContentView: View {
                 // 滿版視圖自己管捲動:象限頁(上下 50/50)、統計頁(垂直置中)、Agent,
                 // 以及清單頁 —— 它的左導覽欄必須固定不動,捲動框因此下放到 ListView 右欄。
                 // 只剩設定頁走這層的整頁捲動。
-                if store.view == .grid || store.view == .dash || store.view == .agent || store.view == .list {
+                if store.view == .grid || store.view == .dash || store.view == .agent || store.view == .list || store.view == .notes {
                     body(for: store.view).frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView { body(for: store.view).frame(maxWidth: .infinity, alignment: .leading) }
@@ -61,7 +66,7 @@ struct ContentView: View {
                 }
                 hline
                 if store.searchActive { searchBar; hline }
-                if store.hasTags { tagBar; hline }
+                if store.view != .notes && store.hasTags { tagBar; hline }
                 // vim 式：捕捉命令列與狀態列同槽互換 — 開啟時零高度變化、輸入永遠在底部
                 if showingCapture { captureBar } else { statusBar }
             }
@@ -106,9 +111,13 @@ struct ContentView: View {
             guard let request, hostWindow?.isKeyWindow ?? true else { return }
             perform(request.identity)
         }
+        .onChange(of: store.keyboardResetSeq) { _ in
+            searchFocused = false
+        }
         .onDisappear { if let m = monitor { NSEvent.removeMonitor(m); monitor = nil } }
         .sheet(isPresented: $showingAddProject, onDismiss: { projectText = "" }) { addProjectSheet }
         .sheet(isPresented: $showingAddContext, onDismiss: { contextText = "" }) { addContextSheet }
+        .sheet(isPresented: $showingAddNoteTag, onDismiss: { noteTagText = "" }) { addNoteTagSheet }
         .sheet(isPresented: $showingScratch) { scratchSheet }
         .sheet(isPresented: $showingEdit) { editSheet }
         .sheet(isPresented: Binding(
@@ -182,7 +191,7 @@ struct ContentView: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Text(Theme.isTerminal ? "find >" : "/").foregroundColor(Theme.isTerminal ? Theme.green : store.accent)
-            TextField("搜尋標題 / +project / @context…", text: $store.searchQuery)
+            TextField(store.view == .notes ? "搜尋筆記 / #tag…" : "搜尋標題 / +project / @context…", text: $store.searchQuery)
                 .textFieldStyle(.plain).font(Theme.mono).foregroundColor(Theme.fg)
                 .focused($searchFocused)
                 .onSubmit { searchFocused = false; store.ensureCursor() }   // ⏎ 保留篩選、回鍵盤流
@@ -242,6 +251,7 @@ struct ContentView: View {
         case .dash: DashboardView()
         case .settings: SettingsView()
         case .trash: TrashView()
+        case .notes: NotesView()
         }
     }
 
@@ -278,7 +288,8 @@ struct ContentView: View {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
                     tab("⌘1 清單", .list); tab("⌘2 象限", .grid); tab("⌘3 Agent", .agent)
-                    tab("⌘4 統計", .dash); tab("⌘5 設定", .settings); tab("⌘6 垃圾桶", .trash)
+                    tab("⌘4 統計", .dash); tab("⌘5 設定", .settings)
+                    tab("⌘6 垃圾桶", .trash); tab("⌘7 筆記", .notes)
                 }
                 tabMenu
             }
@@ -288,7 +299,7 @@ struct ContentView: View {
 
     private static let headerTabs: [(String, AppView)] = [
         ("⌘1 清單", .list), ("⌘2 象限", .grid), ("⌘3 Agent", .agent), ("⌘4 統計", .dash),
-        ("⌘5 設定", .settings), ("⌘6 垃圾桶", .trash)
+        ("⌘5 設定", .settings), ("⌘6 垃圾桶", .trash), ("⌘7 筆記", .notes)
     ]
     /// 窄版下拉選單:按鈕顯示目前頁面,展開的清單用 Theme 配色,與頁籤視覺一致。
     private var tabMenu: some View {
@@ -316,10 +327,10 @@ struct ContentView: View {
                         .background(on ? (Theme.isTerminal ? Theme.green.opacity(0.10) : Theme.bg) : .clear)
                         .overlay(Rectangle().stroke(on ? (Theme.isTerminal ? Theme.green.opacity(0.4) : Theme.border) : .clear))
                         .contentShape(Rectangle())
-                        .onTapGesture { store.view = it.1; store.ensureCursor(); showTabMenu = false }
+                        .onTapGesture { store.switchView(to: it.1, ensureCursor: true); showTabMenu = false }
                 }
             }
-            .padding(6).frame(width: 156)
+            .padding(6).frame(width: 168)
             .background(Theme.panel)
         }
     }
@@ -335,7 +346,7 @@ struct ContentView: View {
             .padding(.horizontal, 9).padding(.vertical, 3)
             .background(on ? (Theme.isTerminal ? Theme.green.opacity(0.08) : Theme.bg) : .clear)
             .overlay(Rectangle().stroke(on ? (Theme.isTerminal ? Theme.green.opacity(0.45) : Theme.border) : .clear))
-            .onTapGesture { store.view = v; store.ensureCursor() }
+            .onTapGesture { store.switchView(to: v, ensureCursor: true) }
     }
 
     // MARK: status bar
@@ -379,21 +390,23 @@ struct ContentView: View {
     private var statusText: String {
         if store.appLanguage == .english {
             switch store.view {
-            case .list: return "↑↓ Move   ⌘E Edit   x Done   f Focus   n Add   d Delete   t Due   p +List   @ Tag   s Rail   / Search   ⌘K Commands"
+            case .list: return "↑↓ Move   ⌘E Edit   x Done   f Focus   n Add   d Delete   dd Skip confirm   t Due   p +List   @ Tag   s Rail   / Search   ⌘K Commands"
             case .grid: return "1–4 Assign   0 Unassign   f Focus   z Zen   ⌘K Commands   ⌘1 List"
             case .agent: return "Agent · review every proposal before applying   ⌘1 Back to list"
             case .dash: return "Read-only stats · calculated from done: dates   esc / ⌘1 Back to list"
             case .settings: return "Settings · applied instantly   esc / ⌘1 Back to list"
             case .trash: return "Trash · restore or delete for good   esc / ⌘1 Back to list"
+            case .notes: return "n Add   e Edit   d Delete   dd Skip confirm   # Tag   / Search   ⌥N Capture   ⌘1 List"
             }
         }
         switch store.view {
-        case .list: return "↑↓ 移動   ⌘E 編輯   x 完成   f Focus   n 新增   d 刪除   t 到期   p +List   @ Tag   s 導覽欄   / 搜尋   ⌘K 指令"
+        case .list: return "↑↓ 移動   ⌘E 編輯   x 完成   f Focus   n 新增   d 刪除   dd 直接刪   t 到期   p +List   @ Tag   s 導覽欄   / 搜尋   ⌘K 指令"
         case .grid: return "1–4 指派   0 回池   f Focus   z 專注   ⌘K 指令   ⌘1 清單"
         case .agent: return "Agent · 提議一律先審後套   ⌘1 回清單"
         case .dash: return "唯讀統計 · 依 done: 日期計算   esc / ⌘1 回清單"
         case .settings: return "設定 · 即時生效   esc / ⌘1 回清單"
         case .trash: return "垃圾桶 · 可還原或永久刪除   esc / ⌘1 回清單"
+        case .notes: return "n 新增   e 編輯   d 刪除   dd 直接刪   # Tag   / 搜尋   ⌥N 捕捉   ⌘1 回清單"
         }
     }
 
@@ -686,13 +699,60 @@ struct ContentView: View {
         showProjectMenu = false; showContextMenu = false
         showDatePicker = true
     }
-    /// `d`:不自己刪,只把待確認動作交給既有的 confirmationDialog —
-    /// 破壞性操作只能有一條路徑,鍵盤捷徑不是繞過二次確認的理由。
+    /// `d` 一次：等雙擊窗口結束後才跳出確認。`d` `d` 連按：直接丟進垃圾桶，不跳框。
+    /// 指令盤／選單仍走 `confirmDeleteCursor()`，那是明示的「刪除」而不是雙擊捷徑。
     private func confirmDeleteCursor() {
         guard let i = store.cursor else { return }
         let handle = store.handle(for: i)
         guard let task = store.task(using: handle) else { return }
         pendingTaskAction = .delete(handle, task.title)
+    }
+
+    private func handleTaskDeleteKey() {
+        guard let i = store.cursor else { return }
+        let handle = store.handle(for: i)
+        guard store.task(using: handle) != nil else { return }
+        let target = "task:\(handle.generation):\(handle.index)"
+        if registerDoubleDelete(target: target) {
+            pendingTaskAction = nil
+            store.deleteTask(using: handle)
+            return
+        }
+        let token = deleteTapToken
+        let title = store.task(using: handle)?.title ?? ""
+        DispatchQueue.main.asyncAfter(deadline: .now() + RepeatKey.doubleTapWindow) {
+            guard token == deleteTapToken else { return }
+            lastDeleteTap = nil
+            pendingTaskAction = .delete(handle, title)
+        }
+    }
+
+    private func handleNoteDeleteKey() {
+        guard let id = store.noteCursorID else { return }
+        let target = "note:\(id)"
+        if registerDoubleDelete(target: target) {
+            store.requestDeleteNote = false
+            store.deleteSelectedNote()
+            return
+        }
+        let token = deleteTapToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + RepeatKey.doubleTapWindow) {
+            guard token == deleteTapToken else { return }
+            lastDeleteTap = nil
+            store.requestDeleteNote = true
+        }
+    }
+
+    /// `true` = 這是同一目標上的第二次 `d`。每次呼叫都會作廢尚未跳出的確認框。
+    private func registerDoubleDelete(target: String) -> Bool {
+        let now = Date()
+        let doubled = RepeatKey.isDoubleTap(
+            previous: lastDeleteTap?.at, now: now,
+            sameTarget: lastDeleteTap?.target == target
+        )
+        deleteTapToken += 1
+        lastDeleteTap = doubled ? nil : (at: now, target: target)
+        return doubled
     }
     private func openEdit(_ handle: TaskHandle) {
         guard let t = store.task(using: handle), !t.isDone else { return }
@@ -876,6 +936,28 @@ struct ContentView: View {
         store.addContextToCursor(contextText); contextText = ""; showingAddContext = false
     }
 
+    private var addNoteTagSheet: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("加入 #Tag 到選取筆記").font(Theme.monoSmall).foregroundColor(Theme.dim).tracking(1.2)
+            HStack(spacing: 8) {
+                Text("#").foregroundColor(Theme.cyan)
+                TextField("idea", text: $noteTagText)
+                    .textFieldStyle(.plain).font(.system(size: 15, design: .monospaced)).foregroundColor(Theme.fg)
+                    .onSubmit { commitNoteTag() }
+            }
+            HStack { Spacer()
+                Button("取消") { showingAddNoteTag = false }
+                Button("加入") { commitNoteTag() }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18).frame(width: 380).background(Theme.bg)
+    }
+    private func commitNoteTag() {
+        store.addTagToSelectedNote(noteTagText)
+        noteTagText = ""
+        showingAddNoteTag = false
+    }
+
     private var scratchSheet: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -908,7 +990,7 @@ struct ContentView: View {
     private var filteredPalette: [CommandSpec] {
         CommandPaletteAssembler.assemble(
             plugins: store.galleryPluginEntries(),
-            context: CommandPaletteContext(page: store.view.palettePage, hasSelection: store.cursor != nil),
+            context: store.commandContext,
             query: paletteQuery
         )
     }
@@ -976,14 +1058,9 @@ struct ContentView: View {
         DispatchQueue.main.async { perform(cmd.identity) }   // 面板收掉、焦點歸還後再執行
     }
 
-    /// 切頁必須把「只在上一頁成立」的鍵盤狀態一起清掉。
-    /// `searchFocused` 是 ContentView 的 @FocusState、`focusMode` 是 store 的旗標,
-    /// 兩者都不會因為 store.view 改變而自動歸零 —— 不清就會在下一頁繼續吞掉按鍵。
+    /// 切頁一律走 store。searchFocused 由 `keyboardResetSeq` 的 onChange 清掉。
     private func switchView(to target: AppView, ensureCursor: Bool = false) {
-        store.view = target
-        store.focusMode = false
-        searchFocused = false
-        if ensureCursor { store.ensureCursor() }
+        store.switchView(to: target, ensureCursor: ensureCursor)
     }
 
     private func perform(_ identity: CommandIdentity) {
@@ -995,11 +1072,11 @@ struct ContentView: View {
             case .inlineEdit: store.startEditing()
             case .toggleFocus: store.toggleFocus()
             case .focusMode: store.toggleFocusMode()
-            case .inlineAdd: store.view = .list; store.requestInlineAdd = true
+            case .inlineAdd: store.switchView(to: .list); store.requestInlineAdd = true
             case .openCapture: openCapture()
             case .addList: if store.cursor != nil { showingAddProject = true }
             case .addTag: if store.cursor != nil { showingAddContext = true }
-            case .newList: store.view = .list; store.requestNewList = true
+            case .newList: store.switchView(to: .list); store.requestNewList = true
             case .deleteTask: confirmDeleteCursor()
             case .quickDue: openEditOnDueField()
             // 搜尋列已經開著但焦點在清單時（⏎ 之後的常態），再按一次 `/` 必須回到欄位；
@@ -1011,13 +1088,27 @@ struct ContentView: View {
             case .rescheduleOverdue: store.rescheduleOverdue()
             case .densityTighter: store.cycleDensity(-1)
             case .densityLooser: store.cycleDensity(1)
-            case .toggleListRail: store.listRailVisible.toggle()
+            case .toggleListRail:
+                let turningOn = !store.listRailVisible
+                store.listRailVisible.toggle()
+                // 側邊面板若窄到塞不下導覽欄，打開時一併拉寬，否則 s 仍像沒按。
+                if turningOn, store.windowMode == .sidebar {
+                    let needed = Double(ListNavigationRail.width + 360)
+                    if store.sidebarWidth < needed { store.sidebarWidth = needed }
+                }
             case .viewList: switchView(to: .list, ensureCursor: true)
             case .viewGrid: switchView(to: .grid, ensureCursor: true)
             case .viewAgent: switchView(to: .agent)
             case .viewDash: switchView(to: .dash)
             case .viewSettings: switchView(to: .settings)
             case .viewTrash: switchView(to: .trash)
+            case .viewNotes: switchView(to: .notes)
+            case .inlineAddNote: store.switchView(to: .notes); store.requestInlineAddNote = true
+            case .deleteNote: store.requestDeleteNote = true
+            case .editNote: store.startEditingNote()
+            case .addNoteTag:
+                if store.view == .notes, store.noteCursorID != nil { showingAddNoteTag = true }
+            case .openNoteCapture: GlobalNoteCapture.shared.toggle()
             case .cycleAppearance: store.cycleAppearance()
             case .openPalette: openPalette()
             case .undo: store.undo()
@@ -1032,11 +1123,23 @@ struct ContentView: View {
     /// 守門鏈只做判斷,對 store 的實際呼叫留在這裡 —— 純函式那邊才測得動。
     private func apply(_ action: KeyboardAction) {
         switch action {
-        case .command(let identity): perform(identity)
+        case .command(let identity):
+            switch identity {
+            case .builtin(.deleteTask): handleTaskDeleteKey()
+            case .builtin(.deleteNote): handleNoteDeleteKey()
+            default: perform(identity)
+            }
         case .moveCursor(let delta): store.move(delta)
         case .startInlineEdit: store.startEditing()
-        case .clearSearch: store.clearSearch()
-        case .clearTagFilter: store.tagFilter = nil; store.ensureCursor()
+        case .clearSearch: searchFocused = false; store.clearSearch()
+        case .clearTagFilter:
+            if store.view == .notes {
+                store.noteTagFilter = nil
+                store.ensureNoteCursor()
+            } else {
+                store.tagFilter = nil
+                store.ensureCursor()
+            }
         case .clearFocus: store.clearFocus()
         case .leaveToList: switchView(to: .list, ensureCursor: true)
         case .exitFocusMode: store.focusMode = false
@@ -1114,6 +1217,14 @@ struct ContentView: View {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in handle(e) }
     }
+
+    /// 只問 first responder 自己，不沿 nextResponder 往上爬。
+    /// 共用 field editor 是可編輯 NSTextView；不可編輯的 SwiftUI Text 不算。
+    private static func isFieldEditor(_ responder: NSResponder?) -> Bool {
+        if let field = responder as? NSTextField { return field.isEditable }
+        if let view = responder as? NSTextView { return view.isEditable }
+        return false
+    }
     private func handle(_ e: NSEvent) -> NSEvent? {
         // 本地 monitor 是 app 層級的:側邊模式下有兩個 ContentView(主視窗+側邊面板),
         // 各裝一個。只讓事件目標視窗的那個實例處理,否則另一個會吞掉 capture 的按鍵。
@@ -1150,19 +1261,29 @@ struct ContentView: View {
         }
         // showingPalette / showingEdit 上面已經各自處理完了,不會走到守門鏈;
         // 仍寫進 snapshot,讓 KeyboardGuardState 是完整、誠實的當下狀態。
+        let blockingModal = pendingTaskAction != nil
+            || store.lastError != nil
+            || store.externalEditConflict != nil
+            || {
+                if case .review = store.importReview { return true }
+                return false
+            }()
+            || !store.hasCompletedOnboarding
         let state = KeyboardGuardState(
             paletteOpen: showingPalette,
             editPopupOpen: showingEdit,
             textEntryOverlayOpen: showingCapture || showingAddProject || showingAddContext
-                || showingScratch || store.listEditorActive,
+                || showingScratch || store.listEditorActive || blockingModal
+                || showingAddNoteTag || store.editingNoteID != nil || store.noteConfirmOpen,
             inlineEditActive: store.editingIndex != nil,
             inlineAddActive: store.inlineAddActive,
             searchFocused: searchFocused,
+            fieldEditorActive: Self.isFieldEditor(e.window?.firstResponder ?? hostWindow?.firstResponder),
             focusMode: store.focusMode,
             searchActive: store.searchActive,
-            tagFilterActive: store.tagFilter != nil,
+            tagFilterActive: store.view == .notes ? store.noteTagFilter != nil : store.tagFilter != nil,
             page: store.view.palettePage,
-            hasSelection: store.cursor != nil
+            hasSelection: store.view == .notes ? store.noteCursorID != nil : store.cursor != nil
         )
         let stroke = KeyStroke(characters: e.charactersIgnoringModifiers ?? "",
                                keyCode: e.keyCode,
@@ -1237,7 +1358,7 @@ private struct ImportReviewSheet: View {
 }
 
 /// Variable-width chips that wrap onto additional rows instead of scrolling horizontally.
-private struct FlowLayout: Layout {
+struct FlowLayout: Layout {
     var spacing: CGFloat = 8
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {

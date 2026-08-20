@@ -35,9 +35,13 @@ trap cleanup EXIT
 mkdir -p "$output_dir"
 
 print "Building txtnimal v$version for arm64 and x86_64..."
+# Scheme MUST be txtnimal-macos. Package.swift also exports an executable
+# named txtnimal (the CLI); -scheme txtnimal on a clean DerivedData resolves
+# to that CLI, never produces txtnimal.app, and can package a leftover stale
+# .app as if it were this build.
 xcodebuild \
   -project "$project_root/txtnimal.xcodeproj" \
-  -scheme txtnimal \
+  -scheme txtnimal-macos \
   -configuration Release \
   -derivedDataPath "$derived_data" \
   -destination 'generic/platform=macOS' \

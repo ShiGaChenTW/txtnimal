@@ -120,6 +120,8 @@ final class CommandPaletteTests: XCTestCase {
         XCTAssertEqual(match("3", command: true), .viewAgent)
         XCTAssertEqual(match("4", command: true), .viewDash)
         XCTAssertEqual(match("5", command: true), .viewSettings)
+        XCTAssertEqual(match("6", command: true), .viewTrash)
+        XCTAssertEqual(match("7", command: true), .viewNotes)
         XCTAssertEqual(match(",", command: true), .viewSettings)
         XCTAssertEqual(match("n"), .inlineAdd)
         XCTAssertEqual(match("b", command: true), .inlineAdd)
@@ -132,7 +134,10 @@ final class CommandPaletteTests: XCTestCase {
         XCTAssertEqual(match("z", command: true), .undo)
         XCTAssertEqual(match("z", command: true, shift: true), .redo)
         XCTAssertEqual(match("t", command: true, shift: true), .cycleAppearance)
-        XCTAssertEqual(match("R"), .rescheduleOverdue)
+        XCTAssertEqual(match("R", shift: true), .rescheduleOverdue)
+        XCTAssertNil(match("R"), "Caps Lock + r is not reschedule")
+        XCTAssertEqual(match("N"), .inlineAdd)
+        XCTAssertNil(match("N", shift: true), "Shift+n is not inline-add")
         XCTAssertNil(match("n", command: true), "⌘N is not inline-add; n alone is")
     }
 
@@ -144,12 +149,24 @@ final class CommandPaletteTests: XCTestCase {
     }
 
     func testBuiltinHandleBindingsAreUnique() {
-        var seen = Set<String>()
+        var owners: [String: CommandSpec] = [:]
         for spec in CommandCatalog.builtIns {
             for binding in spec.bindings {
                 let token = "\(binding.command ? "c" : "_")\(binding.shift ? "s" : "_")\(binding.character)"
-                XCTAssertTrue(seen.insert(token).inserted, "duplicate binding \(token) on \(spec.id)")
+                if let previous = owners[token] {
+                    XCTAssertFalse(availabilityOverlaps(previous.availability, spec.availability),
+                                   "duplicate binding \(token) on \(previous.id) and \(spec.id)")
+                } else {
+                    owners[token] = spec
+                }
             }
+        }
+    }
+
+    private func availabilityOverlaps(_ a: CommandAvailability, _ b: CommandAvailability) -> Bool {
+        switch (a.pages, b.pages) {
+        case (nil, _), (_, nil): return true
+        case let (left?, right?): return !left.isDisjoint(with: right)
         }
     }
 
@@ -167,6 +184,7 @@ final class CommandPaletteTests: XCTestCase {
         XCTAssertEqual(match("t"), .quickDue)
         XCTAssertEqual(match("l"), .newList)
         XCTAssertEqual(match("@"), .addTag)
+        XCTAssertEqual(match("#"), .addNoteTag)
     }
 
     func testNewCommandsKeyDisplay() {
@@ -174,6 +192,25 @@ final class CommandPaletteTests: XCTestCase {
         XCTAssertEqual(CommandCatalog.builtIn(.quickDue).keyDisplay, "t")
         XCTAssertEqual(CommandCatalog.builtIn(.newList).keyDisplay, "l")
         XCTAssertEqual(CommandCatalog.builtIn(.addTag).keyDisplay, "@")
+        XCTAssertEqual(CommandCatalog.builtIn(.addNoteTag).keyDisplay, "#")
+        XCTAssertEqual(CommandCatalog.builtIn(.viewNotes).keyDisplay, "⌘7")
+        XCTAssertEqual(CommandCatalog.builtIn(.inlineAddNote).keyDisplay, "n")
+        XCTAssertEqual(CommandCatalog.builtIn(.deleteNote).keyDisplay, "d")
+    }
+
+    func testNoteCommandsAreListedOnNotesPageOnly() {
+        let notes = identities(in: assemble(page: .notes, hasSelection: true))
+        XCTAssertTrue(notes.contains(.builtin(.inlineAddNote)))
+        XCTAssertTrue(notes.contains(.builtin(.deleteNote)))
+        XCTAssertTrue(notes.contains(.builtin(.editNote)))
+        XCTAssertTrue(notes.contains(.builtin(.addNoteTag)))
+        XCTAssertTrue(notes.contains(.builtin(.openNoteCapture)))
+        XCTAssertFalse(notes.contains(.builtin(.inlineAdd)))
+        XCTAssertFalse(notes.contains(.builtin(.deleteTask)))
+        let list = identities(in: assemble(page: .list, hasSelection: true))
+        XCTAssertFalse(list.contains(.builtin(.inlineAddNote)))
+        XCTAssertFalse(list.contains(.builtin(.deleteNote)))
+        XCTAssertTrue(list.contains(.builtin(.viewNotes)))
     }
 
     /// `d` 是破壞性操作,`t`/`@` 改的是選中那一筆 — 三者都必須要求選取。
@@ -427,6 +464,7 @@ final class CommandPaletteTests: XCTestCase {
         let expected: [(BuiltinCommand, String)] = [
             (.viewList, "1"), (.viewGrid, "2"), (.viewAgent, "3"),
             (.viewDash, "4"), (.viewSettings, "5"), (.viewSettings, ","),
+            (.viewTrash, "6"), (.viewNotes, "7"),
         ]
         for (id, key) in expected {
             XCTAssertTrue(

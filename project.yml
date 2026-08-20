@@ -6,6 +6,19 @@ options:
     macOS: "13.0"
   createIntermediateGroups: true
 
+# Package.swift also exports a CLI executable named txtnimal. A scheme of the
+# same name resolves to that CLI on a clean DerivedData, so packaging must use
+# this uniquely named macOS-app scheme.
+schemes:
+  txtnimal-macos:
+    build:
+      targets:
+        txtnimal: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
 packages:
   txtnimalCore:
     path: .

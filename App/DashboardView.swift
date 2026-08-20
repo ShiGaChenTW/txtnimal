@@ -337,8 +337,7 @@ struct DashboardView: View {
                     .contentShape(Rectangle())
                     .onTapGesture {
                         store.tagFilter = "+" + name
-                        store.view = .list
-                        store.ensureCursor()
+                        store.switchView(to: .list, ensureCursor: true)
                     }
             }
         }
