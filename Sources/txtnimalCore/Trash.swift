@@ -42,6 +42,14 @@ public enum Trash {
         return max(0, retentionDays - elapsed)
     }
 
+    /// 垃圾桶 UI 列出的是「略過空行」的那份清單,但永久刪除要的是**檔案**索引。
+    /// 兩者只在檔案裡沒有空行時才相等 —— 算錯不會當掉,只會刪掉別人,
+    /// 所以越界一律回 `nil`,不 clamp、不退回 0。
+    public static func fileIndex(forVisible index: Int, in lines: [TaskLine]) -> Int? {
+        let realIndices = lines.indices.filter { !lines[$0].isBlank }
+        return realIndices.indices.contains(index) ? realIndices[index] : nil
+    }
+
     // MARK: - Fixed-calendar YMD helpers
 
     /// Gregorian/UTC so day arithmetic never shifts with the host locale or DST.

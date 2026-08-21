@@ -101,7 +101,7 @@ public enum KeyboardGuardChain {
     /// 這兩個指令刻意不參與「cmd 先於文字守門」那一步。系統 Edit 選單本來就擁有
     /// ⌘Z / ⇧⌘Z，聚焦中的文字欄位靠它拿到標準的「復原打字」；把 undo/redo 也提前，
     /// 等於在文字欄位裡把 ⌘Z 從「復原我剛打的字」換成「復原上一個任務動作」。
-    /// 這和 `CommandMenuModel.keylessIdentities`（CommandPalette.swift L320）是同一個
+    /// 這和 `CommandMenuModel.keylessIdentities`（CommandPalette.swift L377）是同一個
     /// 理由的兩半：那邊不讓選單搶鍵，這邊不讓 monitor 搶鍵。
     public static let commandsDeferredToTextEntry: [CommandIdentity] = [
         .builtin(.undo), .builtin(.redo),
