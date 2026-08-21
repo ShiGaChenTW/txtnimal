@@ -101,50 +101,93 @@ final class TaskFilterTests: XCTestCase {
         call plumber note:"ask about the leak" id:aaaa0004
         """)
 
-    private func titles(_ options: ListOptions) -> [String] {
-        TaskFilter.matchingIndices(in: doc, options: options).map { doc[$0].title }
+    private static let today: Date = {
+        var c = DateComponents(); c.year = 2026; c.month = 8; c.day = 19
+        return Calendar.current.date(from: c)!
+    }()
+
+    private func titles(_ options: ListOptions) throws -> [String] {
+        try TaskFilter.matchingIndices(in: doc, options: options, today: Self.today).map { doc[$0].title }
     }
 
-    func testOpenTasksOnlyByDefault() {
-        XCTAssertEqual(titles(ListOptions()), ["write report", "buy milk", "call plumber"])
+    func testOpenTasksOnlyByDefault() throws {
+        XCTAssertEqual(try titles(ListOptions()), ["write report", "buy milk", "call plumber"])
     }
 
-    func testIncludeDoneAddsCompletedTasks() {
-        XCTAssertEqual(titles(ListOptions(includeDone: true)),
+    func testIncludeDoneAddsCompletedTasks() throws {
+        XCTAssertEqual(try titles(ListOptions(includeDone: true)),
                        ["write report", "buy milk", "shipped release", "call plumber"])
     }
 
-    func testProjectFilterIsCaseInsensitiveAndTolerantOfALeadingPlus() {
-        XCTAssertEqual(titles(ListOptions(project: "work")), ["write report"])
-        XCTAssertEqual(titles(ListOptions(project: "WORK")), ["write report"])
-        XCTAssertEqual(titles(ListOptions(project: "+work")), ["write report"])
+    func testProjectFilterIsCaseInsensitiveAndTolerantOfALeadingPlus() throws {
+        XCTAssertEqual(try titles(ListOptions(project: "work")), ["write report"])
+        XCTAssertEqual(try titles(ListOptions(project: "WORK")), ["write report"])
+        XCTAssertEqual(try titles(ListOptions(project: "+work")), ["write report"])
     }
 
-    func testContextFilterIsCaseInsensitiveAndTolerantOfALeadingAt() {
-        XCTAssertEqual(titles(ListOptions(context: "home")), ["buy milk"])
-        XCTAssertEqual(titles(ListOptions(context: "@HOME")), ["buy milk"])
+    func testContextFilterIsCaseInsensitiveAndTolerantOfALeadingAt() throws {
+        XCTAssertEqual(try titles(ListOptions(context: "home")), ["buy milk"])
+        XCTAssertEqual(try titles(ListOptions(context: "@HOME")), ["buy milk"])
     }
 
-    func testQueryMatchesTitleSubstringCaseInsensitively() {
-        XCTAssertEqual(titles(ListOptions(query: "REPORT")), ["write report"])
-        XCTAssertEqual(titles(ListOptions(query: "l")), ["buy milk", "call plumber"])
+    func testQueryMatchesTitleSubstringCaseInsensitively() throws {
+        XCTAssertEqual(try titles(ListOptions(query: "REPORT")), ["write report"])
+        XCTAssertEqual(try titles(ListOptions(query: "l")), ["buy milk", "call plumber"])
     }
 
-    func testQueryAlsoSearchesTheNoteBody() {
-        XCTAssertEqual(titles(ListOptions(query: "leak")), ["call plumber"])
+    func testQueryAlsoSearchesTheNoteBody() throws {
+        XCTAssertEqual(try titles(ListOptions(query: "leak")), ["call plumber"])
     }
 
-    func testQueryDoesNotLeakIntoMetadataTokens() {
+    func testQueryDoesNotLeakIntoMetadataTokens() throws {
         // "aaaa0002" is an id: token, not user-visible text — searching it must not match.
-        XCTAssertEqual(titles(ListOptions(query: "aaaa0002")), [])
+        XCTAssertEqual(try titles(ListOptions(query: "aaaa0002")), [])
     }
 
-    func testFiltersCombineWithAnd() {
-        XCTAssertEqual(titles(ListOptions(project: "work", context: "office")), ["write report"])
-        XCTAssertEqual(titles(ListOptions(project: "errands", context: "office")), [])
+    func testFiltersCombineWithAnd() throws {
+        XCTAssertEqual(try titles(ListOptions(project: "work", context: "office")), ["write report"])
+        XCTAssertEqual(try titles(ListOptions(project: "errands", context: "office")), [])
     }
 
-    func testBlankLinesAreNeverListed() {
-        XCTAssertFalse(titles(ListOptions(includeDone: true)).contains(""))
+    func testBlankLinesAreNeverListed() throws {
+        XCTAssertFalse(try titles(ListOptions(includeDone: true)).contains(""))
+    }
+
+    // MARK: - --filter
+
+    func testFilterQuerySelectsTheSameWayTheFlagsDo() throws {
+        XCTAssertEqual(try titles(ListOptions(filter: "+work")), ["write report"])
+        XCTAssertEqual(try titles(ListOptions(filter: "@home")), ["buy milk"])
+    }
+
+    func testFilterQuerySupportsDisjunctionTheFlagsCannotExpress() throws {
+        XCTAssertEqual(try titles(ListOptions(filter: "@office OR @home")),
+                       ["write report", "buy milk"])
+    }
+
+    /// The two filtering surfaces compose rather than compete.
+    func testFilterQueryAndsWithTheFlags() throws {
+        XCTAssertEqual(try titles(ListOptions(project: "work", filter: "@office")), ["write report"])
+        XCTAssertEqual(try titles(ListOptions(project: "errands", filter: "@office")), [])
+    }
+
+    /// Otherwise the obvious query returns nothing, which no one wants.
+    func testMentioningDoneStandsDownTheDefaultHideCompletedGate() throws {
+        XCTAssertEqual(try titles(ListOptions(filter: "done:true")), ["shipped release"])
+        XCTAssertEqual(try titles(ListOptions(filter: "+work AND done:true")), ["shipped release"])
+    }
+
+    func testWithoutMentioningDoneCompletedTasksStayHidden() throws {
+        XCTAssertEqual(try titles(ListOptions(filter: "+work")), ["write report"],
+                       "the completed +work task must stay hidden")
+    }
+
+    func testAnEmptyFilterStringIsNotAFilter() throws {
+        XCTAssertEqual(try titles(ListOptions(filter: "   ")),
+                       ["write report", "buy milk", "call plumber"])
+    }
+
+    func testAMalformedFilterThrows() {
+        XCTAssertThrowsError(try titles(ListOptions(filter: "+work AND (")))
     }
 }
