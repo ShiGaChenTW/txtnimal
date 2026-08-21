@@ -3,20 +3,21 @@
 > **契約**：本文件的行號對應當下 `App/` 與 `Sources/txtnimalCore/` 的原始碼。
 > 改動鍵盤相關程式碼時一併更新行號；行號漂掉的文件比沒有文件更糟。
 >
-> 最後校對：2026-08-20（獨立筆記頁 ⌘7；全域筆記捕捉 ⌥N）
+> 最後校對：2026-08-21（全篇行號重新對過；行內編輯判定搬進 `InlineEditGate`）
 
 ## 唯一真相在哪裡
 
 | 東西 | 檔案 | 位置 |
 |------|------|------|
-| **綁定表**（哪顆鍵對應哪個指令、在哪些頁面可用） | `Sources/txtnimalCore/CommandPalette.swift` | `CommandCatalog.builtIns`，L140 |
-| **守門鏈**（某個狀態下這顆鍵會被吃掉、放行、還是執行） | `Sources/txtnimalCore/KeyboardGuardChain.swift` | `KeyboardGuardChain.decide`，L95 |
-| **選單列項目**（每個帶 ⌘ 的綁定的後備入口） | `Sources/txtnimalCore/CommandPalette.swift` | `CommandMenuModel.items`，L324 |
-| NSEvent 轉接層 | `App/ContentView.swift` | `handle(_:)` |
-| 判定 → 對 store 的實際呼叫 | `App/ContentView.swift` | `apply(_:)` |
-| 指令實作 | `App/ContentView.swift` | `perform(_:)` |
-| **切頁**（唯一入口；會清 focusMode／editingIndex／searchFocused） | `App/TaskStore.swift` | `switchView(to:ensureCursor:)` |
-| 選單列繪製 | `App/txtnimalApp.swift` | `CommandGroup(replacing: .newItem)` L22、`menuButton(_:)` L72 |
+| **綁定表**（哪顆鍵對應哪個指令、在哪些頁面可用） | `Sources/txtnimalCore/CommandPalette.swift` | `CommandCatalog.builtIns`，L148 |
+| **守門鏈**（某個狀態下這顆鍵會被吃掉、放行、還是執行） | `Sources/txtnimalCore/KeyboardGuardChain.swift` | `KeyboardGuardChain.decide`，L110 |
+| **選單列項目**（每個帶 ⌘ 的綁定的後備入口） | `Sources/txtnimalCore/CommandPalette.swift` | `CommandMenuModel.items`，L381 |
+| NSEvent 轉接層 | `App/ContentView.swift` | `handle(_:)`，L1228 |
+| 判定 → 對 store 的實際呼叫 | `App/ContentView.swift` | `apply(_:)`，L1124 |
+| 指令實作 | `App/ContentView.swift` | `perform(_:)`，L1066 |
+| **行內編輯判定**（`e`／⏎ 要編輯哪一個東西） | `Sources/txtnimalCore/InlineEditGate.swift` | `InlineEditGate.route`，L27 |
+| **切頁**（唯一入口；會清 focusMode／editingIndex／searchFocused） | `App/TaskStore.swift` | `switchView(to:ensureCursor:)`，L355 |
+| 選單列繪製 | `App/txtnimalApp.swift` | `CommandGroup(replacing: .newItem)` L23、`menuButton(_:)` L78 |
 
 新增一顆快捷鍵**只**要改 `CommandCatalog.builtIns`：守門鏈、指令面板與選單列都是從它生出來的。
 手抄第二份的下場見 `CHANGELOG.md`（選單與 `handle()` 對 ⌘2／⌘4 各說各話那次）。
@@ -25,12 +26,12 @@
 
 一顆鍵有兩個可能的消費者，兩條路都通到同一個 `perform()`：
 
-1. **本地 monitor** — `ContentView.installMonitor()`（L1111）裝的 `NSEvent` local monitor。
+1. **本地 monitor** — `ContentView.installMonitor()`（L1214）裝的 `NSEvent` local monitor。
    絕大多數情況走這條。
 2. **選單列** — monitor 放行（`.passThrough`）時，事件會繼續走到 SwiftUI 的主選單。
-   選單按鈕呼叫 `TaskStore.requestCommand(_:)`（`App/TaskStore.swift` L329），
-   經 `@Published commandRequest`（L326）回到 `ContentView` 的
-   `.onChange(of: store.commandRequest)`（L105），再進 `perform()`。
+   選單按鈕呼叫 `TaskStore.requestCommand(_:)`（`App/TaskStore.swift` L347），
+   經 `@Published commandRequest`（L344）回到 `ContentView` 的
+   `.onChange(of: store.commandRequest)`（L110），再進 `perform()`。
 
 第 2 條仍是每個 ⌘ 綁定的保證後備入口：`CommandMenuModel` 覆蓋它們，
 `CommandPaletteTests` 直接對它斷言（不是對手抄的字面值）。
@@ -41,7 +42,7 @@
 
 ## 守門鏈順序
 
-`KeyboardGuardChain.decide`（`KeyboardGuardChain.swift` L95）由上而下：
+`KeyboardGuardChain.decide`（`KeyboardGuardChain.swift` L110）由上而下：
 
 | # | 條件 | 結果 |
 |---|------|------|
@@ -64,7 +65,7 @@ NSTextView 留成 first responder，`s`／`n` 會被放行到沒人收的地方�
 只開 Caps Lock 不會觸發。`j`／`k` 同樣忽略 Caps Lock。
 
 第 5 步的例外是 ⌘Z / ⇧⌘Z：它們刻意不參與「cmd 先於文字守門」，
-見 `KeyboardGuardChain.commandsDeferredToTextEntry`（L91）。
+見 `KeyboardGuardChain.commandsDeferredToTextEntry`（L106）。
 過了第 6 步之後，這兩顆鍵仍會走完 cmd 分支，所以清單／專注／統計頁的任務復原不變。
 
 **任何帶 ⌘ 的按鍵都在 cmd 分支結束，不會往下掉。** 沒命中 catalog 的（⌘A / ⌘C / ⌘V …）
@@ -81,7 +82,7 @@ NSTextView 留成 first responder，`s`／`n` 會被放行到沒人收的地方�
 ## ⚠️ 專注模式會吞掉所有未修飾單鍵
 
 在專注模式（清單／象限頁按 `z` 進入，`TaskStore.toggleFocusMode()` 於
-`App/TaskStore.swift` L1736）底下：
+`App/TaskStore.swift` L1771）底下：
 
 - **只有 `z` 與 `Esc` 有作用**，兩者都是離開專注模式。
 - 其他未修飾單鍵（`n` `d` `x` `e` `j` `k` …）**全部被吞掉，沒有任何回饋**。
@@ -89,9 +90,13 @@ NSTextView 留成 first responder，`s`／`n` 會被放行到沒人收的地方�
   所以 ⌘1 可以直接切頁離開（切頁也會順手把專注模式關掉）。
 
 這是刻意設計：專注模式的重點就是畫面只剩一件事、不要有別的操作。
-畫面上唯一的提示是變暗的遮罩（`ContentView.swift` L68 掛載、L402 定義）。
+畫面上唯一的提示是變暗的遮罩（`ContentView.swift` L73 掛載、L415 定義）。
 但對忘記自己還在專注模式的使用者來說，這看起來就是「快捷鍵壞了」——
-所以寫在這裡，也寫在 README。要離開就按 `z` 或 `Esc`。
+所以寫在這裡，也寫在 README（`README.md` 快捷鍵表下方的警告框）。要離開就按 `z` 或 `Esc`。
+
+**這是規格，不是缺陷，所以它有圍籬**：`testFocusModeSwallowsEverythingExceptZAndEscape`
+（`Tests/txtnimalCoreTests/KeyboardGuardChainTests.swift` L354）。誰哪天覺得「單鍵在專注模式下
+沒反應是 bug」而把第 7 步放行，那個測試會紅。要改這個行為就連同這一節與 README 一起改。
 
 ## 切頁會清掉的狀態
 
@@ -109,8 +114,8 @@ NSTextView 留成 first responder，`s`／`n` 會被放行到沒人收的地方�
 ## 側邊面板模式：cmd 快捷鍵改由 monitor 直接處理
 
 側邊面板（⌥T）是 `[.borderless, .nonactivatingPanel]` 的
-`KeyablePanel`（`App/GlobalCapture.swift` L24、L115），
-`reveal()`（L202）用 `makeKeyAndOrderFront` 讓它成為 key window，
+`KeyablePanel`（`App/GlobalCapture.swift` L26、L115），
+`reveal()`（L204）用 `makeKeyAndOrderFront` 讓它成為 key window，
 但**全程沒有呼叫 `NSApp.activate`**。
 
 所以面板拿到鍵盤時，txtnimal 不是最前景 app，選單列屬於別的 app：
@@ -124,8 +129,8 @@ NSTextView 留成 first responder，`s`／`n` 會被放行到沒人收的地方�
 
 唯一刻意的例外是 ⌘Z / ⇧⌘Z。系統 Edit 選單本來就擁有它們；
 放行才能讓聚焦中的欄位做「復原打字」，而不是把「復原我剛打的字」換成「復原上一個任務動作」。
-這和 `KeyboardGuardChain.commandsDeferredToTextEntry`（L91）與
-`CommandMenuModel.keylessIdentities`（`CommandPalette.swift` L320）是同一個理由的兩半：
+這和 `KeyboardGuardChain.commandsDeferredToTextEntry`（L106）與
+`CommandMenuModel.keylessIdentities`（`CommandPalette.swift` L377）是同一個理由的兩半：
 那邊不讓選單搶鍵，這邊不讓 monitor 搶鍵。
 
 ## 獨立筆記（⌘7 / ⌥N）

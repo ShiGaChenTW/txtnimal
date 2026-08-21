@@ -1674,9 +1674,9 @@ final class TaskStore: ObservableObject {
     }
 
     /// UI 的索引是 `trashTasks` 的(已略過空行),檔案的索引才是 store 要的。
+    /// 換算在 `Trash.fileIndex`(核心、有測試) —— 算錯會永久刪掉別人。
     private func trashFileIndex(forVisible index: Int) -> Int? {
-        let realIndices = trashLines.indices.filter { !trashLines[$0].isBlank }
-        return realIndices.indices.contains(index) ? realIndices[index] : nil
+        Trash.fileIndex(forVisible: index, in: trashLines)
     }
 
     func restoreTask(at visibleIndex: Int) {
@@ -1719,12 +1719,10 @@ final class TaskStore: ObservableObject {
             save(); ensureCursor()
         } catch { report(error) }
     }
+    /// 落點判定在 `CursorPlacement`(核心、有測試)。這裡只負責餵目前的顯示順序 ——
+    /// 原本連呼叫兩次 `currentOrder()` 來算同一份順序,現在只算一次。
     private func cursorAfterRemoving(_ removed: Int) -> Int? {
-        let remaining = currentOrder().filter { $0 != removed }.map { $0 > removed ? $0 - 1 : $0 }
-        guard !remaining.isEmpty else { return nil }
-        let oldOrder = currentOrder()
-        let position = oldOrder.firstIndex(of: removed) ?? 0
-        return remaining[min(position, remaining.count - 1)]
+        CursorPlacement.afterRemoving(removed, from: currentOrder())
     }
     func toggleFocus() {
         guard let i = cursor, lines.indices.contains(i) else { return }
@@ -1777,16 +1775,15 @@ final class TaskStore: ObservableObject {
     func cycleDensity(_ delta: Int) {
         density = Density(rawValue: max(0, min(2, density.rawValue + delta))) ?? density
     }
+    /// 判定在 `InlineEditGate`(核心、有測試),這裡只負責把判定翻成對 store 的寫入。
+    /// 象限頁曾經被這道守門擋掉 —— 現在那條可用頁面的規則由 `InlineEditGateTests` 對著
+    /// catalog 的 `.inlineEdit` 宣告驗一次,兩邊再走散會有測試紅燈。
     func startEditing() {
-        if view == .notes {
-            startEditingNote()
-            return
+        switch InlineEditGate.route(page: view.palettePage, cursor: cursor, lines: lines) {
+        case .note: startEditingNote()
+        case .task(let i): editingIndex = i
+        case .none: break
         }
-        // 象限頁也要能行內編輯 —— catalog 的 `.inlineEdit` 宣告 `.listGridSelection`,
-        // 指令盤也照著列出來,只有這道守門把象限頁擋掉,於是 e / ⏎ 在象限頁靜靜地沒反應。
-        guard view == .list || view == .grid,
-              let i = cursor, lines.indices.contains(i), !lines[i].isDone else { return }
-        editingIndex = i
     }
 
     /// ⌘E 編輯彈窗:一次寫回標題 / 到期 / 專案 / 便箋(逐欄最小變更,未動的 token 原樣保留)。
