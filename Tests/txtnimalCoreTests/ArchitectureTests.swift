@@ -2,6 +2,16 @@ import XCTest
 @testable import txtnimalCore
 
 final class ArchitectureTests: XCTestCase {
+
+    /// Saving stamps a random `id:` on any line that lacks one, so assertions about a line's
+    /// *other* tokens compare it with identity removed. What the id itself must satisfy is
+    /// pinned in TaskStableIDTests.
+    private func withoutID(_ line: TaskLine) -> String {
+        var copy = line
+        copy.setStableID(nil)
+        return copy.raw
+    }
+
     func testFilesystemStoreRoundTripAndStaleGeneration() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -90,8 +100,9 @@ final class ArchitectureTests: XCTestCase {
         let first = try store.load()
         let result = try store.archiveTask(TaskHandle(generation: first.generation, index: 0),
                                            expectedGeneration: first.generation)
-        XCTAssertEqual(result.lines.filter { !$0.isBlank }.map(\.raw), ["second +work"])
-        XCTAssertEqual(result.archiveLines.filter { !$0.isBlank }.map(\.raw), ["first unknown:value"])
+        XCTAssertEqual(result.lines.filter { !$0.isBlank }.map(withoutID), ["second +work"])
+        XCTAssertEqual(result.archiveLines.filter { !$0.isBlank }.map(\.raw), ["first unknown:value"],
+                       "the archived copy leaves as-is — identity is a live-document invariant")
         XCTAssertEqual(try String(contentsOf: store.archiveURL, encoding: .utf8), "first unknown:value\n")
     }
 
@@ -143,7 +154,8 @@ final class ArchitectureTests: XCTestCase {
         let changed = try TaskWorkspace.apply(.delete(TaskHandle(generation: snapshot.generation, index: 0)),
                                               to: snapshot, todayYMD: "2026-07-23")
         _ = try store.save(lines: changed, expectedGeneration: snapshot.generation)
-        XCTAssertEqual(try String(contentsOf: store.tasksURL, encoding: .utf8), "keep me")
+        XCTAssertEqual(TasksDocument.parse(try String(contentsOf: store.tasksURL, encoding: .utf8)).map(withoutID),
+                       ["keep me"])
         XCTAssertEqual(try String(contentsOf: store.archiveURL, encoding: .utf8), "archived already\n")
     }
 
