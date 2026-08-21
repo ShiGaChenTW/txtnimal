@@ -636,7 +636,7 @@ final class GlobalCapture {
         }
         if let f = NSScreen.main?.visibleFrame, let p = panel {
             p.setContentSize(NSSize(width: panelWidth, height: 92))
-            p.setFrameOrigin(NSPoint(x: f.midX - p.frame.width / 2, y: f.maxY - f.height * 0.22))
+            p.setFrameOrigin(CapturePanelPlacement.origin(for: p.frame.size, on: f))
         }
         panel?.makeKeyAndOrderFront(nil)
     }
@@ -654,6 +654,16 @@ final class GlobalCapture {
     }
 
     private func hide() { panel?.orderOut(nil) }
+}
+
+/// Shared by task capture and note capture so the two panels cannot drift apart.
+private enum CapturePanelPlacement {
+    static func origin(for size: NSSize, on visibleFrame: NSRect) -> NSPoint {
+        NSPoint(
+            x: visibleFrame.midX - size.width / 2,
+            y: visibleFrame.maxY - visibleFrame.height * 0.22
+        )
+    }
 }
 
 /// 全域熱鍵 → 與任務捕捉同級的筆記輸入框。獨立面板、獨立快捷鍵，不走 tasks.txt。
@@ -706,7 +716,7 @@ final class GlobalNoteCapture {
         }
         if let f = NSScreen.main?.visibleFrame, let p = panel {
             p.setContentSize(NSSize(width: panelWidth, height: 92))
-            p.setFrameOrigin(NSPoint(x: f.midX - p.frame.width / 2, y: f.maxY - f.height * 0.28))
+            p.setFrameOrigin(CapturePanelPlacement.origin(for: p.frame.size, on: f))
         }
         panel?.makeKeyAndOrderFront(nil)
     }
