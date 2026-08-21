@@ -1,0 +1,7 @@
+# Copied (not symlinked) into every new worktree at creation, including subagent
+# isolation:"worktree" spawns — these are gitignored local-only project docs an
+# agent needs to see for context. This only fixes the READ side: a worktree still
+# gets its own copy, and anything the agent writes there is lost on
+# `git worktree remove` unless carried back to main first. See CLAUDE.md.
+openspec/
+plans/
