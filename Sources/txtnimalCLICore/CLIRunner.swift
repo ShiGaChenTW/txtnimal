@@ -318,9 +318,10 @@ public enum CLIRunner {
       4. ~/Documents/txtnimal/tasks.txt
 
     IDS
-      Tasks created here carry a short id: token. Tasks created in the GUI have none, and
-      are addressed by the same content-derived legacy-… id the app's plugin host uses —
-      run `txtnimal list` to see the current id for any task. Any unique prefix works.
+      Every task carries a short id: token — stamped on creation, and backfilled into any
+      older line the next time its file is saved. A line that has not been saved since is
+      addressed by the content-derived legacy-… id the app's plugin host uses instead.
+      Run `txtnimal list` to see the current id for any task. Any unique prefix works.
 
     EXIT CODES
       0 success   1 runtime error   2 usage error

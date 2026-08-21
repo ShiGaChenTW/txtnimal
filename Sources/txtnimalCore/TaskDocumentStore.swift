@@ -138,12 +138,9 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
 
     public func save(lines: [TaskLine], expectedGeneration: UInt64) throws -> TaskDocumentSnapshot {
         try requireFresh(expectedGeneration)
-        let tasksText = TasksDocument.serialize(lines)
         // Ordinary save never rewrites archive.txt / trash.txt — journal carries nil for both
         // so recovery cannot roll either back to a stale snapshot.
-        try commit(tasksText: tasksText, archiveText: nil, trashText: nil)
-        adoptContent(tasksText)
-        return try snapshot(lines: lines, tasksText: tasksText)
+        return try commitTasks(lines)
     }
 
     public func save(lines: [TaskLine], trashing: [TaskLine], deletedYMD: String,
@@ -151,11 +148,8 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         // Nothing to trash → this is an ordinary save; don't rewrite trash.txt for no reason.
         guard !trashing.isEmpty else { return try save(lines: lines, expectedGeneration: expectedGeneration) }
         try requireFresh(expectedGeneration)
-        let tasksText = TasksDocument.serialize(lines)
         let trashText = try appendingToTrash(trashing, deletedYMD: deletedYMD)
-        try commit(tasksText: tasksText, archiveText: nil, trashText: trashText)
-        adoptContent(tasksText)
-        return try snapshot(lines: lines, tasksText: tasksText, trashText: trashText)
+        return try commitTasks(lines, trashText: trashText)
     }
 
     public func saveScratch(_ text: String) throws { try write(text, to: scratchURL) }
@@ -170,10 +164,7 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         let previousArchive = try readOptional(archiveURL)
         let moved = old.map(\.raw).joined(separator: "\n") + "\n"
         let archiveText = previousArchive + (previousArchive.isEmpty || previousArchive.hasSuffix("\n") ? "" : "\n") + moved
-        let tasksText = TasksDocument.serialize(kept)
-        try commit(tasksText: tasksText, archiveText: archiveText, trashText: nil)
-        adoptContent(tasksText)
-        return try snapshot(lines: kept, tasksText: tasksText, archiveText: archiveText)
+        return try commitTasks(kept, archiveText: archiveText)
     }
 
     public func archiveTask(_ handle: TaskHandle, expectedGeneration: UInt64) throws -> TaskDocumentSnapshot {
@@ -190,10 +181,7 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         let previousArchive = try readOptional(archiveURL)
         let separator = previousArchive.isEmpty || previousArchive.hasSuffix("\n") ? "" : "\n"
         let archiveText = previousArchive + separator + archivedRaw + "\n"
-        let tasksText = TasksDocument.serialize(current)
-        try commit(tasksText: tasksText, archiveText: archiveText, trashText: nil)
-        adoptContent(tasksText)
-        return try snapshot(lines: current, tasksText: tasksText, archiveText: archiveText)
+        return try commitTasks(current, archiveText: archiveText)
     }
 
     // MARK: - trash.txt
@@ -217,10 +205,7 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         }
         let removed = current.remove(at: handle.index)
         let trashText = try appendingToTrash([removed], deletedYMD: deletedYMD)
-        let tasksText = TasksDocument.serialize(current)
-        try commit(tasksText: tasksText, archiveText: nil, trashText: trashText)
-        adoptContent(tasksText)
-        return try snapshot(lines: current, tasksText: tasksText, trashText: trashText)
+        return try commitTasks(current, trashText: trashText)
     }
 
     /// Move one trashed line back into tasks.txt, clearing `deleted:`. Every other token —
@@ -237,11 +222,7 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         let insertion = (lines.lastIndex { !$0.isBlank }).map { $0 + 1 } ?? lines.count
         lines.insert(restored, at: insertion)
 
-        let tasksText = TasksDocument.serialize(lines)
-        let trashText = serializeTrash(trash)
-        try commit(tasksText: tasksText, archiveText: nil, trashText: trashText)
-        adoptContent(tasksText)
-        return try snapshot(lines: lines, tasksText: tasksText, trashText: trashText)
+        return try commitTasks(lines, trashText: serializeTrash(trash))
     }
 
     /// Permanently drop one trashed line. tasks.txt is untouched.
@@ -268,8 +249,32 @@ public final class FileSystemTaskDocumentStore: TaskDocumentStore {
         return try commitTrashOnly(serializeTrash(kept))
     }
 
+    /// The one boundary every tasks.txt write goes through: stamp identity, serialize, commit,
+    /// adopt, snapshot.
+    ///
+    /// Identity is enforced HERE rather than at the call sites because there are a dozen of them —
+    /// quick capture, inline edit, undo, plugin intents, agent review, import, archive, trash,
+    /// restore — and a rule that lives in a dozen places is a rule that one of them will forget.
+    /// Backfill is lazy by construction: a legacy line gets its `id:` the next time the document
+    /// it lives in is written, never on load.
+    ///
+    /// The normalized lines go back into the returned snapshot, not just to disk. The store's
+    /// staleness check compares disk bytes against the last revision it adopted, so writing one
+    /// text while reporting another would make the very next save look like an external edit.
+    private func commitTasks(_ lines: [TaskLine], archiveText: String? = nil,
+                             trashText: String? = nil) throws -> TaskDocumentSnapshot {
+        let identified = TasksDocument.withUniqueIDs(lines)
+        let tasksText = TasksDocument.serialize(identified)
+        try commit(tasksText: tasksText, archiveText: archiveText, trashText: trashText)
+        adoptContent(tasksText)
+        return try snapshot(lines: identified, tasksText: tasksText,
+                            archiveText: archiveText, trashText: trashText)
+    }
+
     /// Rewrite trash.txt alone, replaying the CURRENT tasks.txt bytes unchanged so the journal
-    /// stays a complete description of the intended on-disk state.
+    /// stays a complete description of the intended on-disk state. Deliberately NOT routed
+    /// through `commitTasks`: a trash-only transaction must leave tasks.txt byte-identical,
+    /// so it is not a save of the task document and does not backfill it.
     private func commitTrashOnly(_ trashText: String) throws -> TaskDocumentSnapshot {
         let tasksText = try readRequired(tasksURL)
         try commit(tasksText: tasksText, archiveText: nil, trashText: trashText)

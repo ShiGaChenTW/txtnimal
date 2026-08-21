@@ -95,7 +95,15 @@ final class CLIRunTests: XCTestCase {
     func testAddPreservesTheTrailingNewlineAndExistingContent() throws {
         try seed("existing one\nexisting two\n")
         run(["add", "third"])
-        XCTAssertEqual(try fileText(), "existing one\nexisting two\nthird id:aaaa0001 created:2026-08-19\n")
+        let text = try fileText()
+        XCTAssertTrue(text.hasSuffix("\n"), "the trailing newline must survive")
+        // The save-time identity pass backfills the two pre-existing lines, so compare
+        // titles plus the new line's own tokens rather than the whole file byte-for-byte.
+        let lines = TasksDocument.parse(text).filter { !$0.isBlank }
+        XCTAssertEqual(lines.map(\.title), ["existing one", "existing two", "third"])
+        XCTAssertEqual(lines[2].created, "2026-08-19")
+        XCTAssertEqual(lines[2].stableID, "aaaa0001")
+        XCTAssertEqual(Set(lines.compactMap(\.stableID)).count, 3, "every line ends up separately addressable")
     }
 
     /// An agent-supplied title must not be able to smuggle in completion, tags, or a second line.
