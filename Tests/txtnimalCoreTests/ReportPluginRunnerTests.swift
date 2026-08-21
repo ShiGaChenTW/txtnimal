@@ -120,6 +120,70 @@ final class ReportPluginRunnerTests: XCTestCase {
         XCTAssertEqual(node(in: doc, id: "b-created")?.value, "undefined")
     }
 
+    /// G-snap: the five snapshot fields must reach JS, under the same short token names
+    /// the file format uses (`q`, `rec`, `note`, `focus`, `created`).
+    func testSnapshotFieldsReachJS() throws {
+        let echo = """
+        function run(input) {
+          var a = input.tasks[0], b = input.tasks[1];
+          return { schemaVersion: 1, page: { type: "page", id: "root", pageID: "weekly", title: "echo", children: [
+            { type: "statCard", id: "a-q",       title: "q", value: String(a.q) },
+            { type: "statCard", id: "a-created", title: "c", value: String(a.created) },
+            { type: "statCard", id: "a-note",    title: "n", value: String(a.note) },
+            { type: "statCard", id: "a-rec",     title: "r", value: String(a.rec) },
+            { type: "statCard", id: "a-focus",   title: "f", value: String(a.focus) },
+            { type: "statCard", id: "b-note",    title: "n", value: String(b.note) },
+            { type: "statCard", id: "b-focus",   title: "f", value: String(b.focus) }
+          ] } };
+        }
+        """
+        let snap = PluginDocumentSnapshot(documentRevision: "rev", tasks: [
+            PluginTaskSnapshot(id: "t1", title: "全欄位", due: nil, completed: false, lists: [], tags: [],
+                               quadrant: 2, created: "2026-07-01", note: "備註", recurrence: "1w", focus: true,
+                               revision: "r1"),
+            PluginTaskSnapshot(id: "t2", title: "無欄位", due: nil, completed: false, lists: [], tags: [],
+                               revision: "r2"),
+        ])
+        let doc = try ReportPluginRunner().run(source: echo, reportType: "weekly",
+                                               snapshot: snap, todayYMD: today)
+        XCTAssertEqual(node(in: doc, id: "a-q")?.value, "2")
+        XCTAssertEqual(node(in: doc, id: "a-created")?.value, "2026-07-01")
+        XCTAssertEqual(node(in: doc, id: "a-note")?.value, "備註")
+        XCTAssertEqual(node(in: doc, id: "a-rec")?.value, "1w")
+        XCTAssertEqual(node(in: doc, id: "a-focus")?.value, "true")
+        // Absent optionals are omitted keys, not JSON nulls — identical to how the
+        // already-shipped `created` / `q` behave, so plugins keep one falsy check.
+        XCTAssertEqual(node(in: doc, id: "b-note")?.value, "undefined")
+        XCTAssertEqual(node(in: doc, id: "b-focus")?.value, "false",
+                       "focus is a Bool — always present, never undefined")
+    }
+
+    /// The snapshot is the authority once it carries the field; the legacy `metadata`
+    /// side-channel only fills the gap for callers that haven't been migrated.
+    func testSnapshotFieldsWinOverMetadataSideChannel() throws {
+        let echo = """
+        function run(input) {
+          var a = input.tasks[0];
+          return { schemaVersion: 1, page: { type: "page", id: "root", pageID: "weekly", title: "echo", children: [
+            { type: "statCard", id: "a-q",       title: "q", value: String(a.q) },
+            { type: "statCard", id: "a-created", title: "c", value: String(a.created) },
+            { type: "statCard", id: "a-done",    title: "d", value: String(a.done) }
+          ] } };
+        }
+        """
+        let snap = PluginDocumentSnapshot(documentRevision: "rev", tasks: [
+            PluginTaskSnapshot(id: "t1", title: "快照優先", due: nil, completed: false, lists: [], tags: [],
+                               quadrant: 1, created: "2026-01-01", revision: "r1"),
+        ])
+        let meta = ["t1": ReportPluginRunner.TaskMetadata(created: "2099-12-31", done: "2026-07-05", quadrant: 4)]
+        let doc = try ReportPluginRunner().run(source: echo, reportType: "weekly",
+                                               snapshot: snap, todayYMD: today, metadata: meta)
+        XCTAssertEqual(node(in: doc, id: "a-q")?.value, "1")
+        XCTAssertEqual(node(in: doc, id: "a-created")?.value, "2026-01-01")
+        // `done` is not a G-snap field — it still comes only from the metadata channel.
+        XCTAssertEqual(node(in: doc, id: "a-done")?.value, "2026-07-05")
+    }
+
     func testMissingRunFunctionThrows() {
         XCTAssertThrowsError(
             try ReportPluginRunner().run(source: "function notRun() { return {}; }",

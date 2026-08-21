@@ -22,6 +22,8 @@ public enum PluginSnapshotBuilder {
             let line = document.lines[entry.index]
             return PluginTaskSnapshot(id: entry.id, title: line.title, due: line.due,
                                       completed: line.isDone, lists: line.projects, tags: line.contexts,
+                                      quadrant: line.quadrant, created: line.created, note: line.note,
+                                      recurrence: line.recurrence, focus: line.isFocused,
                                       revision: DocumentRevision.make(for: line.raw))
         }
         return PluginDocumentSnapshot(documentRevision: document.documentRevision, tasks: tasks)
