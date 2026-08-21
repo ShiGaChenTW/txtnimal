@@ -109,7 +109,9 @@ public struct GenericPluginPageRunner {
                 let meta = metadata[task.id]
                 return PageInput.Task(id: task.id, title: task.title, due: task.due,
                                       completed: task.completed, lists: task.lists, tags: task.tags,
-                                      created: meta?.created, done: meta?.done, q: meta?.quadrant)
+                                      created: task.created ?? meta?.created, done: meta?.done,
+                                      q: task.quadrant ?? meta?.quadrant,
+                                      note: task.note, rec: task.recurrence, focus: task.focus)
             },
             todayYMD: todayYMD,
             kv: capabilities.contains(.storageKV) ? kvNamespace : [:],
@@ -137,6 +139,12 @@ public struct GenericPluginPageRunner {
             let created: String?
             let done: String?
             let q: Int?
+            /// G-snap additions — must stay byte-identical in shape to
+            /// `ReportPluginRunner.Input.Task`, or a plugin sees different fields
+            /// depending on whether it was bundled or installed.
+            let note: String?
+            let rec: String?
+            let focus: Bool
         }
         let reportType: String
         let tasks: [Task]

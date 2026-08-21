@@ -58,6 +58,52 @@ final class PluginSnapshotTests: XCTestCase {
         }
     }
 
+    // MARK: - G-snap: 五個補齊欄位
+
+    func testSnapshotCarriesAllFiveAddedFields() throws {
+        let raw = #"Write report id:task-1 q:2 created:2026-07-01 rec:1w focus:true note:"call ops first" +work @home"#
+        let document = TaskDocumentSnapshot(lines: TasksDocument.parse(raw))
+        let task = try XCTUnwrap(try PluginSnapshotBuilder.build(from: document).tasks.first)
+        XCTAssertEqual(task.quadrant, 2)
+        XCTAssertEqual(task.created, "2026-07-01")
+        XCTAssertEqual(task.recurrence, "1w")
+        XCTAssertEqual(task.focus, true)
+        XCTAssertEqual(task.note, "call ops first")
+        // The pre-existing fields must be unaffected by the additions.
+        XCTAssertEqual(task.title, "Write report")
+        XCTAssertEqual(task.lists, ["work"])
+        XCTAssertEqual(task.tags, ["home"])
+    }
+
+    func testSnapshotFieldsAreAbsentWhenTokensAreAbsent() throws {
+        let document = TaskDocumentSnapshot(lines: TasksDocument.parse("Plain task id:task-2"))
+        let task = try XCTUnwrap(try PluginSnapshotBuilder.build(from: document).tasks.first)
+        XCTAssertNil(task.quadrant)
+        XCTAssertNil(task.created)
+        XCTAssertNil(task.recurrence)
+        XCTAssertNil(task.note)
+        XCTAssertFalse(task.focus, "focus is a Bool — absent token means false, never nil")
+    }
+
+    /// The five fields must survive JSON encoding under their contract keys. This is the
+    /// wire the plugin host serializes, so a rename here is a breaking API change.
+    func testAddedFieldsEncodeUnderContractKeys() throws {
+        let raw = #"Task id:task-3 q:1 created:2026-08-01 rec:2d focus:true note:"n""#
+        let document = TaskDocumentSnapshot(lines: TasksDocument.parse(raw))
+        let snapshot = try PluginSnapshotBuilder.build(from: document)
+        let data = try JSONEncoder().encode(try XCTUnwrap(snapshot.tasks.first))
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["quadrant"] as? Int, 1)
+        XCTAssertEqual(object["created"] as? String, "2026-08-01")
+        XCTAssertEqual(object["recurrence"] as? String, "2d")
+        XCTAssertEqual(object["note"] as? String, "n")
+        XCTAssertEqual(object["focus"] as? Bool, true)
+        // Additive only: every previously-shipped key is still present.
+        for key in ["id", "title", "completed", "lists", "tags", "revision"] {
+            XCTAssertNotNil(object[key], "existing key \(key) must not disappear")
+        }
+    }
+
     func testLegacyIdentityCannotCollideWithPersistedIdentity() throws {
         let raw = "legacy"
         let base = "legacy-\(DocumentRevision.make(for: raw).prefix(16))"

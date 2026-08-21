@@ -116,12 +116,32 @@ public struct PluginTaskSnapshot: Codable, Equatable, Sendable {
     public let completed: Bool
     public let lists: [String]
     public let tags: [String]
+    /// Eisenhower quadrant from the `q:` token, 1-4. `nil` when the line carries no `q:`.
+    public let quadrant: Int?
+    /// The `created:` date, verbatim. Plugins compute age from it; the host does not validate it.
+    public let created: String?
+    /// The `note:"..."` body with the quotes stripped, `nil` when absent.
+    public let note: String?
+    /// The raw `rec:` value, unvalidated — same contract as `TaskLine.recurrence`. Plugins that
+    /// act on it must parse it themselves; the host deliberately does not pre-validate here,
+    /// so a snapshot never silently differs from the bytes on disk.
+    public let recurrence: String?
+    /// `focus:true` — a Bool, not an optional: an absent token means false, never "unknown".
+    public let focus: Bool
     public let revision: String
 
+    /// The five G-snap fields default to absent so every call site written before they existed
+    /// still compiles and still means the same thing.
     public init(id: String, title: String, due: String? = nil, completed: Bool = false,
-                lists: [String] = [], tags: [String] = [], revision: String) {
+                lists: [String] = [], tags: [String] = [],
+                quadrant: Int? = nil, created: String? = nil, note: String? = nil,
+                recurrence: String? = nil, focus: Bool = false,
+                revision: String) {
         self.id = id; self.title = title; self.due = due; self.completed = completed
-        self.lists = lists; self.tags = tags; self.revision = revision
+        self.lists = lists; self.tags = tags
+        self.quadrant = quadrant; self.created = created; self.note = note
+        self.recurrence = recurrence; self.focus = focus
+        self.revision = revision
     }
 }
 

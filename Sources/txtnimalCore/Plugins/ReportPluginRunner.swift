@@ -31,6 +31,10 @@ public enum ReportPluginRunnerError: LocalizedError, Sendable {
 /// `run(input)` for legacy callers), and validates the returned JSON object before
 /// handing a `PluginPageDocument` to the host.
 public struct ReportPluginRunner {
+    /// The pre-G-snap side-channel for fields `PluginTaskSnapshot` did not carry. Since G-snap
+    /// the snapshot carries `created` and `quadrant` itself and takes precedence; this type
+    /// survives for `done` (completion date, not a G-snap field) and for callers that still
+    /// build metadata by hand.
     public struct TaskMetadata: Sendable, Equatable {
         public let created: String?
         public let done: String?
@@ -51,6 +55,11 @@ public struct ReportPluginRunner {
             let created: String?
             let done: String?
             let q: Int?
+            /// G-snap additions. Named after the file-format tokens (`note:`, `rec:`, `focus:`)
+            /// to match the existing `q` key, so a plugin author reads one vocabulary.
+            let note: String?
+            let rec: String?
+            let focus: Bool
         }
         let reportType: String
         let tasks: [Task]
@@ -73,7 +82,9 @@ public struct ReportPluginRunner {
                 let meta = metadata[task.id]
                 return Input.Task(id: task.id, title: task.title, due: task.due,
                                   completed: task.completed, lists: task.lists, tags: task.tags,
-                                  created: meta?.created, done: meta?.done, q: meta?.quadrant)
+                                  created: task.created ?? meta?.created, done: meta?.done,
+                                  q: task.quadrant ?? meta?.quadrant,
+                                  note: task.note, rec: task.recurrence, focus: task.focus)
             },
             todayYMD: todayYMD,
             kv: kv,
