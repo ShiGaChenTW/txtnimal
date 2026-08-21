@@ -89,29 +89,37 @@ final class LogicTests: XCTestCase {
 
     // MARK: - Capture
 
+    // Capture stamps a random `id:` too, so these pin the rest of the line by injecting a
+    // fixed generator — the identity behaviour itself is covered in TaskStableIDTests.
+    private let fixedID = { "t00000001" }
+
     func testCaptureNormalizesDueAndStampsCreated() {
         let out = Capture.makeTaskLine(
             from: "Call bank due:tomorrow +personal",
-            today: today, createdYMD: "2026-07-09", calendar: cal)
-        XCTAssertEqual(out, "Call bank due:2026-07-10 +personal created:2026-07-09")
+            today: today, createdYMD: "2026-07-09", calendar: cal, makeID: fixedID)
+        XCTAssertEqual(out, "Call bank due:2026-07-10 +personal created:2026-07-09 id:t00000001")
     }
 
     // Quick capture accepts a rec: token and writes it through verbatim while still
     // normalizing due: and stamping created:.
     func testCaptureAcceptsRecToken() {
         XCTAssertEqual(
-            Capture.makeTaskLine(from: "澆花 due:fri rec:1w", today: today, createdYMD: "2026-07-09", calendar: cal),
-            "澆花 due:2026-07-10 rec:1w created:2026-07-09")
+            Capture.makeTaskLine(from: "澆花 due:fri rec:1w", today: today, createdYMD: "2026-07-09",
+                                 calendar: cal, makeID: fixedID),
+            "澆花 due:2026-07-10 rec:1w created:2026-07-09 id:t00000001")
     }
 
     func testCaptureKeepsUnparseableDueAndPlainLine() {
         XCTAssertEqual(
-            Capture.makeTaskLine(from: "Just a task", today: today, createdYMD: "2026-07-09", calendar: cal),
-            "Just a task created:2026-07-09")
+            Capture.makeTaskLine(from: "Just a task", today: today, createdYMD: "2026-07-09",
+                                 calendar: cal, makeID: fixedID),
+            "Just a task created:2026-07-09 id:t00000001")
         XCTAssertEqual(
-            Capture.makeTaskLine(from: "Do it due:someday", today: today, createdYMD: "2026-07-09", calendar: cal),
-            "Do it due:someday created:2026-07-09")
-        XCTAssertNil(Capture.makeTaskLine(from: "   ", today: today, createdYMD: "2026-07-09", calendar: cal))
+            Capture.makeTaskLine(from: "Do it due:someday", today: today, createdYMD: "2026-07-09",
+                                 calendar: cal, makeID: fixedID),
+            "Do it due:someday created:2026-07-09 id:t00000001")
+        XCTAssertNil(Capture.makeTaskLine(from: "   ", today: today, createdYMD: "2026-07-09",
+                                          calendar: cal, makeID: fixedID))
     }
 
     func testCaptureAssistExtractsOnlyRecognizedTokens() {

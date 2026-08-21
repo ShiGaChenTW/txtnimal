@@ -162,6 +162,14 @@ public struct TaskLine: Equatable {
         if let id, !id.isEmpty { setValue(id, forKey: "id") } else { removeKey("id") }
     }
 
+    /// A fresh task identity. Same shape as `Note.makeID()` — 8 hex chars off a UUID — but
+    /// prefixed `t` instead of `n`, so a task id and a note id can never be confused by eye
+    /// (or by a token query) once they start appearing side by side in plain text.
+    public static func makeID() -> String {
+        let hex = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(8).lowercased()
+        return "t" + hex
+    }
+
     /// Stamp (or clear) the `deleted:` token. Every other token is left untouched, so a line
     /// survives the trash → restore round trip byte-identical apart from this one token.
     public mutating func setDeleted(_ ymd: String?) {
@@ -289,6 +297,35 @@ public enum TasksDocument {
 
     public static func serialize(_ lines: [TaskLine]) -> String {
         lines.map(\.raw).joined(separator: "\n")
+    }
+
+    /// Every non-blank line carries a unique `id:` token.
+    ///
+    /// Two repairs, both silent — identity must never fail a save or interrupt the user:
+    /// a line with no (or empty) `id:` is stamped with a fresh one, and when several lines
+    /// claim the same id — a whole line copy-pasted in a text editor — the first holder keeps
+    /// it and the rest are re-stamped. Ids already present and already unique are left exactly
+    /// as they are, including hand-written ones: a plain-text file is the user's to edit, so an
+    /// id that does not look like `t`+hex is data, not corruption.
+    ///
+    /// Nothing else about a line moves. Blank spacer lines are not tasks and stay bare.
+    public static func withUniqueIDs(_ lines: [TaskLine], makeID: () -> String = TaskLine.makeID) -> [TaskLine] {
+        var out = lines
+        // Reserve every id present anywhere up front, so a regenerated id cannot land on one
+        // a later line legitimately owns and evict it on the next pass.
+        var taken = Set(out.compactMap { $0.isBlank ? nil : $0.stableID }.filter { !$0.isEmpty })
+        var claimed = Set<String>()
+        for i in out.indices {
+            guard !out[i].isBlank else { continue }
+            let current = out[i].stableID ?? ""
+            if !current.isEmpty, claimed.insert(current).inserted { continue }
+            var fresh = makeID()
+            while taken.contains(fresh) || claimed.contains(fresh) { fresh = makeID() }
+            taken.insert(fresh)
+            claimed.insert(fresh)
+            out[i].setStableID(fresh)
+        }
+        return out
     }
 
     /// Read-layer focus: the first `focus:true`. Load/save leave extras intact.

@@ -9,15 +9,18 @@ public enum IdentityResolution: Equatable {
 
 /// Task addressing for the CLI.
 ///
-/// The GUI never writes `id:` tokens — the real tasks.txt carries only `created:`/`due:`,
-/// `setStableID` has no production call site, and `PluginIntentApplierTests` pins the
-/// "never stamp an id into the file" invariant. So the CLI stamps an id on tasks *it*
-/// creates and never on anyone else's.
+/// The app now stamps `id:` too — `Capture` at creation, and `TasksDocument.withUniqueIDs`
+/// on every save for anything older — so most lines arrive here already addressable. The CLI
+/// still generates its own id for tasks *it* creates and never rewrites anyone else's.
+///
+/// Note the two generators produce different shapes: `randomHex8` here yields bare 8-hex
+/// (`3f9a2c71`), `TaskLine.makeID()` yields `t`+8-hex (`t3f9a2c71`, distinguishable from a
+/// note's `n…`). Both sit inside the plugin layer's 4–80 `[A-Za-z0-9-_]` window and both
+/// resolve by prefix, so they interoperate; unifying them is a separate decision.
 ///
 /// Reading identity goes through `PluginSnapshotBuilder.identityMap`, the scheme the
 /// in-process plugin host already uses: a valid `id:` token when present, otherwise a
-/// content-derived `legacy-…`. Reusing it means GUI-created tasks stay addressable and
-/// this codebase keeps exactly one answer to "what is this task's id".
+/// content-derived `legacy-…` for a line not yet saved since the backfill landed.
 public enum TaskIdentity {
 
     /// 8 lowercase hex characters: inside the plugin layer's 4–80 `[A-Za-z0-9-_]` window,
