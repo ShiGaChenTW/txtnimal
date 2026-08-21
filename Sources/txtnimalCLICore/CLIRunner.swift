@@ -19,8 +19,23 @@ public enum CLIRunner {
         do {
             return try execute(invocation, context: context)
         } catch {
-            return failure(message(for: error), code: 1, json: invocation.global.json)
+            return failure(message(for: error), code: exitCode(for: error), json: invocation.global.json)
         }
+    }
+
+    /// A query that will not parse, or a name that collides, is something the caller fixes
+    /// by retyping the command — the same class of problem as a bad flag, so it shares the
+    /// parser's exit code 2. "No such task" and "no such view" are about state rather than
+    /// usage and stay at 1.
+    private static func exitCode(for error: Error) -> Int32 {
+        if error is TaskQuery.ParseError { return 2 }
+        if let error = error as? SavedViewsError {
+            switch error {
+            case .duplicateName, .invalidName: return 2
+            case .notFound, .unreadable: return 1
+            }
+        }
+        return 1
     }
 
     // MARK: - Dispatch
@@ -43,12 +58,26 @@ public enum CLIRunner {
             return try ensure(name: name, marker: "+", invocation.global, context)
         case .tagEnsure(let name):
             return try ensure(name: name, marker: "@", invocation.global, context)
+        case .focus(let target):
+            return try focus(target, invocation.global, context)
+        case .viewSave(let options):
+            return try saveView(options, invocation.global, context)
+        case .viewList:
+            return try listViews(invocation.global, context)
+        case .viewRun(let options):
+            return try runView(options, invocation.global, context)
+        case .viewDelete(let name):
+            return try deleteView(name, invocation.global, context)
         }
     }
 
     // MARK: - Commands
 
     private static func list(_ options: ListOptions, _ global: GlobalOptions, _ context: CLIContext) throws -> CLIOutput {
+        // Build the expression before touching the file, so a malformed `--filter` is
+        // reported as such even when there is no tasks.txt to read.
+        let expression = try TaskFilter.expression(for: options, today: context.today, calendar: context.calendar)
+
         let file = tasksFile(global, context)
         // A missing file is an empty task list, not a failure — `list` must never be the
         // command that creates state.
@@ -56,10 +85,15 @@ public enum CLIRunner {
             return CLIOutput(stdout: global.json ? encode(["tasks": []]) : "")
         }
         let lines = TasksDocument.parse(text)
-        let identities = PluginSnapshotBuilder.identityMap(for: lines)
-        let indices = TaskFilter.matchingIndices(in: lines, options: options)
+        let indices = TaskFilter.matchingIndices(in: lines, matching: expression,
+                                                 includeDone: options.includeDone)
+        return render(lines, indices: indices, json: global.json)
+    }
 
-        if global.json {
+    /// The one place `list`-shaped output is produced, so `view run` cannot drift from it.
+    private static func render(_ lines: [TaskLine], indices: [Int], json: Bool) -> CLIOutput {
+        let identities = PluginSnapshotBuilder.identityMap(for: lines)
+        if json {
             let tasks = indices.map { payload(for: lines[$0], id: identity(at: $0, in: identities), line: $0) }
             return CLIOutput(stdout: encode(["tasks": tasks]))
         }
@@ -192,7 +226,122 @@ public enum CLIRunner {
             : "\(kind) \(name) created (placeholder task \(id))\n")
     }
 
+    // MARK: - focus
+
+    /// Focus is single-valued across the whole file. The clear-others half of that is not
+    /// reimplemented here: `TasksDocument.setFocus` is the same enforcement the GUI's
+    /// `TaskStore.toggleFocus()` relies on, so the CLI cannot invent a second answer to
+    /// "how many tasks may be focused at once".
+    private static func focus(_ target: String?, _ global: GlobalOptions, _ context: CLIContext) throws -> CLIOutput {
+        let (store, snapshot) = try openForWriting(global, context)
+
+        var index: Int?
+        var id = ""
+        var title = ""
+        if let target {
+            let located = try locate(target, in: snapshot.lines)
+            index = located.index
+            id = located.id
+            title = snapshot.lines[located.index].title
+        }
+
+        let updated = TasksDocument.setFocus(snapshot.lines, onIndex: index)
+        // Re-focusing the already-focused task, or clearing when nothing is focused, is a
+        // no-op — and a no-op must not rewrite the file, bump its generation, or hand a
+        // watching GUI a change event for nothing.
+        let changed = TasksDocument.serialize(updated) != TasksDocument.serialize(snapshot.lines)
+        if changed {
+            _ = try store.save(lines: updated, expectedGeneration: snapshot.generation)
+        }
+
+        guard target != nil else {
+            return CLIOutput(stdout: global.json
+                ? encode(["focused": false, "cleared": true, "changed": changed])
+                : (changed ? "focus cleared\n" : "no task was focused\n"))
+        }
+        return CLIOutput(stdout: global.json
+            ? encode(["id": id, "title": title, "focused": true, "changed": changed])
+            : "focus \(id)  \(title)\n")
+    }
+
+    // MARK: - Saved views
+
+    private static func saveView(_ options: SaveViewOptions, _ global: GlobalOptions,
+                                 _ context: CLIContext) throws -> CLIOutput {
+        let name = try SavedViewStore.validated(name: options.name)
+        // Validate before persisting. A stored view that cannot run is worse than no view:
+        // it fails later, somewhere else, in whatever script depends on it.
+        _ = try TaskQuery.parse(options.query, today: context.today, calendar: context.calendar)
+
+        let file = viewsFile(global, context)
+        var views = try SavedViewStore.load(from: file)
+        let replaced: Bool
+
+        if let existing = SavedViewStore.index(of: name, in: views) {
+            guard options.force else { throw SavedViewsError.duplicateName(views[existing].name) }
+            // Keep the original creation date — replacing the query does not make this a
+            // different view, and the date records when the name started existing.
+            views[existing] = SavedView(name: name, query: options.query,
+                                        createdYMD: views[existing].createdYMD)
+            replaced = true
+        } else {
+            views.append(SavedView(name: name, query: options.query, createdYMD: todayYMD(context)))
+            replaced = false
+        }
+        try SavedViewStore.save(views, to: file)
+
+        return CLIOutput(stdout: global.json
+            ? encode(["name": name, "query": options.query, "saved": true, "replaced": replaced])
+            : "\(replaced ? "replaced" : "saved") view \(name)  \(options.query)\n")
+    }
+
+    private static func listViews(_ global: GlobalOptions, _ context: CLIContext) throws -> CLIOutput {
+        let views = try SavedViewStore.load(from: viewsFile(global, context))
+        if global.json {
+            let payload = views.map { ["name": $0.name, "query": $0.query, "createdYMD": $0.createdYMD] }
+            return CLIOutput(stdout: encode(["views": payload]))
+        }
+        guard !views.isEmpty else { return CLIOutput(stdout: "") }
+        let width = views.map(\.name.count).max() ?? 0
+        let rows = views.map { view in
+            view.name.padding(toLength: max(view.name.count, width), withPad: " ", startingAt: 0)
+                + "  " + view.query
+        }
+        return CLIOutput(stdout: rows.joined(separator: "\n") + "\n")
+    }
+
+    /// Runs the stored query text through the ordinary `list` path — same filtering, same
+    /// columns, same JSON shape. The query is re-parsed here rather than at save time, so
+    /// a view holding `due:today` means today, every time it runs.
+    private static func runView(_ options: RunViewOptions, _ global: GlobalOptions,
+                                _ context: CLIContext) throws -> CLIOutput {
+        let views = try SavedViewStore.load(from: viewsFile(global, context))
+        guard let view = SavedViewStore.find(options.name, in: views) else {
+            throw SavedViewsError.notFound(options.name)
+        }
+        return try list(ListOptions(filter: view.query, includeDone: options.includeDone), global, context)
+    }
+
+    private static func deleteView(_ name: String, _ global: GlobalOptions,
+                                   _ context: CLIContext) throws -> CLIOutput {
+        let file = viewsFile(global, context)
+        var views = try SavedViewStore.load(from: file)
+        guard let index = SavedViewStore.index(of: name, in: views) else {
+            throw SavedViewsError.notFound(name)
+        }
+        let removed = views.remove(at: index)
+        try SavedViewStore.save(views, to: file)
+
+        return CLIOutput(stdout: global.json
+            ? encode(["name": removed.name, "deleted": true])
+            : "deleted view \(removed.name)\n")
+    }
+
     // MARK: - File access
+
+    private static func viewsFile(_ global: GlobalOptions, _ context: CLIContext) -> URL {
+        SavedViewStore.url(besideTasksFile: tasksFile(global, context))
+    }
 
     private static func tasksFile(_ global: GlobalOptions, _ context: CLIContext) -> URL {
         PathResolver.resolveTasksFile(dirFlag: global.dir,
@@ -299,6 +448,12 @@ public enum CLIRunner {
       tag ensure <name>        Guarantee at least one task carries @<name>  (idempotent)
       done <id-prefix>         Mark a task complete (recurring tasks roll forward)
       delete <id-prefix>       Move a task to trash.txt — no confirmation, the caller owns this
+      focus <id-prefix>        Make this the one focused task (clears focus everywhere else)
+      focus --clear            Clear focus with no replacement
+      view save <name> <query> Store a query under a name (--force replaces an existing one)
+      view list                Print saved view names and their queries
+      view run <name>          List the tasks a saved view selects
+      view delete <name>       Forget a saved view
 
     OPTIONS
       --due <date>             2026-10-10, today, tomorrow, 3d, 2w, mon…  (add only)
@@ -306,10 +461,23 @@ public enum CLIRunner {
       --context <name>         Attach @name          (add: repeatable; list: filter)
       --note <text>            Attach note:"text"    (add only)
       --query <text>           Filter by title/note substring, case-insensitive (list only)
-      --all                    Include completed tasks (list only)
+      --filter <query>         Filter with the query language below (list only)
+      --all                    Include completed tasks (list, view run)
       --json                   Machine-readable output on stdout; errors as JSON on stderr
       --dir <path>             Directory holding tasks.txt
       --help, --version
+
+    FILTER QUERIES
+      Terms                    +list  @tag  due:<date>  done:true|false  focus:true|false
+                               q:word, or a bare word — substring of the title and note
+      Comparisons              due:2026-10-10  due:<today  due:<=1w  due:>mon  due:>=3d
+                               A task with no due: matches no due: comparison at all.
+      Operators                AND (or just a space), OR, NOT (or a leading -), ( )
+                               NOT binds tightest, then AND, then OR. Case-insensitive.
+      Example                  txtnimal list --filter "done:false (+work OR @home) due:<=1w"
+
+      --filter combines with --project/--context/--query: every filter given must match.
+      A query mentioning done: overrides the default of hiding completed tasks.
 
     TASK FILE RESOLUTION (first match wins)
       1. --dir <path>

@@ -31,12 +31,38 @@ public struct ListOptions: Equatable {
     public var project: String?
     public var context: String?
     public var query: String?
+    /// A `--filter` query in the `TaskQuery` language. AND-ed with the flags above rather
+    /// than replacing them, so existing scripted callers keep working unchanged.
+    public var filter: String?
     public var includeDone: Bool
     public init(project: String? = nil, context: String? = nil,
-                query: String? = nil, includeDone: Bool = false) {
+                query: String? = nil, filter: String? = nil, includeDone: Bool = false) {
         self.project = project
         self.context = context
         self.query = query
+        self.filter = filter
+        self.includeDone = includeDone
+    }
+}
+
+public struct SaveViewOptions: Equatable {
+    public var name: String
+    public var query: String
+    /// Replacing an existing view must be asked for. A saved view is something the caller
+    /// scripts against; overwriting one silently is how a scheduled job starts lying.
+    public var force: Bool
+    public init(name: String, query: String, force: Bool = false) {
+        self.name = name
+        self.query = query
+        self.force = force
+    }
+}
+
+public struct RunViewOptions: Equatable {
+    public var name: String
+    public var includeDone: Bool
+    public init(name: String, includeDone: Bool = false) {
+        self.name = name
         self.includeDone = includeDone
     }
 }
@@ -48,6 +74,13 @@ public enum CLICommand: Equatable {
     case tagEnsure(String)
     case done(String)
     case delete(String)
+    /// `nil` clears focus with no replacement — the same `onIndex: nil` the document type
+    /// takes, so the two spellings of "no focus" cannot drift apart.
+    case focus(String?)
+    case viewSave(SaveViewOptions)
+    case viewList
+    case viewRun(RunViewOptions)
+    case viewDelete(String)
     case help
     case version
 }

@@ -75,6 +75,103 @@ final class CLIParsingTests: XCTestCase {
         }
     }
 
+    // MARK: - list --filter
+
+    func testListParsesTheFilterQueryVerbatim() throws {
+        let parsed = try CLIParser.parse(["list", "--filter", "+work OR @home"])
+        XCTAssertEqual(parsed.command, .list(ListOptions(filter: "+work OR @home")))
+    }
+
+    /// The query is not parsed here — `CLIParser` has no clock, and `due:today` needs one.
+    func testTheParserDoesNotValidateTheFilterQuery() throws {
+        XCTAssertEqual(try CLIParser.parse(["list", "--filter", "((("]).command,
+                       .list(ListOptions(filter: "(((")))
+    }
+
+    func testFilterNeedsAValue() {
+        XCTAssertThrowsError(try CLIParser.parse(["list", "--filter"])) { error in
+            XCTAssertEqual(error as? CLIParseError, .missingValue("--filter"))
+        }
+    }
+
+    // MARK: - focus
+
+    func testFocusParsesAnIdentifier() throws {
+        XCTAssertEqual(try CLIParser.parse(["focus", "abc123"]).command, .focus("abc123"))
+    }
+
+    func testFocusClearParsesAsNoTarget() throws {
+        XCTAssertEqual(try CLIParser.parse(["focus", "--clear"]).command, .focus(nil))
+    }
+
+    func testFocusRequiresATargetOrClear() {
+        XCTAssertThrowsError(try CLIParser.parse(["focus"])) { error in
+            XCTAssertEqual(error as? CLIParseError, .missingArgument("id"))
+        }
+    }
+
+    func testFocusRejectsNamingATaskAndClearingAtOnce() {
+        XCTAssertThrowsError(try CLIParser.parse(["focus", "abc123", "--clear"]))
+    }
+
+    func testFocusRejectsUnknownFlags() {
+        XCTAssertThrowsError(try CLIParser.parse(["focus", "--reset"])) { error in
+            XCTAssertEqual(error as? CLIParseError, .unknownFlag("--reset"))
+        }
+    }
+
+    // MARK: - view
+
+    func testViewSaveTakesANameAndAQuery() throws {
+        XCTAssertEqual(try CLIParser.parse(["view", "save", "week", "due:<=1w"]).command,
+                       .viewSave(SaveViewOptions(name: "week", query: "due:<=1w")))
+    }
+
+    /// An unquoted multi-word query is rejoined, so both spellings behave the same.
+    func testViewSaveRejoinsAnUnquotedQuery() throws {
+        XCTAssertEqual(try CLIParser.parse(["view", "save", "week", "+work", "OR", "@home"]).command,
+                       .viewSave(SaveViewOptions(name: "week", query: "+work OR @home")))
+    }
+
+    func testViewSaveTakesForce() throws {
+        XCTAssertEqual(try CLIParser.parse(["view", "save", "week", "+work", "--force"]).command,
+                       .viewSave(SaveViewOptions(name: "week", query: "+work", force: true)))
+    }
+
+    func testViewSaveNeedsBothANameAndAQuery() {
+        XCTAssertThrowsError(try CLIParser.parse(["view", "save"])) { error in
+            XCTAssertEqual(error as? CLIParseError, .missingArgument("name"))
+        }
+        XCTAssertThrowsError(try CLIParser.parse(["view", "save", "week"])) { error in
+            XCTAssertEqual(error as? CLIParseError, .missingArgument("query"))
+        }
+    }
+
+    func testViewListRunAndDeleteParse() throws {
+        XCTAssertEqual(try CLIParser.parse(["view", "list"]).command, .viewList)
+        XCTAssertEqual(try CLIParser.parse(["view", "run", "week"]).command,
+                       .viewRun(RunViewOptions(name: "week")))
+        XCTAssertEqual(try CLIParser.parse(["view", "run", "week", "--all"]).command,
+                       .viewRun(RunViewOptions(name: "week", includeDone: true)))
+        XCTAssertEqual(try CLIParser.parse(["view", "delete", "week"]).command, .viewDelete("week"))
+    }
+
+    func testUnknownViewSubcommandIsRejected() {
+        XCTAssertThrowsError(try CLIParser.parse(["view", "frobnicate", "x"])) { error in
+            XCTAssertEqual(error as? CLIParseError, .unknownCommand("view frobnicate"))
+        }
+        XCTAssertThrowsError(try CLIParser.parse(["view"])) { error in
+            XCTAssertEqual(error as? CLIParseError, .missingArgument("view subcommand"))
+        }
+    }
+
+    func testViewCommandsAcceptTheGlobalFlags() throws {
+        let parsed = try CLIParser.parse(["view", "run", "week", "--json", "--dir", "/tmp/x"])
+        XCTAssertEqual(parsed.command, .viewRun(RunViewOptions(name: "week")))
+        XCTAssertTrue(parsed.global.json)
+        XCTAssertEqual(parsed.global.dir, "/tmp/x")
+    }
+
     func testTagRequiresTheEnsureVerb() {
         XCTAssertThrowsError(try CLIParser.parse(["tag", "home"])) { error in
             XCTAssertEqual(error as? CLIParseError, .unknownCommand("tag home"))

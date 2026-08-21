@@ -1,31 +1,57 @@
 import Foundation
 import txtnimalCore
 
+/// Turns `list`'s options into one `TaskQuery.Expr` and evaluates it.
+///
+/// The flag-shaped filters (`--project`/`--context`/`--query`) and the `--filter` query
+/// language are not two filtering systems: the flags compile down to the same expression
+/// tree and run through the same evaluator. That is the point — two implementations of
+/// "does this task match" would drift, and the flags are the ones with existing callers.
 public enum TaskFilter {
 
-    /// Indices into `lines` that satisfy every supplied filter. Blank lines are file
-    /// structure, not tasks, and are never returned.
-    public static func matchingIndices(in lines: [TaskLine], options: ListOptions) -> [Int] {
-        lines.indices.filter { matches(lines[$0], options: options) }
+    /// Every supplied filter, AND-ed together. Throws only when `--filter` will not parse.
+    public static func expression(for options: ListOptions,
+                                  today: Date,
+                                  calendar: Calendar = .current) throws -> TaskQuery.Expr {
+        var clauses: [TaskQuery.Expr] = []
+        if let project = normalized(options.project, marker: "+") { clauses.append(.project(project)) }
+        if let context = normalized(options.context, marker: "@") { clauses.append(.context(context)) }
+        if let query = options.query?.lowercased(), !query.isEmpty { clauses.append(.text(query)) }
+        if let filter = options.filter, !filter.trimmingCharacters(in: .whitespaces).isEmpty {
+            clauses.append(try TaskQuery.parse(filter, today: today, calendar: calendar))
+        }
+
+        var expression = TaskQuery.Expr.all
+        for clause in clauses {
+            expression = expression == .all ? clause : .and(expression, clause)
+        }
+        return expression
     }
 
-    public static func matches(_ line: TaskLine, options: ListOptions) -> Bool {
-        guard !line.isBlank else { return false }
-        guard options.includeDone || !line.isDone else { return false }
+    /// Indices into `lines` that satisfy the expression. Blank lines are file structure,
+    /// not tasks, and are never returned.
+    public static func matchingIndices(in lines: [TaskLine],
+                                       matching expression: TaskQuery.Expr,
+                                       includeDone: Bool) -> [Int] {
+        // `list` hides completed tasks unless asked. That default stands down the moment
+        // the query mentions `done:` — once the user has named completion explicitly, a
+        // hidden gate contradicting them would make `--filter "done:true"` return nothing.
+        let showDone = includeDone || TaskQuery.mentionsDone(expression)
+        return lines.indices.filter { index in
+            let line = lines[index]
+            guard !line.isBlank else { return false }
+            guard showDone || !line.isDone else { return false }
+            return TaskQuery.matches(line, expr: expression)
+        }
+    }
 
-        if let project = normalized(options.project, marker: "+") {
-            guard line.projects.contains(where: { $0.lowercased() == project }) else { return false }
-        }
-        if let context = normalized(options.context, marker: "@") {
-            guard line.contexts.contains(where: { $0.lowercased() == context }) else { return false }
-        }
-        if let query = options.query?.lowercased(), !query.isEmpty {
-            // Title and note only. Searching `raw` would let a query match `id:`/`due:`
-            // tokens the user never typed and cannot see in the list output.
-            let haystack = (line.title + " " + (line.note ?? "")).lowercased()
-            guard haystack.contains(query) else { return false }
-        }
-        return true
+    /// Build-then-evaluate in one step, for callers with no reason to hold the expression.
+    public static func matchingIndices(in lines: [TaskLine],
+                                       options: ListOptions,
+                                       today: Date = Date(),
+                                       calendar: Calendar = .current) throws -> [Int] {
+        let expression = try expression(for: options, today: today, calendar: calendar)
+        return matchingIndices(in: lines, matching: expression, includeDone: options.includeDone)
     }
 
     /// Accepts `work`, `+work`, or `WORK` alike — an agent should not have to guess

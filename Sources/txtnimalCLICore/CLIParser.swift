@@ -62,6 +62,10 @@ public enum CLIParser {
         case "done", "delete":
             let identifier = try single(rest, literalTail: literalTail, named: "id")
             return ParsedInvocation(command: verb == "done" ? .done(identifier) : .delete(identifier), global: global)
+        case "focus":
+            return ParsedInvocation(command: .focus(try parseFocus(rest, literalTail: literalTail)), global: global)
+        case "view":
+            return ParsedInvocation(command: try parseView(rest, literalTail: literalTail), global: global)
         default:
             throw CLIParseError.unknownCommand(verb)
         }
@@ -111,18 +115,100 @@ public enum CLIParser {
                 continue
             }
             guard token.hasPrefix("--") else { throw CLIParseError.unknownCommand("list \(token)") }
-            guard ["--project", "--context", "--query"].contains(token) else {
+            guard ["--project", "--context", "--query", "--filter"].contains(token) else {
                 throw CLIParseError.unknownFlag(token)
             }
             let value = try value(after: index, in: args, flag: token)
             switch token {
             case "--project": options.project = value
             case "--context": options.context = value
+            case "--filter": options.filter = value
             default: options.query = value
             }
             index += 2
         }
         return options
+    }
+
+    /// `focus <id-prefix>` or `focus --clear`. The two are mutually exclusive: naming a
+    /// task *and* asking to clear is a contradiction worth reporting, not resolving.
+    private static func parseFocus(_ args: [String], literalTail: [String]) throws -> String? {
+        var clear = false
+        var positional: [String] = []
+        for token in args {
+            if token == "--clear" {
+                clear = true
+            } else if token.hasPrefix("--") {
+                throw CLIParseError.unknownFlag(token)
+            } else {
+                positional.append(token)
+            }
+        }
+        positional.append(contentsOf: literalTail)
+
+        if clear {
+            guard positional.isEmpty else {
+                throw CLIParseError.unknownCommand("focus --clear \(positional[0])")
+            }
+            return nil
+        }
+        guard let identifier = positional.first, !identifier.isEmpty else {
+            throw CLIParseError.missingArgument("id")
+        }
+        return identifier
+    }
+
+    private static func parseView(_ args: [String], literalTail: [String]) throws -> CLICommand {
+        guard let sub = args.first else { throw CLIParseError.missingArgument("view subcommand") }
+        let rest = Array(args.dropFirst())
+
+        switch sub {
+        case "list":
+            let (flags, positional) = try split(rest, accepting: [], literalTail: literalTail)
+            _ = flags
+            guard positional.isEmpty else { throw CLIParseError.unknownCommand("view list \(positional[0])") }
+            return .viewList
+
+        case "save":
+            let (flags, positional) = try split(rest, accepting: ["--force"], literalTail: literalTail)
+            guard let name = positional.first, !name.isEmpty else { throw CLIParseError.missingArgument("name") }
+            guard positional.count >= 2 else { throw CLIParseError.missingArgument("query") }
+            // Everything after the name is the query, so a caller may leave it unquoted:
+            // `view save week +work due:<=1w` reads the same as the quoted form.
+            let query = positional.dropFirst().joined(separator: " ")
+            return .viewSave(SaveViewOptions(name: name, query: query, force: flags.contains("--force")))
+
+        case "run":
+            let (flags, positional) = try split(rest, accepting: ["--all"], literalTail: literalTail)
+            guard let name = positional.first, !name.isEmpty else { throw CLIParseError.missingArgument("name") }
+            guard positional.count == 1 else { throw CLIParseError.unknownCommand("view run \(positional[1])") }
+            return .viewRun(RunViewOptions(name: name, includeDone: flags.contains("--all")))
+
+        case "delete":
+            return .viewDelete(try single(rest, literalTail: literalTail, named: "name"))
+
+        default:
+            throw CLIParseError.unknownCommand("view \(sub)")
+        }
+    }
+
+    /// Separates recognised boolean flags from positional arguments, rejecting anything
+    /// flag-shaped that is not on the accept list.
+    private static func split(_ args: [String], accepting accepted: Set<String>,
+                              literalTail: [String]) throws -> (flags: Set<String>, positional: [String]) {
+        var flags: Set<String> = []
+        var positional: [String] = []
+        for token in args {
+            if accepted.contains(token) {
+                flags.insert(token)
+            } else if token.hasPrefix("--") {
+                throw CLIParseError.unknownFlag(token)
+            } else {
+                positional.append(token)
+            }
+        }
+        positional.append(contentsOf: literalTail)
+        return (flags, positional)
     }
 
     private static func ensureName(_ args: [String], literalTail: [String]) throws -> String {

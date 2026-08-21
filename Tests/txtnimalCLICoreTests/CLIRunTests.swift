@@ -349,4 +349,330 @@ final class CLIRunTests: XCTestCase {
             JSONSerialization.jsonObject(with: Data(out.stderr.utf8)) as? [String: Any])
         XCTAssertNotNil(object["error"] as? String)
     }
+
+    // MARK: - list --filter
+
+    /// The corpus the query tests below select from. `today` is 2026-08-19.
+    private func seedCorpus() throws {
+        try seed("""
+            write report +work @office due:2026-08-19 id:aaaa1111
+            buy milk +errands @home due:2026-08-25 id:aaaa2222
+            call plumber +errands @home id:aaaa3333 focus:true
+            x file taxes +work due:2026-08-10 id:aaaa4444 done:2026-08-11
+
+            """)
+    }
+
+    private func listedTitles(_ output: CLIOutput) throws -> [String] {
+        let tasks = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.stdout.utf8))
+            as? [String: Any])["tasks"] as? [[String: Any]]
+        return (tasks ?? []).compactMap { $0["title"] as? String }
+    }
+
+    func testListFilterSelectsBySingleAtom() throws {
+        try seedCorpus()
+        let out = run(["list", "--filter", "+errands", "--json"])
+        XCTAssertEqual(out.exitCode, 0, out.stderr)
+        XCTAssertEqual(try listedTitles(out), ["buy milk", "call plumber"])
+    }
+
+    func testListFilterEvaluatesGroupingAndDisjunction() throws {
+        try seedCorpus()
+        let out = run(["list", "--filter", "(@office OR @home) AND due:<=2026-08-19", "--json"])
+        XCTAssertEqual(out.exitCode, 0, out.stderr)
+        XCTAssertEqual(try listedTitles(out), ["write report"],
+                       "buy milk is due later; call plumber has no due date at all")
+    }
+
+    func testListFilterNegationExcludes() throws {
+        try seedCorpus()
+        let out = run(["list", "--filter", "-+work", "--json"])
+        XCTAssertEqual(try listedTitles(out), ["buy milk", "call plumber"])
+    }
+
+    func testListFilterCanReachCompletedTasksByNamingDone() throws {
+        try seedCorpus()
+        let out = run(["list", "--filter", "done:true", "--json"])
+        XCTAssertEqual(out.exitCode, 0, out.stderr)
+        XCTAssertEqual(try listedTitles(out), ["file taxes"],
+                       "naming done: must override the default of hiding completed tasks")
+    }
+
+    func testListFilterComposesWithTheOlderFlags() throws {
+        try seedCorpus()
+        let out = run(["list", "--project", "errands", "--filter", "@home", "--json"])
+        XCTAssertEqual(try listedTitles(out), ["buy milk", "call plumber"])
+    }
+
+    func testListFilterUsesTheSharedDateVocabulary() throws {
+        try seedCorpus()
+        let out = run(["list", "--filter", "due:today", "--json"])
+        XCTAssertEqual(try listedTitles(out), ["write report"])
+    }
+
+    func testListFilterRendersTheSameColumnsAsAPlainList() throws {
+        try seedCorpus()
+        let out = run(["list", "--filter", "+work"])
+        XCTAssertEqual(out.exitCode, 0, out.stderr)
+        XCTAssertTrue(out.stdout.contains("aaaa1111"))
+        XCTAssertTrue(out.stdout.contains("write report"))
+        XCTAssertFalse(out.stdout.contains("file taxes"), "still hidden — the query never said done:")
+    }
+
+    /// ISC-6: a bad query is a usage error, reported, with the file untouched.
+    func testMalformedFilterIsAUsageErrorNotACrash() throws {
+        try seedCorpus()
+        let before = try fileText()
+        let out = run(["list", "--filter", "+work AND ("])
+        XCTAssertEqual(out.exitCode, 2, "a malformed query is a usage error")
+        XCTAssertTrue(out.stdout.isEmpty, "stdout must stay clean")
+        XCTAssertFalse(out.stderr.isEmpty)
+        XCTAssertEqual(try fileText(), before)
+    }
+
+    func testMalformedFilterNamesTheProblem() throws {
+        try seedCorpus()
+        XCTAssertTrue(run(["list", "--filter", "priority:high"]).stderr.contains("priority"))
+        XCTAssertTrue(run(["list", "--filter", "due:whenever"]).stderr.lowercased().contains("date"))
+    }
+
+    func testMalformedFilterStillReportsAsJSONWhenAsked() throws {
+        try seedCorpus()
+        let out = run(["list", "--filter", ")", "--json"])
+        XCTAssertEqual(out.exitCode, 2)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(out.stderr.utf8)) as? [String: Any])
+        XCTAssertNotNil(object["error"] as? String)
+    }
+
+    // MARK: - saved views
+
+    private var viewsURL: URL { dir.appendingPathComponent("views.json") }
+
+    func testViewSaveThenRunRoundTripsThroughTheFile() throws {
+        try seedCorpus()
+        let saved = run(["view", "save", "errands", "+errands @home"])
+        XCTAssertEqual(saved.exitCode, 0, saved.stderr)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: viewsURL.path))
+
+        let out = run(["view", "run", "errands", "--json"])
+        XCTAssertEqual(out.exitCode, 0, out.stderr)
+        XCTAssertEqual(try listedTitles(out), ["buy milk", "call plumber"])
+    }
+
+    func testViewsFileHasTheAgreedShape() throws {
+        try seedCorpus()
+        run(["view", "save", "errands", "+errands"])
+        let stored = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(contentsOf: viewsURL)) as? [[String: Any]])
+        XCTAssertEqual(stored.count, 1)
+        XCTAssertEqual(stored[0]["name"] as? String, "errands")
+        XCTAssertEqual(stored[0]["query"] as? String, "+errands")
+        XCTAssertEqual(stored[0]["createdYMD"] as? String, "2026-08-19")
+    }
+
+    /// The query text is stored, never a resolved date — a view must mean "today" on the
+    /// day it runs, not on the day it was written.
+    func testViewStoresQueryTextRatherThanAResolvedDate() throws {
+        try seedCorpus()
+        run(["view", "save", "duetoday", "due:today"])
+        let stored = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(contentsOf: viewsURL)) as? [[String: Any]])
+        XCTAssertEqual(stored[0]["query"] as? String, "due:today")
+    }
+
+    func testViewRunAcceptsAllLikeListDoes() throws {
+        try seedCorpus()
+        run(["view", "save", "work", "+work"])
+        XCTAssertEqual(try listedTitles(run(["view", "run", "work", "--json"])), ["write report"])
+        XCTAssertEqual(try listedTitles(run(["view", "run", "work", "--all", "--json"])),
+                       ["write report", "file taxes"])
+    }
+
+    func testViewListPrintsNamesAndQueries() throws {
+        try seedCorpus()
+        run(["view", "save", "errands", "+errands"])
+        run(["view", "save", "thisweek", "due:<=1w"])
+        let out = run(["view", "list"])
+        XCTAssertEqual(out.exitCode, 0, out.stderr)
+        XCTAssertTrue(out.stdout.contains("errands"))
+        XCTAssertTrue(out.stdout.contains("+errands"))
+        XCTAssertTrue(out.stdout.contains("thisweek"))
+        XCTAssertTrue(out.stdout.contains("due:<=1w"))
+    }
+
+    func testViewListOnAnEmptyStoreIsSuccessNotAnError() throws {
+        try seedCorpus()
+        let out = run(["view", "list", "--json"])
+        XCTAssertEqual(out.exitCode, 0)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(out.stdout.utf8)) as? [String: Any])
+        XCTAssertEqual((object["views"] as? [[String: Any]])?.count, 0)
+    }
+
+    func testViewDeleteRemovesOnlyThatView() throws {
+        try seedCorpus()
+        run(["view", "save", "errands", "+errands"])
+        run(["view", "save", "work", "+work"])
+        XCTAssertEqual(run(["view", "delete", "errands"]).exitCode, 0)
+
+        let out = run(["view", "list"])
+        XCTAssertFalse(out.stdout.contains("errands"))
+        XCTAssertTrue(out.stdout.contains("work"))
+    }
+
+    func testSavingADuplicateNameIsRefusedRatherThanOverwriting() throws {
+        try seedCorpus()
+        XCTAssertEqual(run(["view", "save", "errands", "+errands"]).exitCode, 0)
+        let out = run(["view", "save", "errands", "+work"])
+        XCTAssertEqual(out.exitCode, 2, "a name collision is a usage error")
+        XCTAssertTrue(out.stderr.contains("--force"), "the message must say how to proceed")
+
+        XCTAssertEqual(try listedTitles(run(["view", "run", "errands", "--json"])),
+                       ["buy milk", "call plumber"], "the original query must survive")
+    }
+
+    func testDuplicateNamesAreCaughtCaseInsensitively() throws {
+        try seedCorpus()
+        run(["view", "save", "errands", "+errands"])
+        XCTAssertEqual(run(["view", "save", "ERRANDS", "+work"]).exitCode, 2)
+    }
+
+    func testForceReplacesTheQueryAndKeepsTheCreationDate() throws {
+        try seedCorpus()
+        run(["view", "save", "errands", "+errands"])
+        let out = run(["view", "save", "errands", "+work", "--force"])
+        XCTAssertEqual(out.exitCode, 0, out.stderr)
+
+        let stored = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(contentsOf: viewsURL)) as? [[String: Any]])
+        XCTAssertEqual(stored.count, 1, "replacing must not append a second entry")
+        XCTAssertEqual(stored[0]["query"] as? String, "+work")
+        XCTAssertEqual(stored[0]["createdYMD"] as? String, "2026-08-19")
+    }
+
+    func testSavingAnInvalidQueryIsRefusedBeforeItReachesTheFile() throws {
+        try seedCorpus()
+        let out = run(["view", "save", "broken", "+work AND ("])
+        XCTAssertEqual(out.exitCode, 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: viewsURL.path),
+                       "a view that cannot run must never be written")
+    }
+
+    func testRunningAnUnknownViewFailsWithoutTouchingAnything() throws {
+        try seedCorpus()
+        let out = run(["view", "run", "nosuchview"])
+        XCTAssertEqual(out.exitCode, 1, "a missing view is a state problem, not a usage error")
+        XCTAssertTrue(out.stderr.contains("nosuchview"))
+        XCTAssertTrue(out.stdout.isEmpty)
+    }
+
+    func testDeletingAnUnknownViewFails() throws {
+        try seedCorpus()
+        XCTAssertEqual(run(["view", "delete", "nosuchview"]).exitCode, 1)
+    }
+
+    func testAViewNameMayBeRunCaseInsensitively() throws {
+        try seedCorpus()
+        run(["view", "save", "Errands", "+errands"])
+        XCTAssertEqual(try listedTitles(run(["view", "run", "errands", "--json"])),
+                       ["buy milk", "call plumber"])
+    }
+
+    func testAnUnreadableViewsFileIsReportedRatherThanSilentlyReplaced() throws {
+        try seedCorpus()
+        try "not json at all".write(to: viewsURL, atomically: true, encoding: .utf8)
+        let out = run(["view", "list"])
+        XCTAssertEqual(out.exitCode, 1)
+        XCTAssertFalse(out.stderr.isEmpty)
+        XCTAssertEqual(try String(contentsOf: viewsURL, encoding: .utf8), "not json at all",
+                       "a file we could not read must not be overwritten")
+    }
+
+    // MARK: - focus
+
+    private func focusedTitles() throws -> [String] {
+        TasksDocument.parse(try fileText()).filter { $0.isFocused }.map(\.title)
+    }
+
+    func testFocusSetsTheNamedTask() throws {
+        try seed("alpha id:aaaa1111\nbeta id:aaaa2222\n")
+        let out = run(["focus", "aaaa22"])
+        XCTAssertEqual(out.exitCode, 0, out.stderr)
+        XCTAssertEqual(try focusedTitles(), ["beta"])
+    }
+
+    /// The single-focus invariant, enforced in the same write.
+    func testFocusClearsFocusEverywhereElse() throws {
+        try seed("alpha id:aaaa1111 focus:true\nbeta id:aaaa2222\ngamma id:aaaa3333 focus:true\n")
+        XCTAssertEqual(run(["focus", "aaaa2222"]).exitCode, 0)
+        XCTAssertEqual(try focusedTitles(), ["beta"], "exactly one task may carry focus")
+    }
+
+    func testFocusClearRemovesFocusWithNoReplacement() throws {
+        try seed("alpha id:aaaa1111 focus:true\nbeta id:aaaa2222\n")
+        let out = run(["focus", "--clear"])
+        XCTAssertEqual(out.exitCode, 0, out.stderr)
+        XCTAssertEqual(try focusedTitles(), [])
+    }
+
+    func testFocusClearOnAnUnfocusedFileIsAHarmlessNoOp() throws {
+        try seed("alpha id:aaaa1111\nbeta id:aaaa2222\n")
+        let before = try fileText()
+        let out = run(["focus", "--clear"])
+        XCTAssertEqual(out.exitCode, 0, out.stderr)
+        XCTAssertEqual(try fileText(), before, "a no-op must not rewrite the file")
+    }
+
+    func testFocusLeavesEveryOtherTokenAlone() throws {
+        try seed("alpha +work @home due:2026-09-01 id:aaaa1111 note:\"keep me\"\n")
+        XCTAssertEqual(run(["focus", "aaaa1111"]).exitCode, 0)
+        let task = try XCTUnwrap(TasksDocument.parse(try fileText()).first { !$0.isBlank })
+        XCTAssertTrue(task.isFocused)
+        XCTAssertEqual(task.due, "2026-09-01")
+        XCTAssertEqual(task.projects, ["work"])
+        XCTAssertEqual(task.contexts, ["home"])
+        XCTAssertEqual(task.note, "keep me")
+    }
+
+    func testFocusWithAnAmbiguousPrefixChangesNothingAndListsCandidates() throws {
+        try seed("alpha id:aaaa1111\nbeta id:aaaa2222\n")
+        let before = try fileText()
+        let out = run(["focus", "aaaa"])
+        XCTAssertNotEqual(out.exitCode, 0)
+        XCTAssertTrue(out.stderr.contains("aaaa1111"), out.stderr)
+        XCTAssertTrue(out.stderr.contains("aaaa2222"), out.stderr)
+        XCTAssertEqual(try fileText(), before)
+    }
+
+    func testFocusWithAnUnknownIDFailsCleanly() throws {
+        try seed("alpha id:aaaa1111\n")
+        let out = run(["focus", "zzzz"])
+        XCTAssertNotEqual(out.exitCode, 0)
+        XCTAssertEqual(try fileText(), "alpha id:aaaa1111\n")
+    }
+
+    func testFocusEmitsJSONWhenAsked() throws {
+        try seed("alpha id:aaaa1111\n")
+        let payload = try json(run(["focus", "aaaa1111", "--json"]))
+        XCTAssertEqual(payload["id"] as? String, "aaaa1111")
+        XCTAssertEqual(payload["focused"] as? Bool, true)
+    }
+
+    func testFocusIsQueryableAfterwards() throws {
+        try seed("alpha id:aaaa1111\nbeta id:aaaa2222\n")
+        run(["focus", "aaaa2222"])
+        XCTAssertEqual(try listedTitles(run(["list", "--filter", "focus:true", "--json"])), ["beta"])
+    }
+
+    func testFocusAndClearAreMutuallyExclusive() throws {
+        try seed("alpha id:aaaa1111\n")
+        XCTAssertNotEqual(run(["focus", "aaaa1111", "--clear"]).exitCode, 0)
+    }
+
+    func testFocusWithNoArgumentIsAUsageError() throws {
+        try seed("alpha id:aaaa1111\n")
+        let out = run(["focus"])
+        XCTAssertEqual(out.exitCode, 2)
+    }
 }
